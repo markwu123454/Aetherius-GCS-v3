@@ -1,0 +1,131 @@
+/* IBM Plex, bundled rather than served from a CDN so the desktop build works
+   offline. Latin subsets only, and only the weights actually used — the full
+   imports pull in Cyrillic, Greek and Vietnamese for every weight, which all
+   ship to disk in a packaged desktop build whether or not they are ever read. */
+@import "@fontsource/ibm-plex-sans/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-500.css";
+@import "@fontsource/ibm-plex-sans/latin-600.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-500.css";
+
+/*
+ * Carbon Design System tokens, ported into Tailwind rather than pulled in as a
+ * component library. Carbon's components are built for enterprise forms and are
+ * far too large for the density this application needs; the tokens are the part
+ * worth keeping.
+ *
+ * The palette values below are Carbon's published ramp. The semantic mappings
+ * beneath them are the Gray 100 (dark) theme, read directly out of the
+ * `@carbon/themes` package rather than transcribed from the docs.
+ */
+@theme {
+    /* Carbon gray ramp */
+    --color-gray-10: #f4f4f4;
+    --color-gray-20: #e0e0e0;
+    --color-gray-30: #c6c6c6;
+    --color-gray-40: #a8a8a8;
+    --color-gray-50: #8d8d8d;
+    --color-gray-60: #6f6f6f;
+    --color-gray-70: #525252;
+    --color-gray-80: #393939;
+    --color-gray-90: #262626;
+    --color-gray-100: #161616;
+
+    /* Functional colours. Dark themes use the lighter step of each pair so the
+       contrast ratio holds against a gray-100 background. */
+    --color-blue-40: #78a9ff;
+    --color-blue-50: #4589ff;
+    --color-blue-60: #0f62fe;
+    --color-red-40: #ff8389;
+    --color-red-50: #fa4d56;
+    --color-red-60: #da1e28;
+    --color-yellow-30: #f1c21b;
+    --color-orange-40: #ff832b;
+    --color-green-40: #42be65;
+    --color-green-50: #24a148;
+
+    /* Semantic surface / text tokens, read from `@carbon/themes` g100 rather
+       than transcribed by eye. Layer hovers are solid; background-hover is
+       deliberately an alpha wash, which is Carbon's own inconsistency, not a
+       simplification made here. */
+    --color-background: #161616;
+    --color-background-hover: rgba(141, 141, 141, 0.16);
+    --color-layer-01: #262626;
+    --color-layer-hover-01: #333333;
+    --color-layer-02: #393939;
+    --color-layer-hover-02: #474747;
+    --color-layer-accent: #393939;
+    /* borderSubtle01. The #393939 that reads as "subtle" by eye is
+       borderSubtle00, which Carbon reserves for borders on the base
+       background rather than on a layer. */
+    --color-border-subtle: #525252;
+    --color-border-subtle-base: #393939;
+    --color-border-strong: #6f6f6f;
+    --color-text-primary: #f4f4f4;
+    --color-text-secondary: #c6c6c6;
+    --color-text-helper: #a8a8a8;
+    --color-text-disabled: rgba(244, 244, 244, 0.25);
+    --color-text-on-color: #ffffff;
+    --color-focus: #ffffff;
+
+    /* State colours. Reserved for vehicle health — nothing decorative uses
+       these, so nothing competes with them for attention. */
+    --color-state-ok: #42be65;
+    --color-state-warn: #f1c21b;
+    --color-state-danger: #fa4d56;
+    --color-state-info: #4589ff;
+    --color-state-unknown: #6f6f6f;
+
+    --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+    /* Telemetry numerals live in Plex Mono so digits keep a fixed width and
+       values stop jittering as they update. */
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+    /*
+     * Type. The three larger steps are Carbon's own (label-01, body-compact-01)
+     * including their letter-spacing, which Carbon widens as size drops.
+     *
+     * `micro` extends the ramp one step below Carbon's floor of 12px. Carbon's
+     * scale is 12/14/16/18/20/24/28/32/36/42 — every step even, and spaced by 2
+     * at the bottom — so 10px is where the ramp goes next rather than a value
+     * chosen to fit. 8px would skip a step and is too small to glance at on a
+     * safety-critical strip. Its 16px line height keeps it on the 8px grid.
+     */
+    --text-micro: 0.625rem;
+    --text-micro--line-height: 1rem;
+    --text-micro--letter-spacing: 0.4px;
+    --text-label: 0.75rem;
+    --text-label--line-height: 1rem;
+    --text-label--letter-spacing: 0.32px;
+    --text-body: 0.875rem;
+    --text-body--line-height: 1.125rem;
+    --text-body--letter-spacing: 0.16px;
+    --text-heading: 0.875rem;
+    --text-heading--line-height: 1.125rem;
+    --text-heading--letter-spacing: 0.16px;
+
+    /* Carbon is square. There is no corner radius token on purpose — rounding
+       anything here would read as foreign against the rest of the system. */
+
+    /* Carbon's control height ramp. `sm` is the density this application wants
+       almost everywhere; the larger steps exist so forms have somewhere to go. */
+    --spacing-control-sm: 32px;
+    --spacing-control-md: 40px;
+    --spacing-control-lg: 48px;
+
+    /* Elevation. Carbon keeps overlay shadows tight and low-contrast rather
+       than the large diffuse glow Tailwind's defaults produce. */
+    --shadow-overlay: 0 2px 6px rgba(0, 0, 0, 0.3);
+    --shadow-window: 0 4px 12px rgba(0, 0, 0, 0.4);
+
+    --ease-productive: cubic-bezier(0.2, 0, 0.38, 0.9);
+    --ease-expressive: cubic-bezier(0.4, 0.14, 0.3, 1);
+}
+
+/* Carbon's focus treatment: a 2px ring in pure white rather than a glow. */
+@layer base {
+    :focus-visible {
+        outline: 2px solid var(--color-focus);
+        outline-offset: -2px;
+    }
+}
