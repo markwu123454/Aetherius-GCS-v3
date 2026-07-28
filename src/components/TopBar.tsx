@@ -1,10 +1,14 @@
 import {useEffect, useMemo, useRef, useState} from "react";
 import AppMenu, {Menu} from "./AppMenu";
 import StatusChip, {Tone} from "./StatusChip";
-import {useMockVehicle, useNow} from "../vehicle/useMockVehicle";
-import {alertLevel, fixLabel, isStale} from "../vehicle/vehicle";
+import ConnectControl from "./ConnectControl";
+import {useNow} from "../vehicle/useMockVehicle";
+import {useVehicle} from "../vehicle/useVehicle";
+import {alertLevel, fixLabel, worst} from "../vehicle/vehicle";
+import {isLinkFailing, isLinkIdle, linkSeverity} from "../vehicle/connection";
 import {PANEL_DEFINITIONS} from "../workspace/panels";
 import {WorkspaceActions} from "../workspace/useWorkspace";
+import {useConnection} from "../vehicle/useConnection";
 
 interface TopBarProps {
     openIds: Set<string>;
@@ -12,13 +16,29 @@ interface TopBarProps {
 }
 
 export default function TopBar({openIds, actions}: TopBarProps) {
-    const vehicle = useMockVehicle();
+    const vehicle = useVehicle();
     const now = useNow();
+
+    // The backend owns the link state machine; this only reflects it.
+    const connection = useConnection();
+
+    // Null until a packet has actually arrived. Deriving an age from a zero
+    // timestamp would measure against the epoch, not against a packet.
+    const packetAge = vehicle.updatedAt === 0 ? null : now - vehicle.updatedAt;
     const [menuExpanded, setMenuExpanded] = useState(false);
 
-    const level = alertLevel(vehicle, now);
-    const stale = isStale(vehicle, now);
-    const staleFor = Math.round((now - vehicle.updatedAt) / 1000);
+    // Vehicle health and link health are judged separately and then combined,
+    // so neither can quietly mask the other.
+    const level = worst(alertLevel(vehicle), linkSeverity(connection.status, packetAge));
+
+    // Readings are struck through only once a link that was working stops. An
+    // idle link has nothing to be stale about.
+    const stale = isLinkFailing(connection.status);
+    const unknown = isLinkIdle(connection.status);
+    const staleFor = stale && packetAge !== null ? Math.round(packetAge / 1000) : null;
+    // A couple of seconds of silence is ordinary on a radio link; sustained
+    // silence is not, and is shown at the same weight as a dead transport.
+    const severe = linkSeverity(connection.status, packetAge) === "danger";
 
     // An operator must never be left browsing the menu, in a degraded strip, at
     // the moment something goes wrong. Escalation into danger closes it for
@@ -30,6 +50,43 @@ export default function TopBar({openIds, actions}: TopBarProps) {
         }
         previousLevel.current = level;
     }, [level]);
+
+    // The whole strip's background carries link health, rather than any one
+    // reading, so it stays visible regardless of how the surrounding panels
+    // are arranged. Losing only starts pulsing after a second of silence — a
+    // radio hiccup that clears in a beat is not worth animating for.
+    const [pulseWarn, setPulseWarn] = useState(false);
+    useEffect(() => {
+        if (connection.status !== "losing") {
+            setPulseWarn(false);
+            return;
+        }
+        const timer = window.setTimeout(() => setPulseWarn(true), 1000);
+        return () => window.clearTimeout(timer);
+    }, [connection.status]);
+
+    // Lost flashes red to catch a glance, then holds a steady red tint for as
+    // long as the link stays down, rather than fading back to normal, which
+    // would read as "resolved" while it is not.
+    const [lostStage, setLostStage] = useState<"flash" | "steady" | null>(null);
+    useEffect(() => {
+        if (connection.status !== "lost") {
+            setLostStage(null);
+            return;
+        }
+        setLostStage("flash");
+        const timer = window.setTimeout(() => setLostStage("steady"), 2400);
+        return () => window.clearTimeout(timer);
+    }, [connection.status]);
+
+    const headerAnimClass =
+        lostStage === "flash"
+            ? "topbar-flash-danger"
+            : lostStage === "steady"
+              ? "topbar-steady-danger"
+              : pulseWarn
+                ? "topbar-pulse-warn"
+                : "bg-layer-01";
 
     const menus = useMemo<Menu[]>(
         () => [
@@ -81,18 +138,30 @@ export default function TopBar({openIds, actions}: TopBarProps) {
     const linkTone: Tone = vehicle.link.lossPercent > 5 ? "warn" : "ok";
 
     return (
-        <header className="flex h-control-sm shrink-0 items-stretch border-b border-border-subtle bg-layer-01 text-text-primary">
+        <header
+            className={`flex h-control-sm shrink-0 items-stretch border-b border-border-subtle text-text-primary ${headerAnimClass}`}
+        >
             <AppMenu menus={menus} expanded={menuExpanded} onExpandedChange={setMenuExpanded}/>
 
             {/* Anchored right so expanding the menu never pushes the readings. */}
             <div className="ml-auto flex items-stretch">
-                <StatusChip label="Mode" value={vehicle.mode} tone="info" stale={stale} staleFor={staleFor}/>
+                <StatusChip
+                    label="Mode"
+                    value={vehicle.mode}
+                    tone="info"
+                    stale={stale}
+                    staleFor={staleFor}
+                    unknown={unknown}
+                    severe={severe}
+                />
                 <StatusChip
                     label="State"
                     value={vehicle.armed ? "ARMED" : "DISARMED"}
                     tone={vehicle.armed ? "danger" : "neutral"}
                     stale={stale}
                     staleFor={staleFor}
+                    unknown={unknown}
+                    severe={severe}
                 />
                 <StatusChip
                     label="Prearm"
@@ -100,6 +169,8 @@ export default function TopBar({openIds, actions}: TopBarProps) {
                     tone={vehicle.prearmPass ? "ok" : "warn"}
                     stale={stale}
                     staleFor={staleFor}
+                    unknown={unknown}
+                    severe={severe}
                     onClick={() => actions.open("console")}
                 />
                 <StatusChip
@@ -110,6 +181,8 @@ export default function TopBar({openIds, actions}: TopBarProps) {
                     tone={batteryTone}
                     stale={stale}
                     staleFor={staleFor}
+                    unknown={unknown}
+                    severe={severe}
                     onClick={() => actions.open("telemetry")}
                 />
                 <StatusChip
@@ -120,6 +193,8 @@ export default function TopBar({openIds, actions}: TopBarProps) {
                     tone={gpsTone}
                     stale={stale}
                     staleFor={staleFor}
+                    unknown={unknown}
+                    severe={severe}
                     onClick={() => actions.open("telemetry")}
                 />
                 <StatusChip
@@ -130,6 +205,8 @@ export default function TopBar({openIds, actions}: TopBarProps) {
                     tone={linkTone}
                     stale={stale}
                     staleFor={staleFor}
+                    unknown={unknown}
+                    severe={severe}
                 />
                 <StatusChip
                     label="Vibe"
@@ -139,7 +216,13 @@ export default function TopBar({openIds, actions}: TopBarProps) {
                     tone={vehicle.ekf.ok ? "ok" : "danger"}
                     stale={stale}
                     staleFor={staleFor}
+                    unknown={unknown}
+                    severe={severe}
                 />
+                {/* Last on the strip: when the link drops every reading to its
+                    left goes stale at once, so the remedy sits beside the
+                    symptom rather than across the window. */}
+                <ConnectControl connection={connection} armed={vehicle.armed}/>
             </div>
         </header>
     );

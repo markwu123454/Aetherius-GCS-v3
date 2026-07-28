@@ -43,18 +43,21 @@ export const PREARM_REASON_EXPIRY = PREARM_CADENCE * 2 + 10_000;
 
 export type AlertLevel = "none" | "warn" | "danger";
 
-export function isStale(state: VehicleState, now: number): boolean {
-    return !state.connected || now - state.updatedAt > STALE_AFTER;
+const SEVERITY: Record<AlertLevel, number> = {none: 0, warn: 1, danger: 2};
+
+/** The more serious of two levels. */
+export function worst(a: AlertLevel, b: AlertLevel): AlertLevel {
+    return SEVERITY[a] >= SEVERITY[b] ? a : b;
 }
 
 /**
- * The single worst thing currently true about the vehicle. Drives both the
- * strip's colouring and whether the application menu is allowed to stay open.
+ * The worst thing the vehicle is currently reporting about itself.
+ *
+ * Deliberately says nothing about the link. Whether these readings are still
+ * arriving is the connection's business, and combining the two here would mean
+ * two different notions of "stale" — one for the chips and one for this.
  */
-export function alertLevel(state: VehicleState, now: number): AlertLevel {
-    if (isStale(state, now)) {
-        return "danger";
-    }
+export function alertLevel(state: VehicleState): AlertLevel {
     if (state.battery.percent <= 15 || state.gps.fix === "none") {
         return "danger";
     }

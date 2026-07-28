@@ -17,3 +17,153 @@ body {
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
 }
+
+@keyframes topbar-pulse-warn {
+  0%,
+  100% {
+    background-color: var(--color-layer-01);
+  }
+  50% {
+    background-color: color-mix(in srgb, var(--color-state-warn) 22%, var(--color-layer-01));
+  }
+}
+
+@keyframes topbar-flash-danger {
+  0%,
+  100% {
+    background-color: var(--color-layer-01);
+  }
+  50% {
+    background-color: color-mix(in srgb, var(--color-state-danger) 38%, var(--color-layer-01));
+  }
+}
+
+/* Link health is shown as the top strip's own background rather than through
+   any one reading, so it stays visible no matter how the surrounding panels
+   are arranged. Losing pulses amber once silence has gone on long enough to
+   be worth noticing; lost flashes red a few times to catch a glance, then
+   holds a steady red tint for as long as the link stays down rather than
+   fading back to normal, which would read as "resolved" while it is not. */
+.topbar-pulse-warn {
+  animation: topbar-pulse-warn 2.4s var(--ease-productive) infinite;
+}
+
+.topbar-flash-danger {
+  animation: topbar-flash-danger 0.6s var(--ease-productive) 4;
+}
+
+.topbar-steady-danger {
+  background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar-pulse-warn {
+    animation: none;
+    background-color: color-mix(in srgb, var(--color-state-warn) 18%, var(--color-layer-01));
+  }
+
+  .topbar-flash-danger {
+    animation: none;
+    background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
+  }
+}
+
+@keyframes topbar-pulse-warn {
+  0%,
+  100% {
+    background-color: var(--color-layer-01);
+  }
+  50% {
+    background-color: color-mix(in srgb, var(--color-state-warn) 22%, var(--color-layer-01));
+  }
+}
+
+@keyframes topbar-flash-danger {
+  0%,
+  100% {
+    background-color: var(--color-layer-01);
+  }
+  50% {
+    background-color: color-mix(in srgb, var(--color-state-danger) 38%, var(--color-layer-01));
+  }
+}
+
+/* Link health is shown as the top strip's own background rather than through
+   any one reading, so it stays visible no matter how the surrounding panels
+   are arranged. Losing pulses amber once silence has gone on long enough to
+   be worth noticing; lost flashes red a few times to catch a glance, then
+   holds a steady red tint for as long as the link stays down rather than
+   fading back to normal, which would read as "resolved" while it is not. */
+.topbar-pulse-warn {
+  animation: topbar-pulse-warn 2.4s var(--ease-productive) infinite;
+}
+
+.topbar-flash-danger {
+  animation: topbar-flash-danger 0.6s var(--ease-productive) 4;
+}
+
+.topbar-steady-danger {
+  background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar-pulse-warn {
+    animation: none;
+    background-color: color-mix(in srgb, var(--color-state-warn) 18%, var(--color-layer-01));
+  }
+
+  .topbar-flash-danger {
+    animation: none;
+    background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
+  }
+}
+
+@keyframes topbar-pulse-warn {
+  0%,
+  100% {
+    background-color: var(--color-layer-01);
+  }
+  50% {
+    background-color: color-mix(in srgb, var(--color-state-warn) 22%, var(--color-layer-01));
+  }
+}
+
+@keyframes topbar-flash-danger {
+  0%,
+  100% {
+    background-color: var(--color-layer-01);
+  }
+  50% {
+    background-color: color-mix(in srgb, var(--color-state-danger) 38%, var(--color-layer-01));
+  }
+}
+
+/* Link health is shown as the top strip's own background rather than through
+   any one reading, so it stays visible no matter how the surrounding panels
+   are arranged. Losing pulses amber once silence has gone on long enough to
+   be worth noticing; lost flashes red a few times to catch a glance, then
+   holds a steady red tint for as long as the link stays down rather than
+   fading back to normal, which would read as "resolved" while it is not. */
+.topbar-pulse-warn {
+  animation: topbar-pulse-warn 2.4s var(--ease-productive) infinite;
+}
+
+.topbar-flash-danger {
+  animation: topbar-flash-danger 0.6s var(--ease-productive) 4;
+}
+
+.topbar-steady-danger {
+  background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar-pulse-warn {
+    animation: none;
+    background-color: color-mix(in srgb, var(--color-state-warn) 18%, var(--color-layer-01));
+  }
+
+  .topbar-flash-danger {
+    animation: none;
+    background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
+  }
+}
