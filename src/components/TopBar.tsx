@@ -3,24 +3,27 @@ import AppMenu, {Menu} from "./AppMenu";
 import StatusChip, {Tone} from "./StatusChip";
 import ConnectControl from "./ConnectControl";
 import {useNow} from "../vehicle/useMockVehicle";
-import {useVehicle} from "../vehicle/useVehicle";
-import {alertLevel, fixLabel, worst} from "../vehicle/vehicle";
+import {alertLevel, fixLabel, VehicleState, worst} from "../vehicle/vehicle";
 import {isLinkFailing, isLinkIdle, linkSeverity} from "../vehicle/connection";
 import {PANEL_DEFINITIONS} from "../workspace/panels";
-import {WorkspaceActions} from "../workspace/useWorkspace";
 import {useConnection} from "../vehicle/useConnection";
+import {SettingsApi} from "../settings/useSettings";
+import {useNavigation} from "../navigation/useNavigation";
 
 interface TopBarProps {
+    vehicle: VehicleState;
+    settings: SettingsApi;
     openIds: Set<string>;
-    actions: WorkspaceActions;
 }
 
-export default function TopBar({openIds, actions}: TopBarProps) {
-    const vehicle = useVehicle();
+export default function TopBar({vehicle, settings, openIds}: TopBarProps) {
     const now = useNow();
 
     // The backend owns the link state machine; this only reflects it.
     const connection = useConnection();
+    // Reachable the same way from a panel's own content or a page's own
+    // content — this is just the top bar's turn to use it.
+    const navigation = useNavigation();
 
     // Null until a packet has actually arrived. Deriving an age from a zero
     // timestamp would measure against the epoch, not against a packet.
@@ -119,14 +122,23 @@ export default function TopBar({openIds, actions}: TopBarProps) {
                         label: panel.title,
                         checked: openIds.has(panel.id),
                         action: () =>
-                            openIds.has(panel.id) ? actions.close(panel.id) : actions.open(panel.id),
+                            openIds.has(panel.id)
+                                ? navigation.closePanel(panel.id)
+                                : navigation.openPanel(panel.id),
                     })),
                     {label: "Reset Workspace", separatorBefore: true},
                 ],
             },
-            {label: "Help", items: [{label: "Documentation"}, {label: "About"}]},
+            {
+                label: "Help",
+                items: [
+                    {label: "Documentation"},
+                    {label: "About"},
+                    {label: "Preferences…", separatorBefore: true, action: () => navigation.openPage("settings")},
+                ],
+            },
         ],
-        [openIds, actions],
+        [openIds, navigation],
     );
 
     const compact = menuExpanded;
@@ -171,7 +183,7 @@ export default function TopBar({openIds, actions}: TopBarProps) {
                     staleFor={staleFor}
                     unknown={unknown}
                     severe={severe}
-                    onClick={() => actions.open("console")}
+                    onClick={() => navigation.openPanel("console")}
                 />
                 <StatusChip
                     label="Batt"
@@ -183,7 +195,7 @@ export default function TopBar({openIds, actions}: TopBarProps) {
                     staleFor={staleFor}
                     unknown={unknown}
                     severe={severe}
-                    onClick={() => actions.open("telemetry")}
+                    onClick={() => navigation.openPanel("telemetry")}
                 />
                 <StatusChip
                     label="GPS"
@@ -195,7 +207,7 @@ export default function TopBar({openIds, actions}: TopBarProps) {
                     staleFor={staleFor}
                     unknown={unknown}
                     severe={severe}
-                    onClick={() => actions.open("telemetry")}
+                    onClick={() => navigation.openPanel("telemetry")}
                 />
                 <StatusChip
                     label="Link"
@@ -222,7 +234,11 @@ export default function TopBar({openIds, actions}: TopBarProps) {
                 {/* Last on the strip: when the link drops every reading to its
                     left goes stale at once, so the remedy sits beside the
                     symptom rather than across the window. */}
-                <ConnectControl connection={connection} armed={vehicle.armed}/>
+                <ConnectControl
+                    connection={connection}
+                    armed={vehicle.armed}
+                    confirmDisconnectWhenArmed={settings.confirmDisconnectWhenArmed}
+                />
             </div>
         </header>
     );

@@ -7,6 +7,7 @@ import {DockArea, panelById} from "../workspace/panels";
 import {FLOATING_SIZE, FloatingWindow} from "../workspace/layout";
 import {useWorkspace} from "../workspace/useWorkspace";
 import {Box, usePanelDrag} from "../workspace/usePanelDrag";
+import {VehicleKind, VehiclePosition} from "../vehicle/vehicle";
 
 /** Pointer travel before a press on a tab becomes a drag rather than a click. */
 const DRAG_THRESHOLD = 4;
@@ -26,9 +27,11 @@ interface Armed {
 
 interface WorkspaceProps {
     workspace: ReturnType<typeof useWorkspace>;
+    vehiclePosition: VehiclePosition | null;
+    vehicleKind: VehicleKind | null;
 }
 
-export default function Workspace({workspace}: WorkspaceProps) {
+export default function Workspace({workspace, vehiclePosition, vehicleKind}: WorkspaceProps) {
     const {state, actions, visible} = workspace;
     const shellRef = useRef<HTMLDivElement>(null);
     const armedRef = useRef<Armed | null>(null);
@@ -166,7 +169,7 @@ export default function Workspace({workspace}: WorkspaceProps) {
 
             <div className="flex min-w-0 flex-1 flex-col">
                 <div className="relative min-h-0 flex-1">
-                    <MapView/>
+                    <MapView position={vehiclePosition} vehicleKind={vehicleKind}/>
                 </div>
 
                 {visible.bottom && (

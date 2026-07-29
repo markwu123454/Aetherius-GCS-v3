@@ -11,6 +11,8 @@ function initial(): VehicleState {
         connected: true,
         armed: false,
         mode: "LOITER",
+        position: null,
+        vehicleKind: "multirotor",
         prearmPass: false,
         prearmReasons: INITIAL_REASONS.map((text) => ({text, lastSeen: now})),
         disabledChecks: ["Board voltage"],

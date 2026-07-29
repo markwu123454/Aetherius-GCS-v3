@@ -10,10 +10,29 @@ export interface PrearmReason {
     lastSeen: number;
 }
 
+export interface VehiclePosition {
+    lat: number;
+    lon: number;
+    /** Meters above home/origin, not above sea level. */
+    alt: number;
+    /** Degrees, 0-359. */
+    heading: number;
+}
+
+/**
+ * Resolved from HEARTBEAT's `mavtype` — grouped down to what the UI actually
+ * treats differently (which icon to draw), not the full MAV_TYPE enum.
+ */
+export type VehicleKind = "plane" | "multirotor" | "other";
+
 export interface VehicleState {
     connected: boolean;
     armed: boolean;
     mode: string;
+    /** `null` until the first GLOBAL_POSITION_INT arrives. */
+    position: VehiclePosition | null;
+    /** `null` until the first HEARTBEAT arrives. */
+    vehicleKind: VehicleKind | null;
     /**
      * From the SYS_STATUS health bitmask: continuous, trustworthy, and the only
      * prearm signal the status strip is allowed to render.

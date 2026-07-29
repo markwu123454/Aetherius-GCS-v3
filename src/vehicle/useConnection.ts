@@ -1,11 +1,19 @@
 import {useCallback, useEffect, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
-import {listen} from "@tauri-apps/api/event";
-import {ConnectionStatus, LinkConfig, endpointOf, loadLink, saveLink} from "./connection";
+import {useTauriEvent} from "../lib/tauriEvent";
+import {ConnectionStatus, loadHistory, saveHistory, scanLinks, withAttempt, withoutAttempt} from "./connection";
 
 export interface Connection {
-    config: LinkConfig;
-    setConfig: (config: LinkConfig) => void;
+    /** The address currently typed into the connect field, not yet submitted. */
+    draft: string;
+    setDraft: (value: string) => void;
+    /** Recently attempted addresses, most recent first — deeper than what's shown. */
+    history: string[];
+    removeFromHistory: (endpoint: string) => void;
+    /** Endpoints found by the last `scan()`, in whatever order the backend returned them. */
+    available: string[];
+    /** Re-runs the scan. Resolves once `available` is updated; never rejects. */
+    scan: () => Promise<void>;
     status: ConnectionStatus;
     /** The address the transport was asked to open. */
     endpoint: string | null;
@@ -30,39 +38,47 @@ function message(error: unknown): string {
  * intent to it.
  */
 export function useConnection(): Connection {
-    const [config, setConfigState] = useState<LinkConfig>(loadLink);
+    const [history, setHistory] = useState<string[]>(loadHistory);
+    const [draft, setDraftState] = useState<string>(() => history[0] ?? "");
+    const [available, setAvailable] = useState<string[]>([]);
     const [status, setStatus] = useState<ConnectionStatus>("disconnected");
     const [endpoint, setEndpoint] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        saveLink(config);
-    }, [config]);
+        saveHistory(history);
+    }, [history]);
 
-    useEffect(() => {
-        let disposed = false;
-        let unlisten: (() => void) | undefined;
-
-        listen<ConnectionStatus>("link-status", (event) => setStatus(event.payload))
-            .then((stop) => (disposed ? stop() : (unlisten = stop)))
-            // No backend in a plain browser tab; the link stays disconnected.
-            .catch(() => {});
-
-        return () => {
-            disposed = true;
-            unlisten?.();
-        };
+    const scan = useCallback(async () => {
+        try {
+            setAvailable(await scanLinks());
+        } catch {
+            // No backend, or the probe itself failed — either way, nothing found.
+            setAvailable([]);
+        }
     }, []);
 
-    const setConfig = useCallback((next: LinkConfig) => {
-        setConfigState(next);
+    useTauriEvent<ConnectionStatus>("link-status", setStatus);
+
+    const setDraft = useCallback((value: string) => {
+        setDraftState(value);
+    }, []);
+
+    const removeFromHistory = useCallback((address: string) => {
+        setHistory((prev) => withoutAttempt(prev, address));
     }, []);
 
     const connect = useCallback(async () => {
         setError(null);
 
-        const address = endpointOf(config);
+        const address = draft.trim();
+        if (!address) {
+            setError("Enter an address to connect to.");
+            return;
+        }
+
         setEndpoint(address);
+        setHistory((prev) => withAttempt(prev, address));
 
         // Show the status the backend is about to publish, so the button reacts
         // to the click rather than to the IPC round trip. This is a cache of an
@@ -75,7 +91,7 @@ export function useConnection(): Connection {
         } catch (cause) {
             setError(message(cause));
         }
-    }, [config]);
+    }, [draft]);
 
     const disconnect = useCallback(async () => {
         // Same reasoning: covers the round trip, and is superseded on arrival.
@@ -90,5 +106,17 @@ export function useConnection(): Connection {
         }
     }, []);
 
-    return {config, setConfig, status, endpoint, error, connect, disconnect};
+    return {
+        draft,
+        setDraft,
+        history,
+        removeFromHistory,
+        available,
+        scan,
+        status,
+        endpoint,
+        error,
+        connect,
+        disconnect,
+    };
 }

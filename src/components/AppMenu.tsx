@@ -1,4 +1,5 @@
 import {useEffect, useRef, useState} from "react";
+import {Menu as MenuIcon} from "@carbon/icons-react";
 
 export interface MenuItem {
     label: string;
@@ -58,9 +59,7 @@ export default function AppMenu({menus, expanded, onExpandedChange}: AppMenuProp
                 onClick={() => onExpandedChange(!expanded)}
                 className="flex w-8 items-center justify-center text-text-secondary hover:bg-layer-hover-01 hover:text-text-primary"
             >
-                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-                    <path d="M1 3h14M1 8h14M1 13h14" stroke="currentColor" strokeWidth="1.25"/>
-                </svg>
+                <MenuIcon size={16}/>
             </button>
 
             {expanded &&

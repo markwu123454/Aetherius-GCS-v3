@@ -1,6 +1,6 @@
-import {useEffect, useState} from "react";
-import {listen} from "@tauri-apps/api/event";
-import {FixType, VehicleState} from "./vehicle";
+import {useState} from "react";
+import {useTauriEvent} from "../lib/tauriEvent";
+import {FixType, VehicleKind, VehiclePosition, VehicleState} from "./vehicle";
 
 /**
  * The payload emitted by `link.rs`. Every field is nullable because the backend
@@ -10,6 +10,7 @@ import {FixType, VehicleState} from "./vehicle";
 interface Snapshot {
     armed: boolean | null;
     customMode: number | null;
+    vehicleKind: VehicleKind | null;
     prearmPass: boolean | null;
     batteryVoltage: number | null;
     batteryCurrent: number | null;
@@ -17,6 +18,10 @@ interface Snapshot {
     gpsFix: number | null;
     satellites: number | null;
     hdop: number | null;
+    lat: number | null;
+    lon: number | null;
+    relativeAlt: number | null;
+    heading: number | null;
     sinceHeartbeatMs: number | null;
     dropRateComm?: number | null;
 }
@@ -29,6 +34,8 @@ export const NO_VEHICLE: VehicleState = {
     connected: false,
     armed: false,
     mode: "—",
+    position: null,
+    vehicleKind: null,
     prearmPass: false,
     prearmReasons: [],
     disabledChecks: [],
@@ -49,6 +56,21 @@ function modeLabel(customMode: number | null): string {
     return customMode === null ? "—" : `MODE ${customMode}`;
 }
 
+/** `null` until a fix has actually arrived — distinct from a real 0,0 fix. */
+function positionOf(snapshot: Snapshot): VehiclePosition | null {
+    if (snapshot.lat === null || snapshot.lon === null) {
+        return null;
+    }
+    return {
+        lat: snapshot.lat,
+        lon: snapshot.lon,
+        alt: snapshot.relativeAlt ?? 0,
+        // GLOBAL_POSITION_INT reports UINT16_MAX for "unknown" rather than
+        // omitting the field, which the backend already resolves to null.
+        heading: snapshot.heading ?? 0,
+    };
+}
+
 function fromSnapshot(snapshot: Snapshot): VehicleState {
     const sinceHeartbeat = snapshot.sinceHeartbeatMs;
 
@@ -56,6 +78,8 @@ function fromSnapshot(snapshot: Snapshot): VehicleState {
         connected: sinceHeartbeat !== null,
         armed: snapshot.armed ?? false,
         mode: modeLabel(snapshot.customMode),
+        position: positionOf(snapshot),
+        vehicleKind: snapshot.vehicleKind,
         prearmPass: snapshot.prearmPass ?? false,
         prearmReasons: [],
         disabledChecks: [],
@@ -85,28 +109,11 @@ function fromSnapshot(snapshot: Snapshot): VehicleState {
 export function useVehicle(): VehicleState {
     const [state, setState] = useState<VehicleState>(NO_VEHICLE);
 
-    useEffect(() => {
-        let disposed = false;
-        const unlisteners: (() => void)[] = [];
-
-        const subscribe = <T,>(event: string, handler: (payload: T) => void) => {
-            listen<T>(event, (message) => handler(message.payload))
-                .then((unlisten) => (disposed ? unlisten() : unlisteners.push(unlisten)))
-                // No backend in a plain browser tab; the vehicle simply stays unknown.
-                .catch(() => {});
-        };
-
-        // Only telemetry is handled here. Link lifecycle arrives on
-        // `link-status` and is the connection's concern, not the vehicle's —
-        // and the last readings are deliberately kept after a link drops so
-        // they can be shown struck through rather than blanked.
-        subscribe<Snapshot>("vehicle", (payload) => setState(fromSnapshot(payload)));
-
-        return () => {
-            disposed = true;
-            unlisteners.forEach((unlisten) => unlisten());
-        };
-    }, []);
+    // Only telemetry is handled here. Link lifecycle arrives on `link-status`
+    // and is the connection's concern, not the vehicle's — and the last
+    // readings are deliberately kept after a link drops so they can be shown
+    // struck through rather than blanked.
+    useTauriEvent<Snapshot>("vehicle", (payload) => setState(fromSnapshot(payload)));
 
     return state;
 }

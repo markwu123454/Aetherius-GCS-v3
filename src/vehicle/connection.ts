@@ -1,27 +1,6 @@
 import {invoke} from "@tauri-apps/api/core";
 import {AlertLevel} from "./vehicle";
 
-export type LinkKind = "serial" | "udp" | "tcp" | "sitl";
-
-export type SitlVehicle = "ArduCopter" | "ArduPlane" | "ArduRover" | "ArduSub";
-
-export interface LinkConfig {
-    kind: LinkKind;
-    serialPort: string;
-    baud: number;
-    /** Local port we listen on for a UDP link. */
-    udpPort: number;
-    tcpHost: string;
-    tcpPort: number;
-    /**
-     * SITL is attached to, not launched. It is a TCP link with a known default,
-     * kept separate from the plain TCP fields so switching between the two does
-     * not overwrite whatever was typed in the other.
-     */
-    sitlHost: string;
-    sitlPort: number;
-}
-
 /**
  * The link's lifecycle.
  *
@@ -109,69 +88,6 @@ export function isLinkIdle(status: ConnectionStatus): boolean {
     return status === "disconnected" || status === "connecting" || status === "error";
 }
 
-export const BAUD_RATES = [57600, 115200, 230400, 460800, 921600];
-export const SITL_VEHICLES: SitlVehicle[] = ["ArduCopter", "ArduPlane", "ArduRover", "ArduSub"];
-
-export const DEFAULT_LINK: LinkConfig = {
-    kind: "sitl",
-    serialPort: "",
-    baud: 115200,
-    udpPort: 14550,
-    tcpHost: "127.0.0.1",
-    tcpPort: 5760,
-    // SITL binds SERIAL0 to TCP 5760. Under WSL that is still reachable as
-    // localhost from Windows, because WSL2 forwards listening sockets.
-    sitlHost: "127.0.0.1",
-    sitlPort: 5760,
-};
-
-const STORAGE_KEY = "aetherius.link.v1";
-
-export function loadLink(): LinkConfig {
-    try {
-        const raw = window.localStorage.getItem(STORAGE_KEY);
-        return raw ? {...DEFAULT_LINK, ...JSON.parse(raw)} : DEFAULT_LINK;
-    } catch {
-        return DEFAULT_LINK;
-    }
-}
-
-export function saveLink(config: LinkConfig): void {
-    try {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-    } catch {
-        // Not being able to remember the last link is not worth failing over.
-    }
-}
-
-/** Short form for the collapsed button, kept narrow enough for the strip. */
-export function describeLink(config: LinkConfig): string {
-    switch (config.kind) {
-        case "serial":
-            return config.serialPort ? `${config.serialPort} @ ${config.baud}` : "Serial";
-        case "udp":
-            return `UDP :${config.udpPort}`;
-        case "tcp":
-            return `TCP ${config.tcpHost}:${config.tcpPort}`;
-        case "sitl":
-            return `SITL ${config.sitlHost}:${config.sitlPort}`;
-    }
-}
-
-/** The address a config resolves to, for the transport to open. */
-export function endpointOf(config: LinkConfig): string {
-    switch (config.kind) {
-        case "serial":
-            return `serial:${config.serialPort}:${config.baud}`;
-        case "udp":
-            return `udp:0.0.0.0:${config.udpPort}`;
-        case "tcp":
-            return `tcp:${config.tcpHost}:${config.tcpPort}`;
-        case "sitl":
-            return `tcp:${config.sitlHost}:${config.sitlPort}`;
-    }
-}
-
 /**
  * Anything that reaches the backend is unavailable in a plain browser tab, so
  * say that plainly rather than letting an undefined bridge surface as a
@@ -184,27 +100,60 @@ function requireBackend(): void {
 }
 
 /**
- * Ask the Rust side to launch an ArduPilot SITL instance, answering with the
- * endpoint it listens on.
- *
- * Not currently reached from the UI: SITL mode attaches to a simulator that is
- * already running instead. Spawning one through WSL cannot reliably kill the
- * Linux process afterwards, which strands port 5760 and makes the next attempt
- * fail — not something worth putting in the connect path while the transport
- * underneath it is still unproven.
+ * Endpoints worth offering as a faster alternative to typing one by hand:
+ * every serial port currently present, plus the default SITL TCP port if
+ * something is actually listening on it. Deliberately lenient — no VID/PID
+ * filtering on serial ports, since the user already knows what they plugged
+ * in and a missed real port is worse than an extra unlikely one shown.
  */
-export function startSitl(vehicle: SitlVehicle): Promise<string> {
+export function scanLinks(): Promise<string[]> {
     requireBackend();
-    return invoke<string>("start_sitl", {vehicle});
+    return invoke<string[]>("scan_links");
 }
 
-export function stopSitl(): Promise<void> {
-    requireBackend();
-    return invoke("stop_sitl");
+/**
+ * Endpoints are typed in the same address syntax `connect_link` accepts —
+ * `tcp:host:port`, `udp:bindhost:port`, `serial:PORT:BAUD` — and passed
+ * through unchanged. There is no per-kind structure on this side to keep in
+ * sync with the backend's own parsing.
+ */
+const STORAGE_KEY = "aetherius.link.v2";
+// Kept deeper than what the Recent section displays (5), so deleting a shown
+// entry can still backfill from one that was previously crowded out.
+const HISTORY_LIMIT = 15;
+export const HISTORY_DISPLAY_LIMIT = 5;
+
+export function loadHistory(): string[] {
+    try {
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+            return [];
+        }
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.filter((entry) => typeof entry === "string") : [];
+    } catch {
+        return [];
+    }
 }
 
-/** Serial ports the backend can see, for the port picker. */
-export function listSerialPorts(): Promise<string[]> {
-    requireBackend();
-    return invoke<string[]>("list_serial_ports");
+export function saveHistory(history: string[]): void {
+    try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+    } catch {
+        // Not being able to remember past attempts is not worth failing over.
+    }
+}
+
+/** Moves `endpoint` to the front of `history`, dropping any earlier duplicate. */
+export function withAttempt(history: string[], endpoint: string): string[] {
+    const trimmed = endpoint.trim();
+    if (!trimmed) {
+        return history;
+    }
+    return [trimmed, ...history.filter((entry) => entry !== trimmed)].slice(0, HISTORY_LIMIT);
+}
+
+/** Drops one entry, e.g. from the delete control on a Recent row. */
+export function withoutAttempt(history: string[], endpoint: string): string[] {
+    return history.filter((entry) => entry !== endpoint);
 }
