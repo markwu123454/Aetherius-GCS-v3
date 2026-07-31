@@ -1,4 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from "react";
+import {ArrowLeft} from "@carbon/icons-react";
 import AppMenu, {Menu} from "./AppMenu";
 import StatusChip, {Tone} from "./StatusChip";
 import ConnectControl from "./ConnectControl";
@@ -9,14 +10,22 @@ import {PANEL_DEFINITIONS} from "../workspace/panels";
 import {useConnection} from "../vehicle/useConnection";
 import {SettingsApi} from "../settings/useSettings";
 import {useNavigation} from "../navigation/useNavigation";
+import {PAGE_TITLES, PageId} from "../navigation/navigation";
+import {AIRSPACE_CLASSES} from "../airspace/airspace";
+import type {AirspaceState} from "../airspace/useAirspace";
 
 interface TopBarProps {
     vehicle: VehicleState;
     settings: SettingsApi;
     openIds: Set<string>;
+    /** `null` for the workspace; otherwise the full-screen page currently
+     * open, so its back control and title can live in this one strip
+     * instead of a second bar underneath it. */
+    page: PageId | null;
+    airspace: AirspaceState;
 }
 
-export default function TopBar({vehicle, settings, openIds}: TopBarProps) {
+export default function TopBar({vehicle, settings, openIds, page, airspace}: TopBarProps) {
     const now = useNow();
 
     // The backend owns the link state machine; this only reflects it.
@@ -97,7 +106,7 @@ export default function TopBar({vehicle, settings, openIds}: TopBarProps) {
                 label: "Vehicle",
                 items: [
                     {label: "Connect…"},
-                    {label: "Parameters"},
+                    {label: "Parameters", action: () => navigation.openPage("parameters")},
                     {label: "Firmware"},
                     {label: "Calibration"},
                 ],
@@ -126,6 +135,21 @@ export default function TopBar({vehicle, settings, openIds}: TopBarProps) {
                                 ? navigation.closePanel(panel.id)
                                 : navigation.openPanel(panel.id),
                     })),
+                    ...AIRSPACE_CLASSES.map((definition, index) => ({
+                        label: airspace.unavailable.has(definition.id)
+                            // Class E is generated locally rather than
+                            // committed, so on a fresh clone the file is simply
+                            // absent. Say so, instead of offering a toggle that
+                            // silently does nothing.
+                            ? `${definition.label} — not built`
+                            : airspace.pending.has(definition.id)
+                                ? `${definition.label} — loading…`
+                                : definition.label,
+                        checked: airspace.classes[definition.id].visible,
+                        disabled: airspace.unavailable.has(definition.id),
+                        separatorBefore: index === 0,
+                        action: () => airspace.toggle(definition.id),
+                    })),
                     {label: "Reset Workspace", separatorBefore: true},
                 ],
             },
@@ -138,7 +162,7 @@ export default function TopBar({vehicle, settings, openIds}: TopBarProps) {
                 ],
             },
         ],
-        [openIds, navigation],
+        [openIds, navigation, airspace],
     );
 
     const compact = menuExpanded;
@@ -154,6 +178,25 @@ export default function TopBar({vehicle, settings, openIds}: TopBarProps) {
             className={`flex h-control-sm shrink-0 items-stretch border-b border-border-subtle text-text-primary ${headerAnimClass}`}
         >
             <AppMenu menus={menus} expanded={menuExpanded} onExpandedChange={setMenuExpanded}/>
+
+            {/* A sibling of the menu, not a fixed corner — expanding the menu
+                grows it, which pushes this along for free without needing to
+                know the menu's width itself. */}
+            {page !== null && (
+                <div className="flex items-stretch border-l border-border-subtle">
+                    <button
+                        type="button"
+                        onClick={navigation.closePage}
+                        aria-label="Back"
+                        className="flex w-8 items-center justify-center text-text-secondary hover:bg-layer-hover-01 hover:text-text-primary"
+                    >
+                        <ArrowLeft size={16}/>
+                    </button>
+                    <span className="flex items-center px-2 text-label whitespace-nowrap text-text-primary">
+                        {PAGE_TITLES[page]}
+                    </span>
+                </div>
+            )}
 
             {/* Anchored right so expanding the menu never pushes the readings. */}
             <div className="ml-auto flex items-stretch">

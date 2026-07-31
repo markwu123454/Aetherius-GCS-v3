@@ -46,9 +46,11 @@ export const PANEL_DEFINITIONS: PanelDefinition[] = [
     {
         id: "console",
         title: "Console",
-        component: "placeholder",
-        dockLeft: false,
-        dockRight: false,
+        component: "console",
+        // Sizes off its own container rather than the viewport, so a narrow
+        // side dock is as workable as a wide bottom one.
+        dockLeft: true,
+        dockRight: true,
         dockBottom: true,
         floatable: true,
         defaultDock: "bottom",

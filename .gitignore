@@ -23,3 +23,18 @@ dist-ssr
 *.sln
 *.sw?
 /CLAUDE.md
+
+# Raw FAA NASR subscription cycles — ~600MB per cycle, re-downloadable from
+# faa.gov, and superseded every 28 days. Only the GeoJSON derived from it is
+# committed. Ignore the contents but keep the README that says which cycle to
+# fetch and how to regenerate — that has to survive a clone.
+/data/nasr/*
+!/data/nasr/README.md
+
+# Class E is 4,327 polygons / 15MB — 85% of the derived airspace output, and
+# committing it each 28-day cycle would add ~200MB a year of permanent history
+# for the class least likely to gate a launch. B/C/D (2.6MB) are committed;
+# run `npm run build:airspace` to generate this one locally. The map treats a
+# missing layer file as unavailable rather than an error, and the View menu
+# shows it as "not built".
+/public/airspace/class-e.json

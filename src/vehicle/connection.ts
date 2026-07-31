@@ -93,7 +93,7 @@ export function isLinkIdle(status: ConnectionStatus): boolean {
  * say that plainly rather than letting an undefined bridge surface as a
  * property-access error.
  */
-function requireBackend(): void {
+export function requireBackend(): void {
     if (!("__TAURI_INTERNALS__" in window)) {
         throw new Error("Needs the desktop app — run `npm run tauri dev`.");
     }

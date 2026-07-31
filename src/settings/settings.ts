@@ -1,3 +1,5 @@
+import {DEFAULT_AIRSPACE_SETTINGS, type AirspaceSettings} from "../airspace/classes";
+
 export type DisplayMode = "windowed" | "borderless" | "fullscreen";
 
 /**
@@ -9,9 +11,14 @@ export interface Settings {
     /** Require a second click before disconnecting a link to an armed vehicle. */
     confirmDisconnectWhenArmed: boolean;
     displayMode: DisplayMode;
+    /** Per-class airspace presentation. The single source of truth for which
+     * layers are drawn — the View menu writes here too, rather than keeping its
+     * own idea of what is switched on. */
+    airspace: AirspaceSettings;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
     confirmDisconnectWhenArmed: true,
     displayMode: "windowed",
+    airspace: DEFAULT_AIRSPACE_SETTINGS,
 };

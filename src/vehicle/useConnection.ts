@@ -49,6 +49,21 @@ export function useConnection(): Connection {
         saveHistory(history);
     }, [history]);
 
+    // A component can mount well after the link already changed state — this
+    // hook's own default of "disconnected" is only a placeholder until the
+    // *next* transition, since `link-status` is an event, not a subscribable
+    // current value. This fills in whatever is already true instead of
+    // assuming nothing has happened yet.
+    useEffect(() => {
+        invoke<ConnectionStatus | null>("link_status")
+            .then((current) => {
+                if (current) {
+                    setStatus(current);
+                }
+            })
+            .catch(() => {});
+    }, []);
+
     const scan = useCallback(async () => {
         try {
             setAvailable(await scanLinks());

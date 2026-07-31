@@ -19,7 +19,15 @@ function openStore(): Promise<Store> {
 async function readSettings(): Promise<Settings> {
     const store = await openStore();
     const saved = await store.get<Partial<Settings>>(SETTINGS_KEY);
-    return {...DEFAULT_SETTINGS, ...saved};
+    return {
+        ...DEFAULT_SETTINGS,
+        ...saved,
+        // Merged a level deeper than the rest. A settings file written before a
+        // new airspace class existed has an `airspace` object without it, and a
+        // plain spread would take that object wholesale — leaving the new class
+        // undefined and every read of it throwing.
+        airspace: {...DEFAULT_SETTINGS.airspace, ...saved?.airspace},
+    };
 }
 
 async function persist(settings: Settings): Promise<void> {

@@ -1,35 +1,21 @@
 import {ReactNode} from "react";
-import {ArrowLeft} from "@carbon/icons-react";
-import {useNavigation} from "../navigation/useNavigation";
 
 interface FullScreenPageProps {
-    title: string;
     children: ReactNode;
 }
 
 /**
- * The one shell every full-screen page renders through, so navigating in and
- * out of any of them looks and behaves identically — the back control lives
- * here once, rather than being rebuilt per page. The top bar above this is
- * untouched: it never needs to know a page is open.
+ * The content area every full-screen page renders through. The back control
+ * and title used to live in a header here, but that meant every page paid
+ * for a second bar under the top bar just to hold one button and a label —
+ * `TopBar` renders that inline next to the hamburger now, since it already
+ * owns the one strip that's always on screen.
+ *
+ * Positioned over the workspace rather than replacing it, so the map keeps its
+ * WebGL context, camera and tile cache while a page is open — see `App`. It
+ * covers rather than hides the workspace (opaque background, `inset-0`), which
+ * is what keeps the map from seeing a 0×0 resize on the way in and out.
  */
-export default function FullScreenPage({title, children}: FullScreenPageProps) {
-    const {closePage} = useNavigation();
-
-    return (
-        <div className="flex h-full w-full flex-col bg-background">
-            <div className="flex h-control-sm shrink-0 items-center gap-2 border-b border-border-subtle px-1">
-                <button
-                    type="button"
-                    onClick={closePage}
-                    aria-label="Back"
-                    className="flex h-control-sm w-8 items-center justify-center text-text-secondary hover:bg-layer-hover-01 hover:text-text-primary"
-                >
-                    <ArrowLeft size={16}/>
-                </button>
-                <span className="text-label text-text-primary">{title}</span>
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto">{children}</div>
-        </div>
-    );
+export default function FullScreenPage({children}: FullScreenPageProps) {
+    return <div className="absolute inset-0 z-10 overflow-auto bg-background">{children}</div>;
 }

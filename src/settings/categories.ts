@@ -8,4 +8,5 @@ export interface SettingsCategory {
 export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     {id: "connection", label: "Connection"},
     {id: "display", label: "Display"},
+    {id: "airspace", label: "Airspace"},
 ];

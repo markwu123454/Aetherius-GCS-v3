@@ -1,5 +1,6 @@
 import {ReactElement} from "react";
 import {PanelDefinition} from "../workspace/panels";
+import ConsolePanel from "./ConsolePanel";
 
 export type PanelComponent = (props: {panel: PanelDefinition}) => ReactElement;
 
@@ -13,6 +14,7 @@ function PlaceholderPanel({panel}: {panel: PanelDefinition}) {
 
 const PANEL_COMPONENTS: Record<string, PanelComponent> = {
     placeholder: PlaceholderPanel,
+    console: ConsolePanel,
 };
 
 export function PanelBody({panel}: {panel: PanelDefinition}) {

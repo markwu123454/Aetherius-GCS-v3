@@ -31,7 +31,13 @@ export default function AppMenu({menus, expanded, onExpandedChange}: AppMenuProp
             return;
         }
 
-        const onPointerDown = (event: PointerEvent) => {
+        // `click`, not `pointerdown`: a sibling control just outside the menu
+        // (the back button included) needs its own onClick to fire first.
+        // `pointerdown` collapses the menu — and reflows anything positioned
+        // relative to its width, like that back button — before the browser
+        // ever dispatches the click, so the click lands on whatever moved
+        // into that spot instead of the control that was actually pressed.
+        const onOutsideClick = (event: MouseEvent) => {
             if (!rootRef.current?.contains(event.target as Node)) {
                 onExpandedChange(false);
             }
@@ -42,10 +48,10 @@ export default function AppMenu({menus, expanded, onExpandedChange}: AppMenuProp
             }
         };
 
-        window.addEventListener("pointerdown", onPointerDown);
+        window.addEventListener("click", onOutsideClick);
         window.addEventListener("keydown", onKeyDown);
         return () => {
-            window.removeEventListener("pointerdown", onPointerDown);
+            window.removeEventListener("click", onOutsideClick);
             window.removeEventListener("keydown", onKeyDown);
         };
     }, [expanded, onExpandedChange]);
@@ -68,7 +74,12 @@ export default function AppMenu({menus, expanded, onExpandedChange}: AppMenuProp
                         <button
                             type="button"
                             onClick={() => setOpenMenu(openMenu === menu.label ? null : menu.label)}
-                            onPointerEnter={() => openMenu && setOpenMenu(menu.label)}
+                            // Unconditional, not gated on something already
+                            // being open: the bar is only on screen because the
+                            // hamburger was pressed, so it is already in menu
+                            // mode and hover should open — the same way a
+                            // native menu bar behaves once it has been entered.
+                            onPointerEnter={() => setOpenMenu(menu.label)}
                             className={[
                                 "px-4 text-label whitespace-nowrap",
                                 openMenu === menu.label

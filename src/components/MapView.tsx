@@ -4,6 +4,8 @@ import {LngLatLike, Map, Marker} from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {AirportLocation, Drone, LocationCurrent} from "@carbon/icons-react";
 import {VehicleKind, VehiclePosition} from "../vehicle/vehicle";
+import {AIRSPACE_CLASSES, airspaceColor} from "../airspace/airspace";
+import type {AirspaceState} from "../airspace/useAirspace";
 
 const ESRI_WORLD_IMAGERY_STYLE = {
     version: 8 as const,
@@ -60,15 +62,20 @@ function markerRotation(position: VehiclePosition, kind: VehicleKind | null): nu
 interface MapViewProps {
     position: VehiclePosition | null;
     vehicleKind: VehicleKind | null;
+    airspace: AirspaceState;
 }
 
-export default function MapView({position, vehicleKind}: MapViewProps) {
+export default function MapView({position, vehicleKind, airspace}: MapViewProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<Map | null>(null);
     const markerRef = useRef<Marker | null>(null);
     const iconRootRef = useRef<Root | null>(null);
     const hasCenteredRef = useRef(false);
     const [following, setFollowing] = useState(false);
+    // Layers can only be added once the style has loaded, which happens after
+    // the map object exists — so the airspace effect needs its own signal
+    // rather than keying off `mapRef.current`.
+    const [styleReady, setStyleReady] = useState(false);
 
     // Read inside the position effect without making it a dependency — the
     // effect should only re-run on a new fix, never on a follow-state toggle,
@@ -92,6 +99,8 @@ export default function MapView({position, vehicleKind}: MapViewProps) {
         mapRef.current.on("error", (e) => {
             console.error("Map error]: ", e);
         });
+
+        mapRef.current.on("load", () => setStyleReady(true));
 
         // The operator taking the camera back: dragstart fires solely for
         // pointer-driven pan, never for our own jumpTo/easeTo.
@@ -131,8 +140,70 @@ export default function MapView({position, vehicleKind}: MapViewProps) {
             markerRef.current = null;
             mapRef.current?.remove();
             mapRef.current = null;
+            setStyleReady(false);
         };
     }, []);
+
+    // Airspace layers. Each class gets a source plus a fill and an outline, all
+    // added once and then shown or hidden — tearing them down on every toggle
+    // would re-upload the geometry to the GPU, and Class E is 4,327 polygons.
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map || !styleReady) return;
+
+        for (const definition of AIRSPACE_CLASSES) {
+            const geometry = airspace.loaded.get(definition.id);
+            if (!geometry) continue;
+
+            const settings = airspace.classes[definition.id];
+            const color = airspaceColor(definition.id, settings);
+            const sourceId = `airspace-${definition.id}`;
+            const fillId = `${sourceId}-fill`;
+            const lineId = `${sourceId}-line`;
+
+            if (!map.getSource(sourceId)) {
+                map.addSource(sourceId, {type: "geojson", data: geometry});
+                map.addLayer({
+                    id: fillId,
+                    type: "fill",
+                    source: sourceId,
+                    // Low enough to read as a tint over satellite imagery —
+                    // these overlap heavily, and stacked shelves at a busy
+                    // field would otherwise turn the ground opaque.
+                    paint: {"fill-color": color, "fill-opacity": 0.08},
+                });
+                // Solid and dashed are two layers toggled by visibility rather
+                // than one whose dash array is edited. MapLibre has no value
+                // meaning "no dashes", so going from dashed back to solid on a
+                // live layer has nothing to set.
+                map.addLayer({
+                    id: lineId,
+                    type: "line",
+                    source: sourceId,
+                    paint: {"line-color": color, "line-width": 1.5},
+                });
+                map.addLayer({
+                    id: `${lineId}-dashed`,
+                    type: "line",
+                    source: sourceId,
+                    paint: {"line-color": color, "line-width": 1.5, "line-dasharray": [3, 2]},
+                });
+            }
+
+            map.setPaintProperty(fillId, "fill-color", color);
+            map.setPaintProperty(lineId, "line-color", color);
+            map.setPaintProperty(`${lineId}-dashed`, "line-color", color);
+
+            const shown = settings.visible;
+            map.setLayoutProperty(fillId, "visibility", shown ? "visible" : "none");
+            map.setLayoutProperty(lineId, "visibility", shown && !settings.dashed ? "visible" : "none");
+            map.setLayoutProperty(
+                `${lineId}-dashed`,
+                "visibility",
+                shown && settings.dashed ? "visible" : "none",
+            );
+        }
+    }, [styleReady, airspace.loaded, airspace.classes]);
 
     useEffect(() => {
         const map = mapRef.current;
