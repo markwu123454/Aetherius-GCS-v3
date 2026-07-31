@@ -1,0 +1,30 @@
+{
+  "cycle": "2026-07-09",
+  "format": "aetherius-airspace/1",
+  "classes": {
+    "b": {
+      "file": "class-b.json",
+      "features": 369,
+      "bytes": 1111907,
+      "worstDeviationM": 0.492
+    },
+    "c": {
+      "file": "class-c.json",
+      "features": 340,
+      "bytes": 702845,
+      "worstDeviationM": 0.495
+    },
+    "d": {
+      "file": "class-d.json",
+      "features": 578,
+      "bytes": 756447,
+      "worstDeviationM": 0.499
+    },
+    "e": {
+      "file": "class-e.json",
+      "features": 4327,
+      "bytes": 15058949,
+      "worstDeviationM": 0.5
+    }
+  }
+}
