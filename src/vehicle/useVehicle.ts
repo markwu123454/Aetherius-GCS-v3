@@ -1,11 +1,16 @@
 import {useState} from "react";
 import {useTauriEvent} from "../lib/tauriEvent";
-import {FixType, VehicleKind, VehiclePosition, VehicleState} from "./vehicle";
+import {FixType, VehicleAttitude, VehicleKind, VehiclePosition, VehicleState} from "./vehicle";
+import {modeLabel} from "./modes";
 
 /**
  * The payload emitted by `link.rs`. Every field is nullable because the backend
  * only fills one in once the corresponding message has actually arrived —
  * "not reported yet" and "reported as zero" are different things.
+ *
+ * `groundspeed` isn't sent by the backend yet (no VFR_HUD handling exists
+ * there yet) — typed here ahead of that landing, same as the other fields
+ * were before their backend support arrived.
  */
 interface Snapshot {
     armed: boolean | null;
@@ -15,6 +20,7 @@ interface Snapshot {
     batteryVoltage: number | null;
     batteryCurrent: number | null;
     batteryPercent: number | null;
+    batteryConsumedMah: number | null;
     gpsFix: number | null;
     satellites: number | null;
     hdop: number | null;
@@ -23,7 +29,13 @@ interface Snapshot {
     relativeAlt: number | null;
     heading: number | null;
     sinceHeartbeatMs: number | null;
-    dropRateComm?: number | null;
+    commDropPercent: number | null;
+    radioRssi: number | null;
+    ekfOk: boolean | null;
+    vibe: number | null;
+    rollDeg: number | null;
+    pitchDeg: number | null;
+    groundspeed?: number | null;
 }
 
 /** MAVLink GPS_FIX_TYPE. 0 (no GPS) and 1 (no fix) are both "no fix" to a pilot. */
@@ -35,6 +47,8 @@ export const NO_VEHICLE: VehicleState = {
     armed: false,
     mode: "—",
     position: null,
+    attitude: null,
+    groundspeed: null,
     vehicleKind: null,
     prearmPass: false,
     prearmReasons: [],
@@ -45,16 +59,6 @@ export const NO_VEHICLE: VehicleState = {
     ekf: {ok: false, vibe: 0},
     updatedAt: 0,
 };
-
-/**
- * Flight-mode numbers are only meaningful alongside the vehicle type — mode 3
- * is AUTO on Copter and TRAINING on Plane. Until the backend reports the type,
- * showing the raw number is the honest option; inventing a name from the wrong
- * table would be worse than showing none.
- */
-function modeLabel(customMode: number | null): string {
-    return customMode === null ? "—" : `MODE ${customMode}`;
-}
 
 /** `null` until a fix has actually arrived — distinct from a real 0,0 fix. */
 function positionOf(snapshot: Snapshot): VehiclePosition | null {
@@ -71,14 +75,24 @@ function positionOf(snapshot: Snapshot): VehiclePosition | null {
     };
 }
 
+/** `null` until a reading has actually arrived — distinct from a real 0/0 level attitude. */
+function attitudeOf(snapshot: Snapshot): VehicleAttitude | null {
+    if (snapshot.rollDeg == null || snapshot.pitchDeg == null) {
+        return null;
+    }
+    return {roll: snapshot.rollDeg, pitch: snapshot.pitchDeg};
+}
+
 function fromSnapshot(snapshot: Snapshot): VehicleState {
     const sinceHeartbeat = snapshot.sinceHeartbeatMs;
 
     return {
         connected: sinceHeartbeat !== null,
         armed: snapshot.armed ?? false,
-        mode: modeLabel(snapshot.customMode),
+        mode: modeLabel(snapshot.vehicleKind, snapshot.customMode),
         position: positionOf(snapshot),
+        attitude: attitudeOf(snapshot),
+        groundspeed: snapshot.groundspeed ?? null,
         vehicleKind: snapshot.vehicleKind,
         prearmPass: snapshot.prearmPass ?? false,
         prearmReasons: [],
@@ -86,7 +100,7 @@ function fromSnapshot(snapshot: Snapshot): VehicleState {
         battery: {
             voltage: snapshot.batteryVoltage ?? 0,
             current: snapshot.batteryCurrent ?? 0,
-            consumed: 0,
+            consumed: snapshot.batteryConsumedMah ?? 0,
             percent: snapshot.batteryPercent ?? 0,
         },
         gps: {
@@ -95,11 +109,14 @@ function fromSnapshot(snapshot: Snapshot): VehicleState {
             hdop: snapshot.hdop ?? 0,
         },
         link: {
-            rssi: 0,
-            // SYS_STATUS reports the comm drop rate in centi-percent.
-            lossPercent: (snapshot.dropRateComm ?? 0) / 100,
+            rssi: snapshot.radioRssi ?? 0,
+            lossPercent: snapshot.commDropPercent ?? 0,
         },
-        ekf: {ok: true, vibe: 0},
+        // `ekfOk` defaults to `true` (rather than `false`, like every other
+        // "not reported yet" field here) because its only effect is raising
+        // `alertLevel` to `warn` — defaulting to "unhealthy" would falsely
+        // flag every vehicle until EKF_STATUS_REPORT support lands.
+        ekf: {ok: snapshot.ekfOk ?? true, vibe: snapshot.vibe ?? 0},
         // The backend reports heartbeat age, so the wall-clock time it arrived
         // is derived here and the staleness rules keep working unchanged.
         updatedAt: sinceHeartbeat === null ? 0 : Date.now() - sinceHeartbeat,

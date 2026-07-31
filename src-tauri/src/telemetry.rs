@@ -6,6 +6,12 @@ mod global_position;
 mod gps_raw;
 mod heartbeat;
 mod sys_status;
+mod battery_status;
+mod ekf_status;
+mod radio_status;
+mod vibration;
+mod attitude;
+mod vfr_hud;
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,6 +45,14 @@ pub struct VehicleSnapshot {
     pub heading: Option<f32>,
     /// Milliseconds since the last heartbeat, so the UI can go stale on its own.
     pub since_heartbeat_ms: Option<u64>,
+    pub battery_consumed_mah: Option<f32>,
+    pub comm_drop_percent: Option<f32>,
+    pub radio_rssi: Option<u8>,
+    pub ekf_ok: Option<bool>,
+    pub vibe: Option<f32>,
+    pub roll_deg: Option<f32>,
+    pub pitch_deg: Option<f32>,
+    pub groundspeed: Option<f32>,
 }
 
 /// Fold one message into the snapshot. Only the messages the status strip
@@ -50,7 +64,13 @@ pub fn apply(snapshot: &mut VehicleSnapshot, message: &MavMessage) {
         MavMessage::HEARTBEAT(data) => heartbeat::apply(snapshot, data),
         MavMessage::SYS_STATUS(data) => sys_status::apply(snapshot, data),
         MavMessage::GPS_RAW_INT(data) => gps_raw::apply(snapshot, data),
+        MavMessage::RADIO_STATUS(data) => radio_status::apply(snapshot, data),
+        MavMessage::EKF_STATUS_REPORT(data) => ekf_status::apply(snapshot, data),
+        MavMessage::VIBRATION(data) => vibration::apply(snapshot, data),
+        MavMessage::BATTERY_STATUS(data) => battery_status::apply(snapshot, data),
         MavMessage::GLOBAL_POSITION_INT(data) => global_position::apply(snapshot, data),
+        MavMessage::ATTITUDE(data) => attitude::apply(snapshot, data),
+        MavMessage::VFR_HUD(data) => vfr_hud::apply(snapshot, data),
         _ => {}
     }
 }

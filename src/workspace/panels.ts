@@ -24,12 +24,12 @@ export const PANEL_DEFINITIONS: PanelDefinition[] = [
     {
         id: "telemetry",
         title: "Telemetry",
-        component: "placeholder",
+        component: "telemetry",
         dockLeft: true,
         dockRight: true,
-        dockBottom: false,
+        dockBottom: true,
         floatable: true,
-        defaultDock: "right",
+        defaultDock: "bottom",
         openByDefault: true,
     },
     {
@@ -53,8 +53,8 @@ export const PANEL_DEFINITIONS: PanelDefinition[] = [
         dockRight: true,
         dockBottom: true,
         floatable: true,
-        defaultDock: "bottom",
-        openByDefault: false,
+        defaultDock: "left",
+        openByDefault: true,
     },
 ];
 

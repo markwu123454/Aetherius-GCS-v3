@@ -19,6 +19,13 @@ export interface VehiclePosition {
     heading: number;
 }
 
+export interface VehicleAttitude {
+    /** Degrees. Positive is right wing down. */
+    roll: number;
+    /** Degrees. Positive is nose up. */
+    pitch: number;
+}
+
 /**
  * Resolved from HEARTBEAT's `mavtype` — grouped down to what the UI actually
  * treats differently (which icon to draw), not the full MAV_TYPE enum.
@@ -31,6 +38,10 @@ export interface VehicleState {
     mode: string;
     /** `null` until the first GLOBAL_POSITION_INT arrives. */
     position: VehiclePosition | null;
+    /** `null` until the first ATTITUDE arrives. */
+    attitude: VehicleAttitude | null;
+    /** Meters/second over the ground. `null` until the first VFR_HUD arrives. */
+    groundspeed: number | null;
     /** `null` until the first HEARTBEAT arrives. */
     vehicleKind: VehicleKind | null;
     /**

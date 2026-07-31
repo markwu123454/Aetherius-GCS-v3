@@ -7,6 +7,7 @@ pub fn apply(snapshot: &mut VehicleSnapshot, data: &SYS_STATUS_DATA) {
     snapshot.battery_voltage = Some(data.voltage_battery as f32 / 1000.0);
     snapshot.battery_current = Some(data.current_battery as f32 / 100.0);
     snapshot.battery_percent = Some(data.battery_remaining);
+    snapshot.comm_drop_percent = Some(data.drop_rate_comm as f32 / 100.0);
     snapshot.prearm_pass = Some(
         data.onboard_control_sensors_health
             .contains(MavSysStatusSensor::MAV_SYS_STATUS_PREARM_CHECK),

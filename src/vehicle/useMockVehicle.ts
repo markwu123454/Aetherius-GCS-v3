@@ -12,6 +12,8 @@ function initial(): VehicleState {
         armed: false,
         mode: "LOITER",
         position: null,
+        attitude: {roll: 0, pitch: 0},
+        groundspeed: 5.2,
         vehicleKind: "multirotor",
         prearmPass: false,
         prearmReasons: INITIAL_REASONS.map((text) => ({text, lastSeen: now})),

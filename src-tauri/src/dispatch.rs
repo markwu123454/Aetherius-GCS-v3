@@ -13,7 +13,14 @@ pub fn route(app: &AppHandle, snapshot: &mut VehicleSnapshot, message: &MavMessa
         MavMessage::HEARTBEAT(_)
         | MavMessage::SYS_STATUS(_)
         | MavMessage::GPS_RAW_INT(_)
-        | MavMessage::GLOBAL_POSITION_INT(_) => {
+        | MavMessage::GLOBAL_POSITION_INT(_)
+        | MavMessage::RADIO_STATUS(_)
+        | MavMessage::EKF_STATUS_REPORT(_)
+        | MavMessage::VIBRATION(_)
+        | MavMessage::BATTERY_STATUS(_)
+        | MavMessage::ATTITUDE(_)
+        | MavMessage::VFR_HUD(_)
+        => {
             telemetry::apply(snapshot, message);
             true
         }

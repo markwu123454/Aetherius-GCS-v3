@@ -1,6 +1,6 @@
 export type Tone = "ok" | "warn" | "danger" | "info" | "neutral";
 
-const TONE_TEXT: Record<Tone, string> = {
+export const TONE_TEXT: Record<Tone, string> = {
     ok: "text-state-ok",
     warn: "text-state-warn",
     danger: "text-state-danger",
