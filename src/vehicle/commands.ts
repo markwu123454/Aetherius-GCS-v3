@@ -12,7 +12,8 @@ export type VehicleCommand =
     | {type: "setMode"; mode: number}
     | {type: "takeoff"; altitude: number}
     | {type: "returnToLaunch"}
-    | {type: "land"};
+    | {type: "land"}
+    | {type: "startMission"};
 
 /**
  * Sends one vehicle action and waits for the backend to confirm the

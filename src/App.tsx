@@ -4,10 +4,12 @@ import Workspace from "./components/Workspace";
 import FullScreenPage from "./components/FullScreenPage";
 import SettingsPage from "./components/SettingsPage";
 import ParametersPage from "./components/ParametersPage";
+import MissionPage from "./components/MissionPage";
 import {useWorkspace} from "./workspace/useWorkspace";
 import {useAirspace} from "./airspace/useAirspace";
 import {useConsoleEvents} from "./console/useConsoleEvents";
 import {useVehicle} from "./vehicle/useVehicle";
+import {useMission} from "./mission/useMission";
 import {useSettings} from "./settings/useSettings";
 import {useApplyDisplayMode} from "./settings/useApplyDisplayMode";
 import {NavigationApi, NavigationProvider} from "./navigation/useNavigation";
@@ -21,6 +23,11 @@ function App() {
     // Read once and passed down, rather than each consumer subscribing to the
     // same `vehicle` event independently.
     const vehicle = useVehicle();
+    // Owned here rather than inside `MissionPage`, even though the page is the
+    // only thing that mounts it visually — `TopBar`'s "Upload to Vehicle" menu
+    // item is a sibling of the page, not a descendant, and needs to reach the
+    // same draft whether or not the page is currently open.
+    const mission = useMission();
     // Same reasoning: one loaded copy, so a future preferences panel and
     // everything else that reads a setting stay in sync with each other.
     const settings = useSettings();
@@ -61,6 +68,7 @@ function App() {
                     openIds={workspace.openIds}
                     page={page}
                     airspace={airspace}
+                    mission={mission}
                 />
                 <div className="relative min-h-0 flex-1">
                     {/* `inert` because the workspace is still in the tree behind
@@ -78,6 +86,7 @@ function App() {
                         <FullScreenPage>
                             {page === "settings" && <SettingsPage settings={settings}/>}
                             {page === "parameters" && <ParametersPage/>}
+                            {page === "mission" && <MissionPage mission={mission}/>}
                         </FullScreenPage>
                     )}
                 </div>

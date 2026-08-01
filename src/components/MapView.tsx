@@ -1,40 +1,11 @@
 import {useEffect, useRef, useState} from "react";
 import {createRoot, type Root} from "react-dom/client";
-import {LngLatLike, Map, Marker} from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
+import {LngLatLike, Marker} from "maplibre-gl";
 import {AirportLocation, Drone, LocationCurrent} from "@carbon/icons-react";
 import {VehicleKind, VehiclePosition} from "../vehicle/vehicle";
 import {AIRSPACE_CLASSES, airspaceColor} from "../airspace/airspace";
 import type {AirspaceState} from "../airspace/useAirspace";
-
-const ESRI_WORLD_IMAGERY_STYLE = {
-    version: 8 as const,
-    sources: {
-        "esri-world-imagery": {
-            type: "raster" as const,
-            tiles: [
-                "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-            ],
-            tileSize: 256,
-            maxzoom: 19,
-            attribution:
-                "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
-        },
-    },
-    layers: [
-        {
-            id: "esri-world-imagery-layer",
-            type: "raster" as const,
-            source: "esri-world-imagery",
-            paint: {
-                // Raster tiles cross-fade over 300ms by default, which reads as
-                // the map fading in every time a dock opens or closes. The
-                // `fadeDuration` map option does not cover raster layers.
-                "raster-fade-duration": 0,
-            },
-        },
-    ],
-};
+import {useBaseMap} from "./useBaseMap";
 
 /** Camera zoom the first fix settles at — close enough to be useful, not so
  * close that a GPS jump before the fix settles reads as a wild camera swing. */
@@ -66,16 +37,11 @@ interface MapViewProps {
 }
 
 export default function MapView({position, vehicleKind, airspace}: MapViewProps) {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const mapRef = useRef<Map | null>(null);
+    const {containerRef, mapRef, styleReady} = useBaseMap();
     const markerRef = useRef<Marker | null>(null);
     const iconRootRef = useRef<Root | null>(null);
     const hasCenteredRef = useRef(false);
     const [following, setFollowing] = useState(false);
-    // Layers can only be added once the style has loaded, which happens after
-    // the map object exists — so the airspace effect needs its own signal
-    // rather than keying off `mapRef.current`.
-    const [styleReady, setStyleReady] = useState(false);
 
     // Read inside the position effect without making it a dependency — the
     // effect should only re-run on a new fix, never on a follow-state toggle,
@@ -86,61 +52,37 @@ export default function MapView({position, vehicleKind, airspace}: MapViewProps)
         followingRef.current = following;
     }, [following]);
 
+    // Runs after `useBaseMap`'s own effect within the same commit, so the map
+    // instance already exists. These listeners die with the map itself (torn
+    // down by `useBaseMap`'s cleanup), so there's nothing to unregister here.
     useEffect(() => {
-        if (!containerRef.current || mapRef.current) return;
-
-        mapRef.current = new Map({
-            container: containerRef.current,
-            style: ESRI_WORLD_IMAGERY_STYLE,
-            center: [0, 20],
-            zoom: 2,
-        });
-
-        mapRef.current.on("error", (e) => {
-            console.error("Map error]: ", e);
-        });
-
-        mapRef.current.on("load", () => setStyleReady(true));
+        const map = mapRef.current;
+        if (!map) return;
 
         // The operator taking the camera back: dragstart fires solely for
         // pointer-driven pan, never for our own jumpTo/easeTo.
-        mapRef.current.on("dragstart", () => setFollowing(false));
+        map.on("dragstart", () => setFollowing(false));
 
         // Zoom needs an extra check dragstart doesn't: zoomstart fires for
         // both a user's wheel/pinch/double-click *and* our own easeTo (the
         // first-fix flight-in changes zoom too). `originalEvent` is only set
         // for the former, so this doesn't cancel follow the moment it starts.
-        mapRef.current.on("zoomstart", (event) => {
+        map.on("zoomstart", (event) => {
             if (event.originalEvent) {
                 setFollowing(false);
             }
         });
+    }, [mapRef]);
 
-        const resizeObserver = new ResizeObserver(() => {
-            const map = mapRef.current;
-            if (!map) return;
-
-            map.resize();
-            // resize() reallocates the WebGL drawing buffer, which clears it,
-            // and the repaint is otherwise deferred to the next animation
-            // frame — so the cleared buffer gets composited first. That is one
-            // grey frame per resize event, which reads as a strobe when a dock
-            // splitter is dragged quickly. redraw() is synchronous, and this
-            // callback runs before paint, so the buffer is never shown empty.
-            map.redraw();
-        });
-
-        resizeObserver.observe(containerRef.current);
-
+    // The marker and its React icon root are this component's own, unlike the
+    // map itself — `useBaseMap` knows nothing about them, so their teardown
+    // stays here.
+    useEffect(() => {
         return () => {
-            resizeObserver.disconnect();
             iconRootRef.current?.unmount();
             iconRootRef.current = null;
             markerRef.current?.remove();
             markerRef.current = null;
-            mapRef.current?.remove();
-            mapRef.current = null;
-            setStyleReady(false);
         };
     }, []);
 

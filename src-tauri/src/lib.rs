@@ -6,6 +6,7 @@ mod link;
 mod params;
 mod telemetry;
 mod vehicle_command;
+mod mission;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -16,6 +17,7 @@ pub fn run() {
         .manage(commands::CommandState::default())
         .manage(dispatch::SeenState::default())
         .manage(params::ParamState::default())
+        .manage(mission::MissionState::default())
         .invoke_handler(tauri::generate_handler![
             link::connect_link,
             link::disconnect_link,

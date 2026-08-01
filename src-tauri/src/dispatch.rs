@@ -4,7 +4,7 @@ use mavlink::{dialects::ardupilotmega::{MavMessage, STATUSTEXT_DATA}, MavHeader,
 use num_traits::ToPrimitive;
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::{commands, params, telemetry, telemetry::VehicleSnapshot};
+use crate::{commands, mission, params, telemetry, telemetry::VehicleSnapshot};
 
 /// Every inbound message type is routed here, and only here — read this top
 /// to bottom and you know exactly what happens to each MAVLink message.
@@ -34,6 +34,18 @@ pub fn route(app: &AppHandle, snapshot: &mut VehicleSnapshot, message: &MavMessa
         }
         MavMessage::STATUSTEXT(data) => {
             on_statustext(app, data);
+            true
+        }
+        MavMessage::MISSION_REQUEST_INT(data) => {
+            mission::on_request_int(app, data);
+            true
+        }
+        MavMessage::MISSION_REQUEST(data) => {
+            mission::on_request(app, data);
+            true
+        }
+        MavMessage::MISSION_ACK(data) => {
+            mission::on_ack(app, data);
             true
         }
         _ => false,

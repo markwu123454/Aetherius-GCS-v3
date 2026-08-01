@@ -13,6 +13,7 @@ import {useNavigation} from "../navigation/useNavigation";
 import {PAGE_TITLES, PageId} from "../navigation/navigation";
 import {AIRSPACE_CLASSES} from "../airspace/airspace";
 import type {AirspaceState} from "../airspace/useAirspace";
+import type {MissionApi} from "../mission/useMission";
 
 interface TopBarProps {
     vehicle: VehicleState;
@@ -23,9 +24,10 @@ interface TopBarProps {
      * instead of a second bar underneath it. */
     page: PageId | null;
     airspace: AirspaceState;
+    mission: MissionApi;
 }
 
-export default function TopBar({vehicle, settings, openIds, page, airspace}: TopBarProps) {
+export default function TopBar({vehicle, settings, openIds, page, airspace, mission}: TopBarProps) {
     const now = useNow();
 
     // The backend owns the link state machine; this only reflects it.
@@ -114,9 +116,14 @@ export default function TopBar({vehicle, settings, openIds, page, airspace}: Top
             {
                 label: "Mission",
                 items: [
+                    {label: "Edit Mission…", action: () => navigation.openPage("mission")},
                     {label: "Load…"},
                     {label: "Save As…"},
-                    {label: "Upload to Vehicle"},
+                    {
+                        label: "Upload to Vehicle",
+                        action: () => void mission.upload().catch(() => {}),
+                        disabled: mission.waypoints.length === 0 || mission.uploading,
+                    },
                     {label: "Download"},
                 ],
             },
@@ -162,7 +169,7 @@ export default function TopBar({vehicle, settings, openIds, page, airspace}: Top
                 ],
             },
         ],
-        [openIds, navigation, airspace],
+        [openIds, navigation, airspace, mission],
     );
 
     const compact = menuExpanded;
