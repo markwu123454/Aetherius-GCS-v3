@@ -1,4 +1,5 @@
 import {PointerEvent as ReactPointerEvent, useRef} from "react";
+import {Close} from "@carbon/icons-react";
 import {FloatingWindow} from "@/lib/workspace/layout.ts";
 import {panelById} from "@/lib/workspace/panels.ts";
 import {PanelBody} from "./panelComponents.tsx";
@@ -73,7 +74,7 @@ export default function FloatingPanel({win, onTitlePointerDown, onClose, onResiz
         >
             <div
                 onPointerDown={onTitlePointerDown}
-                className="flex shrink-0 cursor-grab items-center justify-between h-control-sm gap-2 border-b border-border-subtle bg-layer-01 px-3 select-none active:cursor-grabbing"
+                className="flex shrink-0 items-center justify-between h-control-sm gap-2 border-b border-border-subtle bg-layer-01 px-3 select-none active:cursor-grabbing"
             >
                 <span className="truncate text-label text-text-secondary">{panel.title}</span>
                 <button
@@ -81,9 +82,9 @@ export default function FloatingPanel({win, onTitlePointerDown, onClose, onResiz
                     aria-label={`Close ${panel.title}`}
                     onPointerDown={(event) => event.stopPropagation()}
                     onClick={onClose}
-                    className="px-1 text-text-helper hover:bg-layer-hover-02 hover:text-text-primary"
+                    className="p-1 text-text-helper hover:bg-layer-hover-02 hover:text-text-primary"
                 >
-                    ×
+                    <Close size={14} />
                 </button>
             </div>
 

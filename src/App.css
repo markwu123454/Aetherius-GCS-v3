@@ -4,38 +4,38 @@
 html,
 body,
 #root {
-  height: 100%;
+    height: 100%;
 }
 
 body {
-  background: var(--color-background);
-  color: var(--color-text-primary);
-  font-family: var(--font-sans);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
+    background: var(--color-background);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans), serif;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-text-size-adjust: 100%;
 }
 
 @keyframes topbar-pulse-warn {
-  0%,
-  100% {
-    background-color: var(--color-layer-01);
-  }
-  50% {
-    background-color: color-mix(in srgb, var(--color-state-warn) 22%, var(--color-layer-01));
-  }
+    0%,
+    100% {
+        background-color: var(--color-layer-01);
+    }
+    50% {
+        background-color: color-mix(in srgb, var(--color-state-warn) 22%, var(--color-layer-01));
+    }
 }
 
 @keyframes topbar-flash-danger {
-  0%,
-  100% {
-    background-color: var(--color-layer-01);
-  }
-  50% {
-    background-color: color-mix(in srgb, var(--color-state-danger) 38%, var(--color-layer-01));
-  }
+    0%,
+    100% {
+        background-color: var(--color-layer-01);
+    }
+    50% {
+        background-color: color-mix(in srgb, var(--color-state-danger) 38%, var(--color-layer-01));
+    }
 }
 
 /* Link health is shown as the top strip's own background rather than through
@@ -45,47 +45,47 @@ body {
    holds a steady red tint for as long as the link stays down rather than
    fading back to normal, which would read as "resolved" while it is not. */
 .topbar-pulse-warn {
-  animation: topbar-pulse-warn 2.4s var(--ease-productive) infinite;
+    animation: topbar-pulse-warn 2.4s var(--ease-productive) infinite;
 }
 
 .topbar-flash-danger {
-  animation: topbar-flash-danger 0.6s var(--ease-productive) 4;
+    animation: topbar-flash-danger 0.6s var(--ease-productive) 4;
 }
 
 .topbar-steady-danger {
-  background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
+    background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .topbar-pulse-warn {
-    animation: none;
-    background-color: color-mix(in srgb, var(--color-state-warn) 18%, var(--color-layer-01));
-  }
+    .topbar-pulse-warn {
+        animation: none;
+        background-color: color-mix(in srgb, var(--color-state-warn) 18%, var(--color-layer-01));
+    }
 
-  .topbar-flash-danger {
-    animation: none;
-    background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
-  }
+    .topbar-flash-danger {
+        animation: none;
+        background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
+    }
 }
 
 @keyframes topbar-pulse-warn {
-  0%,
-  100% {
-    background-color: var(--color-layer-01);
-  }
-  50% {
-    background-color: color-mix(in srgb, var(--color-state-warn) 22%, var(--color-layer-01));
-  }
+    0%,
+    100% {
+        background-color: var(--color-layer-01);
+    }
+    50% {
+        background-color: color-mix(in srgb, var(--color-state-warn) 22%, var(--color-layer-01));
+    }
 }
 
 @keyframes topbar-flash-danger {
-  0%,
-  100% {
-    background-color: var(--color-layer-01);
-  }
-  50% {
-    background-color: color-mix(in srgb, var(--color-state-danger) 38%, var(--color-layer-01));
-  }
+    0%,
+    100% {
+        background-color: var(--color-layer-01);
+    }
+    50% {
+        background-color: color-mix(in srgb, var(--color-state-danger) 38%, var(--color-layer-01));
+    }
 }
 
 /* Link health is shown as the top strip's own background rather than through
@@ -95,47 +95,47 @@ body {
    holds a steady red tint for as long as the link stays down rather than
    fading back to normal, which would read as "resolved" while it is not. */
 .topbar-pulse-warn {
-  animation: topbar-pulse-warn 2.4s var(--ease-productive) infinite;
+    animation: topbar-pulse-warn 2.4s var(--ease-productive) infinite;
 }
 
 .topbar-flash-danger {
-  animation: topbar-flash-danger 0.6s var(--ease-productive) 4;
+    animation: topbar-flash-danger 0.6s var(--ease-productive) 4;
 }
 
 .topbar-steady-danger {
-  background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
+    background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .topbar-pulse-warn {
-    animation: none;
-    background-color: color-mix(in srgb, var(--color-state-warn) 18%, var(--color-layer-01));
-  }
+    .topbar-pulse-warn {
+        animation: none;
+        background-color: color-mix(in srgb, var(--color-state-warn) 18%, var(--color-layer-01));
+    }
 
-  .topbar-flash-danger {
-    animation: none;
-    background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
-  }
+    .topbar-flash-danger {
+        animation: none;
+        background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
+    }
 }
 
 @keyframes topbar-pulse-warn {
-  0%,
-  100% {
-    background-color: var(--color-layer-01);
-  }
-  50% {
-    background-color: color-mix(in srgb, var(--color-state-warn) 22%, var(--color-layer-01));
-  }
+    0%,
+    100% {
+        background-color: var(--color-layer-01);
+    }
+    50% {
+        background-color: color-mix(in srgb, var(--color-state-warn) 22%, var(--color-layer-01));
+    }
 }
 
 @keyframes topbar-flash-danger {
-  0%,
-  100% {
-    background-color: var(--color-layer-01);
-  }
-  50% {
-    background-color: color-mix(in srgb, var(--color-state-danger) 38%, var(--color-layer-01));
-  }
+    0%,
+    100% {
+        background-color: var(--color-layer-01);
+    }
+    50% {
+        background-color: color-mix(in srgb, var(--color-state-danger) 38%, var(--color-layer-01));
+    }
 }
 
 /* Link health is shown as the top strip's own background rather than through
@@ -145,25 +145,25 @@ body {
    holds a steady red tint for as long as the link stays down rather than
    fading back to normal, which would read as "resolved" while it is not. */
 .topbar-pulse-warn {
-  animation: topbar-pulse-warn 2.4s var(--ease-productive) infinite;
+    animation: topbar-pulse-warn 2.4s var(--ease-productive) infinite;
 }
 
 .topbar-flash-danger {
-  animation: topbar-flash-danger 0.6s var(--ease-productive) 4;
+    animation: topbar-flash-danger 0.6s var(--ease-productive) 4;
 }
 
 .topbar-steady-danger {
-  background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
+    background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .topbar-pulse-warn {
-    animation: none;
-    background-color: color-mix(in srgb, var(--color-state-warn) 18%, var(--color-layer-01));
-  }
+    .topbar-pulse-warn {
+        animation: none;
+        background-color: color-mix(in srgb, var(--color-state-warn) 18%, var(--color-layer-01));
+    }
 
-  .topbar-flash-danger {
-    animation: none;
-    background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
-  }
+    .topbar-flash-danger {
+        animation: none;
+        background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
+    }
 }

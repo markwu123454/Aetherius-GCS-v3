@@ -57,7 +57,7 @@ export function useLiveParams(connectionStatus: ConnectionStatus): LiveParams {
     useEffect(() => {
         const isConnected = connectionStatus === "connected";
         if (isConnected && !wasConnected.current) {
-            refresh();
+            void refresh();
         } else if (!isConnected && wasConnected.current) {
             setValues(new Map());
             setTotal(null);

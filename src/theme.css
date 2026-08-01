@@ -106,7 +106,6 @@
 
     /* Carbon is square. There is no corner radius token on purpose — rounding
        anything here would read as foreign against the rest of the system. */
-
     /* Carbon's control height ramp. `sm` is the density this application wants
        almost everywhere; the larger steps exist so forms have somewhere to go. */
     --spacing-control-sm: 32px;

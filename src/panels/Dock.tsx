@@ -1,4 +1,5 @@
 import {PointerEvent as ReactPointerEvent} from "react";
+import {Close} from "@carbon/icons-react";
 import {DockArea, panelById} from "@/lib/workspace/panels.ts";
 import {PanelBody} from "./panelComponents.tsx";
 
@@ -52,9 +53,9 @@ export default function Dock({area, panelIds, activeId, onTabPointerDown, onClos
                             // Keep the close click out of the drag gesture.
                             onPointerDown={(event) => event.stopPropagation()}
                             onClick={() => onClose(id)}
-                            className="px-1 text-text-helper opacity-0 group-hover:opacity-100 hover:bg-layer-hover-02 hover:text-text-primary focus:opacity-100"
+                            className="p-1 text-text-helper opacity-0 group-hover:opacity-100 hover:bg-layer-hover-02 hover:text-text-primary"
                         >
-                            ×
+                            <Close size={14} />
                         </button>
                     </div>
                 );

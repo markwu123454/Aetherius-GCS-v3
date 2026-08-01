@@ -1,17 +1,10 @@
 use serde::Serialize;
 
-use mavlink::dialects::ardupilotmega::MavMessage;
+use mavlink::dialects::ardupilotmega::{MavMessage, MavSysStatusSensor};
 
-mod global_position;
-mod gps_raw;
-mod heartbeat;
-mod sys_status;
-mod battery_status;
 mod ekf_status;
-mod radio_status;
-mod vibration;
-mod attitude;
-mod vfr_hud;
+mod global_position;
+mod heartbeat;
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,15 +55,36 @@ pub struct VehicleSnapshot {
 pub fn apply(snapshot: &mut VehicleSnapshot, message: &MavMessage) {
     match message {
         MavMessage::HEARTBEAT(data) => heartbeat::apply(snapshot, data),
-        MavMessage::SYS_STATUS(data) => sys_status::apply(snapshot, data),
-        MavMessage::GPS_RAW_INT(data) => gps_raw::apply(snapshot, data),
-        MavMessage::RADIO_STATUS(data) => radio_status::apply(snapshot, data),
-        MavMessage::EKF_STATUS_REPORT(data) => ekf_status::apply(snapshot, data),
-        MavMessage::VIBRATION(data) => vibration::apply(snapshot, data),
-        MavMessage::BATTERY_STATUS(data) => battery_status::apply(snapshot, data),
         MavMessage::GLOBAL_POSITION_INT(data) => global_position::apply(snapshot, data),
-        MavMessage::ATTITUDE(data) => attitude::apply(snapshot, data),
-        MavMessage::VFR_HUD(data) => vfr_hud::apply(snapshot, data),
+        MavMessage::EKF_STATUS_REPORT(data) => ekf_status::apply(snapshot, data),
+        MavMessage::VFR_HUD(data) => snapshot.groundspeed = Some(data.groundspeed),
+        MavMessage::RADIO_STATUS(data) => snapshot.radio_rssi = Some(data.rssi),
+        MavMessage::GPS_RAW_INT(data) => {
+            snapshot.gps_fix = Some(data.fix_type as u8);
+            snapshot.satellites = Some(data.satellites_visible);
+            snapshot.hdop = Some(data.eph as f32 / 100.0);
+        }
+        MavMessage::VIBRATION(data) => {
+            snapshot.vibe = Some(data.vibration_x.max(data.vibration_y).max(data.vibration_z))
+        }
+        MavMessage::BATTERY_STATUS(data) => {
+            snapshot.battery_consumed_mah =
+                (data.current_consumed >= 0).then_some(data.current_consumed as f32)
+        }
+        MavMessage::ATTITUDE(data) => {
+            snapshot.roll_deg = Some(data.roll.to_degrees());
+            snapshot.pitch_deg = Some(data.pitch.to_degrees());
+        }
+        MavMessage::SYS_STATUS(data) => {
+            snapshot.battery_voltage = Some(data.voltage_battery as f32 / 1000.0);
+            snapshot.battery_current = Some(data.current_battery as f32 / 100.0);
+            snapshot.battery_percent = Some(data.battery_remaining);
+            snapshot.comm_drop_percent = Some(data.drop_rate_comm as f32 / 100.0);
+            snapshot.prearm_pass = Some(
+                data.onboard_control_sensors_health
+                    .contains(MavSysStatusSensor::MAV_SYS_STATUS_PREARM_CHECK),
+            );
+        }
         _ => {}
     }
 }

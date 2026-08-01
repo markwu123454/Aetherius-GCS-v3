@@ -1,46 +1,47 @@
-import { defineConfig } from "vite";
+import {defineConfig} from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import process from "node:process";
 import path from "path";
+
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss()],
 
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
+    resolve: {
+        alias: {
+            "@": path.resolve(__dirname, "./src"),
+        },
     },
-  },
 
-  // maplibre-gl loads its tile-parsing code via a Web Worker; Vite's dep
-  // pre-bundler mishandles that worker entry (ships it empty), so tiles
-  // never finish parsing. Excluding it from pre-bundling avoids that.
-  optimizeDeps: {
-    exclude: ["maplibre-gl"],
-  },
-
-  // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
-  //
-  // 1. prevent Vite from obscuring rust errors
-  clearScreen: false,
-  // 2. tauri expects a fixed port, fail if that port is not available
-  server: {
-    port: 1420,
-    strictPort: true,
-    host: host || false,
-    hmr: host
-      ? {
-          protocol: "ws",
-          host,
-          port: 1421,
-        }
-      : undefined,
-    watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+    // maplibre-gl loads its tile-parsing code via a Web Worker; Vite's dep
+    // pre-bundler mishandles that worker entry (ships it empty), so tiles
+    // never finish parsing. Excluding it from pre-bundling avoids that.
+    optimizeDeps: {
+        exclude: ["maplibre-gl"],
     },
-  },
+
+    // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
+    //
+    // 1. prevent Vite from obscuring rust errors
+    clearScreen: false,
+    // 2. tauri expects a fixed port, fail if that port is not available
+    server: {
+        port: 1420,
+        strictPort: true,
+        host: host || false,
+        hmr: host
+            ? {
+                protocol: "ws",
+                host,
+                port: 1421,
+            }
+            : undefined,
+        watch: {
+            // 3. tell Vite to ignore watching `src-tauri`
+            ignored: ["**/src-tauri/**"],
+        },
+    },
 }));
