@@ -1,6 +1,10 @@
 use serde::Serialize;
 
-use mavlink::{error::MessageReadError, dialects::ardupilotmega::MavMessage, MavConnection};
+use mavlink::{
+    error::MessageReadError,
+    dialects::ardupilotmega::{MavCmd, MavMessage},
+    MavConnection,
+};
 
 use std::{
     io::ErrorKind,
@@ -9,17 +13,19 @@ use std::{
         atomic::{AtomicU64, Ordering},
         Arc, Mutex,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::dispatch;
 use crate::telemetry::VehicleSnapshot;
+use crate::commands;
 use crate::params;
 
 const LOSING_AFTER: Duration = Duration::from_millis(2_500);
 const SCAN_PROBE_TIMEOUT: Duration = Duration::from_millis(250);
+const PREARM_CHECK_INTERVAL: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,6 +51,34 @@ fn to_mavlink_address(endpoint: &str) -> String {
     }
 }
 
+/// ArduPilot sends position/attitude/VFR_HUD at its own low idle rate until a
+/// GCS asks for more. `REQUEST_DATA_STREAM` used to be the way to ask, but
+/// it (and the stream-id enum it took) are deprecated in the MAVLink spec in
+/// favor of `MAV_CMD_SET_MESSAGE_INTERVAL` — one COMMAND_LONG per message
+/// type, naming the interval in microseconds. Sent once as soon as the
+/// vehicle's target IDs are known from its first HEARTBEAT. Only the
+/// messages that actually need to feel smooth are sped up — battery, GPS
+/// status and the rest stay at their own default rate, since asking for
+/// those at 20 Hz would just be discarded bandwidth.
+fn request_data_streams(app: &AppHandle, target_system: u8, target_component: u8) {
+    // Microseconds between messages — 20 Hz, matching read_loop's own emit
+    // throttle below; no point asking the vehicle for faster than that will
+    // ever actually be forwarded.
+    const INTERVAL_US: f32 = 50_000.0;
+
+    // Raw MAVLink message IDs, from common.xml — stable across dialects, so
+    // these don't depend on whatever symbolic constants this crate version
+    // does or doesn't export: ATTITUDE, GLOBAL_POSITION_INT, VFR_HUD.
+    for message_id in [30.0, 33.0, 74.0] {
+        let _ = commands::send_async(
+            app,
+            MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
+            [message_id, INTERVAL_US, 0.0, 0.0, 0.0, 0.0, 0.0],
+            (target_system, target_component),
+        );
+    }
+}
+
 #[derive(Default)]
 pub struct LinkState {
     pub snapshot: Mutex<VehicleSnapshot>,
@@ -55,6 +89,11 @@ pub struct LinkState {
     /// HEARTBEAT after connecting. `None` until then, and cleared on
     /// disconnect — commands have nobody to address until it's known again.
     pub target: Mutex<Option<(u8, u8)>>,
+    /// Milliseconds since UNIX_EPOCH of the last HEARTBEAT, 0 until one arrives.
+    /// Lets the watchdog judge staleness without needing `recv()` to have
+    /// returned recently — a physically unplugged serial port can block
+    /// that call forever.
+    pub last_heartbeat_ms: AtomicU64,
 }
 
 /// Read messages until asked to stop. Emission is throttled because SITL sends
@@ -78,24 +117,29 @@ fn read_loop(
                 let state = app.state::<LinkState>();
 
                 if matches!(message, MavMessage::HEARTBEAT(_)) {
+                    let first_heartbeat = last_heartbeat.is_none();
                     last_heartbeat = Some(Instant::now());
+                    state.last_heartbeat_ms.store(
+                        SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
+                        Ordering::SeqCst,
+                    );
                     *state.target.lock().unwrap_or_else(|e| e.into_inner()) =
                         Some((header.system_id, header.component_id));
+
+                    if first_heartbeat {
+                        request_data_streams(&app, header.system_id, header.component_id);
+                    }
                 }
 
                 let mut snapshot = state.snapshot.lock().unwrap_or_else(|e| e.into_inner());
                 dispatch::route(&app, &mut snapshot, &message);
                 snapshot.since_heartbeat_ms = last_heartbeat.map(|at| at.elapsed().as_millis() as u64);
 
-                if last_emit.elapsed() >= Duration::from_millis(100) {
+                if last_emit.elapsed() >= Duration::from_millis(50) {
                     last_emit = Instant::now();
                     let payload = snapshot.clone();
                     drop(snapshot);
                     let _ = app.emit("vehicle", payload);
-
-                    if let Some(batch) = dispatch::drain_seen(&app) {
-                        let _ = app.emit("mavlink-seen", batch);
-                    }
 
                     if let Some(batch) = params::drain_batch(&app) {
                         let _ = app.emit("param-values", batch);
@@ -126,6 +170,54 @@ fn read_loop(
 
     if app.state::<LinkState>().generation.load(Ordering::SeqCst) == generation {
         set_status(&app, LinkStatus::Lost);
+    }
+}
+
+fn watchdog_loop(app: AppHandle, generation: u64) {
+    loop {
+        std::thread::sleep(Duration::from_millis(500));
+
+        let state = app.state::<LinkState>();
+        if state.generation.load(Ordering::SeqCst) != generation {
+            return;
+        }
+
+        let last_ms = state.last_heartbeat_ms.load(Ordering::SeqCst);
+        if last_ms == 0 {
+            continue;
+        }
+
+        let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+        if Duration::from_millis(now_ms.saturating_sub(last_ms)) > LOSING_AFTER {
+            set_status(&app, LinkStatus::Losing);
+        }
+    }
+}
+
+/// Periodically re-triggers ArduPilot's prearm checks so SYS_STATUS and any
+/// `PreArm:` STATUSTEXT lines stay current without the operator doing anything.
+/// Skipped while armed — ArduPilot's own docs say it returns
+/// MAV_RESULT_TEMPORARILY_REJECTED in that case, so sending it then would just
+/// be noise in the console.
+fn prearm_check_loop(app: AppHandle, generation: u64) {
+    loop {
+        std::thread::sleep(PREARM_CHECK_INTERVAL);
+
+        let state = app.state::<LinkState>();
+        if state.generation.load(Ordering::SeqCst) != generation {
+            return;
+        }
+
+        let Some(target) = *state.target.lock().unwrap_or_else(|e| e.into_inner()) else {
+            continue;
+        };
+
+        let armed = state.snapshot.lock().unwrap_or_else(|e| e.into_inner()).armed;
+        if armed == Some(true) {
+            continue;
+        }
+
+        let _ = commands::send_async(&app, MavCmd::MAV_CMD_RUN_PREARM_CHECKS, [0.0; 7], target);
     }
 }
 
@@ -178,7 +270,7 @@ pub fn connect_link(endpoint: String, app: AppHandle, state: State<LinkState>) -
         }
     };
 
-    // The connect above blocks, and the user may have cancelled while it did.
+    // The connect above blocks, and the user may have canceled while it did.
     // Not storing or spawning here is the cancel actually taking effect.
     if state.generation.load(Ordering::SeqCst) != generation {
         return Ok(());
@@ -188,6 +280,13 @@ pub fn connect_link(endpoint: String, app: AppHandle, state: State<LinkState>) -
 
     let handle = app.clone();
     std::thread::spawn(move || read_loop(handle, connection, generation));
+
+    let watchdog_handle = app.clone();
+    std::thread::spawn(move || watchdog_loop(watchdog_handle, generation));
+
+    let prearm_handle = app.clone();
+    std::thread::spawn(move || prearm_check_loop(prearm_handle, generation));
+
     Ok(())
 }
 
@@ -202,6 +301,7 @@ pub fn disconnect_link(app: AppHandle, state: State<LinkState>) {
     state.generation.fetch_add(1, Ordering::SeqCst);
     *state.connection.lock().unwrap_or_else(|e| e.into_inner()) = None;
     *state.target.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    state.last_heartbeat_ms.store(0, Ordering::SeqCst);
     params::clear(&app);
     set_status(&app, LinkStatus::Disconnected);
 }

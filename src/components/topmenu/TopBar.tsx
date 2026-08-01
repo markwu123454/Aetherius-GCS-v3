@@ -3,6 +3,8 @@ import {ArrowLeft} from "@carbon/icons-react";
 import AppMenu, {Menu} from "./AppMenu.tsx";
 import StatusChip, {Tone} from "./StatusChip.tsx";
 import ConnectControl from "./ConnectControl.tsx";
+import ArmControl from "./ArmControl.tsx";
+import ModeControl from "./ModeControl.tsx";
 import {useNow} from "@/lib/vehicle/useMockVehicle.ts";
 import {alertLevel, fixLabel, VehicleState, worst} from "@/lib/vehicle/vehicle.ts";
 import {isLinkFailing, isLinkIdle, linkSeverity} from "@/lib/vehicle/connection.ts";
@@ -207,19 +209,17 @@ export default function TopBar({vehicle, settings, openIds, page, airspace, miss
 
             {/* Anchored right so expanding the menu never pushes the readings. */}
             <div className="ml-auto flex items-stretch">
-                <StatusChip
-                    label="Mode"
-                    value={vehicle.mode}
-                    tone="info"
+                <ModeControl
+                    vehicleKind={vehicle.vehicleKind}
+                    customMode={vehicle.customMode}
+                    label={vehicle.mode}
                     stale={stale}
                     staleFor={staleFor}
                     unknown={unknown}
                     severe={severe}
                 />
-                <StatusChip
-                    label="State"
-                    value={vehicle.armed ? "ARMED" : "DISARMED"}
-                    tone={vehicle.armed ? "danger" : "neutral"}
+                <ArmControl
+                    armed={vehicle.armed}
                     stale={stale}
                     staleFor={staleFor}
                     unknown={unknown}

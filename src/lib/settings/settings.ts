@@ -15,10 +15,19 @@ export interface Settings {
      * layers are drawn — the View menu writes here too, rather than keeping its
      * own idea of what is switched on. */
     airspace: AirspaceSettings;
+    /** Repeats of the same console line, within the coalescing window, before
+     * they stop appending as separate lines and start folding into one with a
+     * running `×N` count. */
+    consoleCollapseThreshold: number;
 }
+
+/** Below this, there's nothing left to collapse — the first occurrence of a
+ * line is always shown on its own regardless of the setting. */
+export const MIN_CONSOLE_COLLAPSE_THRESHOLD = 2;
 
 export const DEFAULT_SETTINGS: Settings = {
     confirmDisconnectWhenArmed: true,
     displayMode: "windowed",
     airspace: DEFAULT_AIRSPACE_SETTINGS,
+    consoleCollapseThreshold: MIN_CONSOLE_COLLAPSE_THRESHOLD,
 };

@@ -1,19 +1,20 @@
 import {useMemo, useState} from "react";
-import TopBar from "./components/topmenu/TopBar.tsx";
-import Workspace from "./components/workspace/Workspace.tsx";
-import FullScreenPage from "./pages/FullScreenPage.tsx";
-import SettingsPage from "./pages/settings/SettingsPage.tsx";
-import ParametersPage from "./pages/parameters/ParametersPage.tsx";
-import MissionPage from "./pages/mission/MissionPage.tsx";
-import {useWorkspace} from "./lib/workspace/useWorkspace.ts";
-import {useAirspace} from "./lib/airspace/useAirspace.ts";
-import {useConsoleEvents} from "./lib/console/useConsoleEvents.ts";
-import {useVehicle} from "./lib/vehicle/useVehicle.ts";
-import {useMission} from "./lib/mission/useMission.ts";
-import {useSettings} from "./lib/settings/useSettings.ts";
-import {useApplyDisplayMode} from "./lib/settings/useApplyDisplayMode.ts";
-import {NavigationApi, NavigationProvider} from "./lib/navigation/useNavigation.tsx";
-import {PageId} from "./lib/navigation/navigation.ts";
+import TopBar from "@/components/topmenu/TopBar.tsx";
+import Workspace from "@/components/workspace/Workspace.tsx";
+import FullScreenPage from "@/pages/FullScreenPage.tsx";
+import SettingsPage from "@/pages/settings/SettingsPage.tsx";
+import ParametersPage from "@/pages/parameters/ParametersPage.tsx";
+import MissionPage from "@/pages/mission/MissionPage.tsx";
+import {useWorkspace} from "@/lib/workspace/useWorkspace.ts";
+import {useAirspace} from "@/lib/airspace/useAirspace.ts";
+import {useConsoleEvents} from "@/lib/console/useConsoleEvents.ts";
+import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
+import {useMission} from "@/lib/mission/useMission.ts";
+import {useSettings} from "@/lib/settings/useSettings.ts";
+import {useApplyDisplayMode} from "@/lib/settings/useApplyDisplayMode.ts";
+import {useApplyConsoleSettings} from "@/lib/settings/useApplyConsoleSettings.ts";
+import {NavigationApi, NavigationProvider} from "@/lib/navigation/useNavigation.tsx";
+import {PageId} from "@/lib/navigation/navigation.ts";
 import "./App.css";
 
 function App() {
@@ -41,6 +42,9 @@ function App() {
     // Applies whenever the setting changes, not just from the Settings page —
     // this is the one preference with a real-world side effect outside React.
     useApplyDisplayMode(settings.displayMode);
+    // Same reasoning: the console store lives outside React and needs the
+    // preference pushed to it, not just read once at mount.
+    useApplyConsoleSettings(settings.consoleCollapseThreshold);
     // `null` is the bare workspace; anything else lays that page over the top
     // of it. Over, not instead of: unmounting the workspace takes `MapView`
     // with it, and its cleanup calls `map.remove()` — so a two-second trip to

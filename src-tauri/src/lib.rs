@@ -15,7 +15,6 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .manage(link::LinkState::default())
         .manage(commands::CommandState::default())
-        .manage(dispatch::SeenState::default())
         .manage(params::ParamState::default())
         .manage(mission::MissionState::default())
         .invoke_handler(tauri::generate_handler![
@@ -25,7 +24,8 @@ pub fn run() {
             link::link_status,
             vehicle_command::send_vehicle_command,
             params::refresh_params,
-            params::set_param
+            params::set_param,
+            mission::upload_mission
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

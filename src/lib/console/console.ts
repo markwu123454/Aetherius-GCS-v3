@@ -6,7 +6,7 @@
  * field deciding whether to launch.
  */
 
-export type ConsoleLevel = "danger" | "warn" | "info" | "debug" | "trace";
+export type ConsoleLevel = "danger" | "warn" | "info" | "debug";
 
 /** Where a line came from. Shown as a column, and filterable, because "the
  * radio dropped" and "the autopilot refused to arm" are different problems that
@@ -26,14 +26,13 @@ export interface ConsoleEntry {
     count: number;
 }
 
-export const CONSOLE_LEVELS: ConsoleLevel[] = ["danger", "warn", "info", "debug", "trace"];
+export const CONSOLE_LEVELS: ConsoleLevel[] = ["danger", "warn", "info", "debug"];
 
 export const CONSOLE_LEVEL_LABELS: Record<ConsoleLevel, string> = {
     danger: "Error",
     warn: "Warning",
     info: "Info",
     debug: "Debug",
-    trace: "Trace",
 };
 
 export const CONSOLE_LEVEL_CLASSES: Record<ConsoleLevel, string> = {
@@ -41,21 +40,20 @@ export const CONSOLE_LEVEL_CLASSES: Record<ConsoleLevel, string> = {
     warn: "text-state-warn",
     info: "text-text-primary",
     debug: "text-text-helper",
-    trace: "text-text-disabled",
 };
 
 /**
  * Levels shown before the operator touches anything.
  *
- * `trace` is off because it carries every MAVLink message the dispatcher does
- * not handle — ATTITUDE, VFR_HUD and RC_CHANNELS alone arrive fast enough to
- * bury a genuine arming failure within seconds. It is there to answer "what is
- * the vehicle sending that we ignore?", which is a question you go looking for.
+ * `debug` is off because it's routine housekeeping (message-interval requests
+ * the app sends on every connect, the airspace load line) rather than
+ * something that happened on the link or the vehicle — worth having, not
+ * worth showing by default.
  */
-export const DEFAULT_VISIBLE_LEVELS: ConsoleLevel[] = ["danger", "warn", "info", "debug"];
+export const DEFAULT_VISIBLE_LEVELS: ConsoleLevel[] = ["danger", "warn", "info"];
 
 /**
- * MAV_SEVERITY (0-7) onto the five levels above.
+ * MAV_SEVERITY (0-7) onto the four levels above.
  *
  * The four most severe map to one bucket on purpose. ArduPilot's use of
  * EMERGENCY through ERROR is not consistent enough to give the operator four

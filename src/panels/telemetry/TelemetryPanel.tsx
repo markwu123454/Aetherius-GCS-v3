@@ -1,12 +1,24 @@
 import {useId} from "react";
 import {useConnection} from "@/lib/vehicle/useConnection.ts";
 import {isLinkFailing, isLinkIdle} from "@/lib/vehicle/connection.ts";
-import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
+import {useArmedSince, useVehicle} from "@/lib/vehicle/useVehicle.ts";
 import {useNow} from "@/lib/vehicle/useMockVehicle.ts";
 import {useTelemetryHistory} from "@/lib/vehicle/useTelemetryHistory.ts";
-import {fixLabel} from "@/lib/vehicle/vehicle.ts";
+import {distanceMeters} from "@/lib/vehicle/vehicle.ts";
 import {Tone, TONE_TEXT} from "@/components/topmenu/StatusChip.tsx";
 import Sparkline from "@/components/Sparkline.tsx";
+
+// FIXME: styling and layout are broken — needs a full pass once all the
+// panel's elements are in (e.g. tapes incorrectly hidden below `@3xl`, Alt/GS
+// duplicating the tapes at `@3xl+`, inconsistent spacing/sizing throughout).
+
+function formatDuration(totalSeconds: number): string {
+    const seconds = Math.max(0, Math.floor(totalSeconds));
+    const hh = Math.floor(seconds / 3600);
+    const mm = (Math.floor(seconds / 60) % 60).toString().padStart(2, "0");
+    const ss = (seconds % 60).toString().padStart(2, "0");
+    return hh > 0 ? `${hh}:${mm}:${ss}` : `${mm}:${ss}`;
+}
 
 const BAR_TONE: Record<Tone, string> = {
     ok: "bg-state-ok",
@@ -19,12 +31,6 @@ const BAR_TONE: Record<Tone, string> = {
 function batteryTone(percent: number): Tone {
     if (percent <= 15) return "danger";
     if (percent <= 25) return "warn";
-    return "ok";
-}
-
-function gpsTone(fix: string): Tone {
-    if (fix === "none") return "danger";
-    if (fix === "2d") return "warn";
     return "ok";
 }
 
@@ -280,12 +286,25 @@ function AttitudeIndicator({heading, roll, pitch, unknown, attitudeUnknown}: Att
 
             <circle cx={50} cy={50} r={BEZEL_R} fill="none" className="stroke-border-subtle" strokeWidth={1}/>
             <circle cx={50} cy={50} r={HORIZON_R} fill="none" className="stroke-border-subtle" strokeWidth={0.75}/>
+
+            {/* Corner labels — the square falls outside the bezel ring at its
+                own corners no matter what, so GS and Alt mark the tapes'
+                contents there instead of leaving the space empty. The values
+                themselves already live on the tapes, so only the label goes
+                here. Sized to match the HDG label below (`text-micro`, 10px):
+                at this instrument's typical render scale (viewBox 100 over a
+                ~224px square) that's a fontSize of 4.5 user units. */}
+            <text x={5} y={11} fontSize={4.5} className="fill-text-helper font-mono">GS</text>
+            <text x={95} y={11} textAnchor="end" fontSize={4.5} className="fill-text-helper font-mono">ALT</text>
         </svg>
     );
 }
 
-const TAPE_WIDTH = 44;
-const TAPE_HEIGHT = 224;
+/** Matches the horizon's own cap (`max-w-72`/`max-h-72`, 18rem/288px) so the
+ * whole instrument — tapes and horizon together — scales as one rigid unit
+ * instead of the tapes stretching independently of the ball beside them. */
+const TAPE_WIDTH = 56;
+const TAPE_HEIGHT = 288;
 
 interface TapeProps {
     /** `null` when this specific reading hasn't arrived yet — rendered as a
@@ -328,7 +347,7 @@ function Tape({value, tickInterval, majorEvery, pxPerUnit, decimals, side}: Tape
         <svg
             viewBox={`0 0 ${TAPE_WIDTH} ${TAPE_HEIGHT}`}
             preserveAspectRatio="none"
-            className="h-full w-11"
+            className="h-full w-14"
             role="img"
             aria-label={value === null ? "unknown" : value.toFixed(decimals)}
         >
@@ -402,6 +421,51 @@ function Tape({value, tickInterval, majorEvery, pxPerUnit, decimals, side}: Tape
     );
 }
 
+interface ModeArmedBadgeProps {
+    mode: string;
+    armed: boolean;
+    /** Seconds since the armed edge, `null` while disarmed. This is
+     * time-since-armed, not time-airborne — see `useArmedSince`. */
+    armedFor: number | null;
+    prearmPass: boolean;
+    unknown: boolean;
+    stale: boolean;
+    staleFor: number | null;
+}
+
+/** Lives at the top of the readout column rather than across the whole panel
+ * — mode and arm state are just two short pieces of text, and a full-width
+ * strip above the instrument was mostly empty space either way. */
+function ModeArmedBadge({mode, armed, armedFor, prearmPass, unknown, stale, staleFor}: ModeArmedBadgeProps) {
+    return (
+        <div
+            className={[
+                "@xs:col-span-2 flex flex-wrap items-center gap-2 border px-2 py-1.5",
+                armed ? "border-state-danger bg-state-danger/10" : "border-border-subtle bg-layer-01",
+            ].join(" ")}
+        >
+            <span className="font-mono text-label text-text-primary">{unknown ? "—" : mode}</span>
+            <span
+                className={[
+                    "border px-1.5 py-0.5 text-micro uppercase",
+                    armed ? "border-state-danger text-state-danger" : "border-border-subtle text-text-helper",
+                ].join(" ")}
+            >
+                {unknown ? "—" : armed ? "Armed" : "Disarmed"}
+            </span>
+            {armed && armedFor !== null && (
+                <span className="font-mono text-micro text-text-helper tabular-nums">{formatDuration(armedFor)}</span>
+            )}
+            {!unknown && !prearmPass && !armed && (
+                <span className="border border-state-warn px-1.5 py-0.5 text-micro text-state-warn uppercase">
+                    Prearm fail
+                </span>
+            )}
+            {stale && <span className="ml-auto text-micro text-state-warn">no data for {staleFor}s</span>}
+        </div>
+    );
+}
+
 interface SparkRowProps {
     label: string;
     tone: Tone;
@@ -427,7 +491,8 @@ export default function TelemetryPanel() {
     const vehicle = useVehicle();
     const connection = useConnection();
     const now = useNow();
-    const history = useTelemetryHistory(vehicle);
+    const history = useTelemetryHistory();
+    const armedSince = useArmedSince();
 
     const packetAge = vehicle.updatedAt === 0 ? null : now - vehicle.updatedAt;
     const stale = isLinkFailing(connection.status);
@@ -435,16 +500,17 @@ export default function TelemetryPanel() {
     // of unmistakable dashes rather than a struck-through zero.
     const unknown = isLinkIdle(connection.status) || vehicle.updatedAt === 0;
     const staleFor = stale && packetAge !== null ? Math.round(packetAge / 1000) : null;
+    const armedFor = armedSince === null ? null : Math.floor((now - armedSince) / 1000);
 
     const heading = vehicle.position?.heading ?? 0;
     const alt = vehicle.position?.alt ?? null;
     const roll = vehicle.attitude?.roll ?? 0;
     const pitch = vehicle.attitude?.pitch ?? 0;
     const attitudeUnknown = vehicle.attitude === null;
+    const homeDistance =
+        vehicle.position && vehicle.home ? distanceMeters(vehicle.position, vehicle.home) : null;
 
     const battTone = batteryTone(vehicle.battery.percent);
-    const gTone = gpsTone(vehicle.gps.fix);
-    const eTone: Tone = vehicle.ekf.ok ? "ok" : "danger";
     const lTone: Tone = vehicle.link.lossPercent > 5 ? "warn" : "ok";
     const vTone = vibeTone(vehicle.ekf.vibe);
 
@@ -454,46 +520,19 @@ export default function TelemetryPanel() {
         // from a vertical stack to a horizontal instrument row at `@xl` based
         // on its own box, not the window's.
         <div className="@container flex h-full min-h-0 w-full flex-col overflow-auto bg-background">
-            <div
-                className={[
-                    "flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-subtle px-3 py-2",
-                    vehicle.armed ? "bg-state-danger/10" : "bg-layer-01",
-                ].join(" ")}
-            >
-                <span className="text-heading text-text-primary">{unknown ? "—" : vehicle.mode}</span>
-                <span
-                    className={[
-                        "border px-1.5 py-0.5 text-micro uppercase",
-                        vehicle.armed
-                            ? "border-state-danger text-state-danger"
-                            : "border-border-subtle text-text-helper",
-                    ].join(" ")}
-                >
-                    {unknown ? "—" : vehicle.armed ? "Armed" : "Disarmed"}
-                </span>
-                {!unknown && !vehicle.prearmPass && !vehicle.armed && (
-                    <span className="border border-state-warn px-1.5 py-0.5 text-micro text-state-warn uppercase">
-                        Prearm fail
-                    </span>
-                )}
-                {stale && (
-                    <span className="ml-auto text-micro text-state-warn">no data for {staleFor}s</span>
-                )}
-            </div>
-
             {/* The row switches to horizontal at `@3xl`, not `@xl` — the instrument
-                block (up to 312px now that the tapes flank it) and badges (256px)
+                block (up to 400px now that the tapes flank it) and badges (256px)
                 are both fixed-width and shrink-0 once in row mode, and below
                 ~700px there isn't room left over for the sparklines' own
                 fixed-width labels alongside them. */}
             <div className="flex flex-1 min-h-0 flex-col gap-3 p-3 @3xl:flex-row @3xl:items-stretch">
                 <div className="mx-auto hidden shrink-0 flex-col items-center @sm:flex @3xl:mx-0 @3xl:h-full">
-                    <div className="flex items-stretch @3xl:h-full">
+                    <div className="flex min-h-0 items-stretch @3xl:flex-1">
                         {/* Tapes only join in row mode — a vertical side dock
                             has no spare width for them, and the numbers they'd
                             show (groundspeed, altitude) still reach the operator
                             through the Alt/GS badges either way. */}
-                        <div className="hidden @3xl:block">
+                        <div className="hidden @3xl:block @3xl:max-h-72">
                             <Tape
                                 value={vehicle.groundspeed}
                                 tickInterval={1}
@@ -503,7 +542,7 @@ export default function TelemetryPanel() {
                                 side="left"
                             />
                         </div>
-                        <div className="aspect-square w-full max-w-56 @3xl:h-full @3xl:max-h-56 @3xl:w-auto">
+                        <div className="aspect-square w-full max-w-72 @3xl:h-full @3xl:max-h-72 @3xl:w-auto">
                             <AttitudeIndicator
                                 heading={heading}
                                 roll={roll}
@@ -512,7 +551,7 @@ export default function TelemetryPanel() {
                                 attitudeUnknown={attitudeUnknown}
                             />
                         </div>
-                        <div className="hidden @3xl:block">
+                        <div className="hidden @3xl:block @3xl:max-h-72">
                             <Tape
                                 value={alt}
                                 tickInterval={5}
@@ -532,6 +571,15 @@ export default function TelemetryPanel() {
                 </div>
 
                 <div className="grid grid-cols-1 content-start gap-2 @xs:grid-cols-2 @3xl:w-64 @3xl:shrink-0">
+                    <ModeArmedBadge
+                        mode={vehicle.mode}
+                        armed={vehicle.armed}
+                        armedFor={armedFor}
+                        prearmPass={vehicle.prearmPass}
+                        unknown={unknown}
+                        stale={stale}
+                        staleFor={staleFor}
+                    />
                     <BatteryGauge
                         percent={vehicle.battery.percent}
                         voltage={vehicle.battery.voltage}
@@ -541,30 +589,15 @@ export default function TelemetryPanel() {
                         unknown={unknown}
                     />
                     <Badge
-                        label="GPS"
-                        value={unknown ? "—" : `${fixLabel(vehicle.gps.fix)} · ${vehicle.gps.satellites} sats`}
-                        title={unknown ? undefined : `HDOP ${vehicle.gps.hdop.toFixed(1)}`}
-                        tone={gTone}
+                        label="Climb"
+                        value={vehicle.climbRate === null ? "—" : `${vehicle.climbRate.toFixed(1)}m/s`}
                     />
-                    <Badge label="EKF" value={unknown ? "—" : vehicle.ekf.ok ? "OK" : "BAD"} tone={eTone}/>
-                    <Badge
-                        label="Link"
-                        value={unknown ? "—" : `${vehicle.link.rssi} · ${vehicle.link.lossPercent.toFixed(1)}%`}
-                        tone={lTone}
-                    />
-                    <Badge
-                        label="Vibe"
-                        value={unknown ? "—" : Math.round(vehicle.ekf.vibe).toString()}
-                        tone={vTone}
-                    />
-                    {/* Alt and GS repeat what the tapes already show — kept here
-                        too since the tapes are @3xl-only, and a narrow side dock
-                        would otherwise lose these two readings entirely. */}
-                    <Badge label="Alt" value={alt === null ? "—" : `${alt.toFixed(1)}m`}/>
-                    <Badge
-                        label="GS"
-                        value={vehicle.groundspeed === null ? "—" : `${vehicle.groundspeed.toFixed(1)}m/s`}
-                    />
+                    {vehicle.vehicleKind === "plane" && (
+                        <Badge
+                            label="AS"
+                            value={vehicle.airspeed === null ? "—" : `${vehicle.airspeed.toFixed(1)}m/s`}
+                        />
+                    )}
                     <Badge
                         label="Position"
                         value={
@@ -573,6 +606,7 @@ export default function TelemetryPanel() {
                                 : "—"
                         }
                     />
+                    <Badge label="Home" value={homeDistance === null ? "—" : `${Math.round(homeDistance)}m`}/>
                 </div>
 
                 <div className="hidden min-w-0 flex-col justify-center gap-2 @md:flex @3xl:flex-1">
@@ -583,14 +617,6 @@ export default function TelemetryPanel() {
                         min={13}
                         max={17.5}
                         display={unknown ? "—" : `${vehicle.battery.voltage.toFixed(1)}V`}
-                    />
-                    <SparkRow
-                        label="HDOP"
-                        tone={gTone}
-                        values={history.map((p) => p.hdop)}
-                        min={0}
-                        max={3}
-                        display={unknown ? "—" : vehicle.gps.hdop.toFixed(1)}
                     />
                     <SparkRow
                         label="Vibe"

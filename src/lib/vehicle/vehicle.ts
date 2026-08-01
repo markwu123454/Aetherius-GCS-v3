@@ -1,11 +1,18 @@
 export type FixType = "none" | "2d" | "3d" | "dgps" | "rtk-float" | "rtk-fixed";
 
+/** How ArduPilot tags a failing arming check in STATUSTEXT. */
+export const PREARM_TEXT_PREFIX = "PreArm: ";
+
 export interface PrearmReason {
+    /** With `PREARM_TEXT_PREFIX` already stripped — the panel shows the
+     * reason itself, not the tag ArduPilot uses to route it. */
     text: string;
     /**
-     * When this reason was last emitted. ArduPilot only sends `PreArm:` lines
-     * as STATUSTEXT on its own cadence and never signals that one has been
-     * resolved, so age is the only evidence we have.
+     * When this batch (see `useVehicle`) arrived. ArduPilot re-sends the
+     * *entire* current set of failing reasons every time the checks re-run,
+     * never incrementally, so the whole list is replaced wholesale on each
+     * cycle rather than merged into — this is simply that cycle's timestamp,
+     * not a per-reason "last confirmed" tracked individually.
      */
     lastSeen: number;
 }
@@ -26,6 +33,11 @@ export interface VehicleAttitude {
     pitch: number;
 }
 
+export interface HomePosition {
+    lat: number;
+    lon: number;
+}
+
 /**
  * Resolved from HEARTBEAT's `mavtype` — grouped down to what the UI actually
  * treats differently (which icon to draw), not the full MAV_TYPE enum.
@@ -36,12 +48,20 @@ export interface VehicleState {
     connected: boolean;
     armed: boolean;
     mode: string;
+    /** The numeric mode `mode` was formatted from — needed to send `setMode`, since ArduPilot's mode switch takes the raw code back, not the label. `null` until a HEARTBEAT has arrived. */
+    customMode: number | null;
     /** `null` until the first GLOBAL_POSITION_INT arrives. */
     position: VehiclePosition | null;
+    /** ArduPilot's own recorded home, not something the GCS infers locally. `null` until the first HOME_POSITION arrives. */
+    home: HomePosition | null;
     /** `null` until the first ATTITUDE arrives. */
     attitude: VehicleAttitude | null;
     /** Meters/second over the ground. `null` until the first VFR_HUD arrives. */
     groundspeed: number | null;
+    /** True airspeed from the pitot sensor, meters/second. Only meaningful on planes. `null` until the first VFR_HUD arrives. */
+    airspeed: number | null;
+    /** Meters/second, positive climbing. `null` until the first VFR_HUD arrives. */
+    climbRate: number | null;
     /** `null` until the first HEARTBEAT arrives. */
     vehicleKind: VehicleKind | null;
     /**
@@ -49,7 +69,11 @@ export interface VehicleState {
      * prearm signal the status strip is allowed to render.
      */
     prearmPass: boolean;
-    /** Best-effort, text-only, and always potentially out of date. */
+    /**
+     * The current batch of `PreArm:` reasons — replaced wholesale each cycle,
+     * so this is exactly what ArduPilot most recently reported, not an
+     * accumulation. Empty once `prearmPass` is true.
+     */
     prearmReasons: PrearmReason[];
     /** ARMING_CHECK categories the operator has switched off. */
     disabledChecks: string[];
@@ -64,12 +88,13 @@ export interface VehicleState {
 /** A reading older than this is shown as stale rather than as a live value. */
 export const STALE_AFTER = 3_000;
 
-/** ArduPilot re-emits prearm text roughly every 30s while checks are failing. */
-export const PREARM_CADENCE = 30_000;
-
-/** Past one missed cycle a reason is suspect; past two it is dropped. */
-export const PREARM_REASON_SUSPECT = PREARM_CADENCE + 5_000;
-export const PREARM_REASON_EXPIRY = PREARM_CADENCE * 2 + 10_000;
+/**
+ * Matches `PREARM_CHECK_INTERVAL` in `link.rs` — how often the backend
+ * re-triggers `MAV_CMD_RUN_PREARM_CHECKS`. `prearmReasons` is replaced
+ * wholesale on roughly this cadence, so nothing needs to guess at staleness;
+ * this is only used to describe the cadence in the UI.
+ */
+export const PREARM_CHECK_INTERVAL = 3_000;
 
 export type AlertLevel = "none" | "warn" | "danger";
 
@@ -98,6 +123,19 @@ export function alertLevel(state: VehicleState): AlertLevel {
         return "warn";
     }
     return "none";
+}
+
+const EARTH_RADIUS_M = 6_371_000;
+
+/** Great-circle distance between two lat/lon points, in meters. */
+export function distanceMeters(a: {lat: number; lon: number}, b: {lat: number; lon: number}): number {
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const dLat = toRad(b.lat - a.lat);
+    const dLon = toRad(b.lon - a.lon);
+    const sinDLat = Math.sin(dLat / 2);
+    const sinDLon = Math.sin(dLon / 2);
+    const h = sinDLat * sinDLat + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sinDLon * sinDLon;
+    return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(h));
 }
 
 export function fixLabel(fix: FixType): string {

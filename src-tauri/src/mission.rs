@@ -15,6 +15,7 @@ use tauri::{AppHandle, Manager};
 use tokio::sync::mpsc;
 
 use crate::link::LinkState;
+use crate::telemetry::VehicleKind;
 
 /// Sends into whatever upload is currently listening, if any. `Err` (no
 /// upload in flight) is expected and fine to drop — it just means this
@@ -84,8 +85,10 @@ fn build_upload_items(
     waypoints: &[Waypoint],
     home: (f64, f64),
     target: (u8, u8),
+    include_takeoff: bool,
 ) -> Vec<MISSION_ITEM_INT_DATA> {
-    let mut items = Vec::with_capacity(waypoints.len() + 1);
+    let extra = if include_takeoff { 2 } else { 1 };
+    let mut items = Vec::with_capacity(waypoints.len() + extra);
 
     items.push(MISSION_ITEM_INT_DATA {
         seq: 0,
@@ -104,9 +107,30 @@ fn build_upload_items(
         param4: 0.0,
     });
 
+    if include_takeoff {
+        if let Some(first) = waypoints.first() {
+            items.push(MISSION_ITEM_INT_DATA {
+                seq: 1,
+                frame: MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT,
+                command: MavCmd::MAV_CMD_NAV_TAKEOFF,
+                current: 0,
+                autocontinue: 1,
+                x: 0,
+                y: 0,
+                z: first.altitude,
+                target_system: target.0,
+                target_component: target.1,
+                param1: 0.0,
+                param2: 0.0,
+                param3: 0.0,
+                param4: 0.0,
+            });
+        }
+    }
+
     for (index, waypoint) in waypoints.iter().enumerate() {
         items.push(MISSION_ITEM_INT_DATA {
-            seq: (index + 1) as u16,
+            seq: (index + extra) as u16,
             frame: MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT,
             command: MavCmd::MAV_CMD_NAV_WAYPOINT,
             current: 0,
@@ -154,12 +178,17 @@ pub async fn upload_mission(app: AppHandle, waypoints: Vec<Waypoint>) -> Result<
         .unwrap_or_else(|e| e.into_inner())
         .clone()
         .ok_or_else(|| "not connected".to_string())?;
-    let home = {
+    let (home, include_takeoff) = {
         let snapshot = link.snapshot.lock().unwrap_or_else(|e| e.into_inner());
-        match (snapshot.lat, snapshot.lon) {
+        let home = match (snapshot.lat, snapshot.lon) {
             (Some(lat), Some(lon)) => (lat, lon),
             _ => return Err("no GPS fix yet — home position is unknown".to_string()),
-        }
+        };
+        let include_takeoff = matches!(
+        snapshot.vehicle_kind,
+        Some(VehicleKind::Multirotor) | Some(VehicleKind::Plane)
+    );
+        (home, include_takeoff)
     };
     drop(link);
 
@@ -176,7 +205,7 @@ pub async fn upload_mission(app: AppHandle, waypoints: Vec<Waypoint>) -> Result<
     // in progress" must never clear someone else's in-flight sender.
     let _guard = ClearOnDrop(app.clone());
 
-    let items = build_upload_items(&waypoints, home, target);
+    let items = build_upload_items(&waypoints, home, target, include_takeoff);
 
     let _ = connection.send_default(&MavMessage::MISSION_COUNT(MISSION_COUNT_DATA {
         count: items.len() as u16,

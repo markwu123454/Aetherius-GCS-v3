@@ -6,7 +6,7 @@ import {VehicleKind} from "./vehicle.ts";
  * possible to distinguish; `Other` (Rover, sub, antenna tracker, ...) has no
  * table of its own yet, since nothing here can tell those apart.
  */
-const COPTER_MODES: Record<number, string> = {
+export const COPTER_MODES: Record<number, string> = {
     0: "STABILIZE",
     1: "ACRO",
     2: "ALT HOLD",
@@ -35,7 +35,7 @@ const COPTER_MODES: Record<number, string> = {
     28: "TURTLE",
 };
 
-const PLANE_MODES: Record<number, string> = {
+export const PLANE_MODES: Record<number, string> = {
     0: "MANUAL",
     1: "CIRCLE",
     2: "STABILIZE",
@@ -63,6 +63,16 @@ const PLANE_MODES: Record<number, string> = {
 };
 
 /**
+ * The mode table for a vehicle type, or `null` for a type (or absent
+ * heartbeat) this app can't yet distinguish modes for — same rule
+ * `modeLabel` uses, exposed so callers that need the whole list (a mode
+ * switcher) and the one that needs a single label don't drift apart.
+ */
+export function modesForKind(vehicleKind: VehicleKind | null): Record<number, string> | null {
+    return vehicleKind === "multirotor" ? COPTER_MODES : vehicleKind === "plane" ? PLANE_MODES : null;
+}
+
+/**
  * `customMode === null` means no HEARTBEAT has arrived yet. A number outside
  * the table means a mode this list doesn't know about — shown as the raw
  * number rather than hidden, since that's still more useful to an operator
@@ -73,6 +83,5 @@ export function modeLabel(vehicleKind: VehicleKind | null, customMode: number | 
         return "—";
     }
 
-    const table = vehicleKind === "multirotor" ? COPTER_MODES : vehicleKind === "plane" ? PLANE_MODES : null;
-    return table?.[customMode] ?? `MODE ${customMode}`;
+    return modesForKind(vehicleKind)?.[customMode] ?? `MODE ${customMode}`;
 }

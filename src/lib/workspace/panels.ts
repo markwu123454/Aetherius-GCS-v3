@@ -56,6 +56,17 @@ export const PANEL_DEFINITIONS: PanelDefinition[] = [
         defaultDock: "left",
         openByDefault: true,
     },
+    {
+        id: "prearm",
+        title: "Prearm",
+        component: "prearm",
+        dockLeft: true,
+        dockRight: true,
+        dockBottom: true,
+        floatable: true,
+        defaultDock: "right",
+        openByDefault: false,
+    },
 ];
 
 export function panelById(id: string): PanelDefinition | undefined {

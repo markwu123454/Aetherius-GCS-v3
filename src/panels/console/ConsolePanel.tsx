@@ -22,11 +22,10 @@ export default function ConsolePanel() {
     );
     const [query, setQuery] = useState("");
     const [following, setFollowing] = useState(true);
-    const [inventoryOpen, setInventoryOpen] = useState(false);
 
     const listRef = useRef<HTMLDivElement>(null);
 
-    const matching = useMemo(() => {
+    const events = useMemo(() => {
         const needle = query.trim().toLowerCase();
         return entries.filter(
             (entry) =>
@@ -34,31 +33,6 @@ export default function ConsolePanel() {
                 (needle === "" || entry.text.toLowerCase().includes(needle)),
         );
     }, [entries, visibleLevels, query]);
-
-    /**
-     * Events and trace are split rather than interleaved.
-     *
-     * They are different things wearing the same row. An event happened once,
-     * at a time, and its position in the list is the information. A trace row
-     * is a live counter that keeps updating for the whole session — sorting it
-     * by first appearance while showing its last-seen time makes the log read
-     * backwards, and thirty of them will bury the handful of lines that
-     * actually say something.
-     */
-    const events = useMemo(() => matching.filter((entry) => entry.level !== "trace"), [matching]);
-
-    const inventory = useMemo(
-        () =>
-            matching
-                .filter((entry) => entry.level === "trace")
-                // By volume, not by arrival: "what is this vehicle mostly
-                // sending?" is the question this view exists to answer.
-                .sort((a, b) => b.count - a.count),
-        [matching],
-    );
-
-    const unhandledCount = inventory.filter((entry) => entry.text.includes("unhandled")).length;
-    const totalMessages = inventory.reduce((sum, entry) => sum + entry.count, 0);
 
     // Before paint, not after: scrolling in a passive effect lets the browser
     // show the pre-scroll frame first, which reads as a jitter on every line.
@@ -95,14 +69,7 @@ export default function ConsolePanel() {
             `${formatConsoleTime(entry.at)}  ${entry.source.padEnd(8)} ${entry.text}` +
             (entry.count > 1 ? `  (x${entry.count})` : "");
 
-        const parts = [events.map(line).join("\n")];
-        if (inventory.length > 0) {
-            parts.push(
-                `\n--- MAVLink (${inventory.length} types, ${totalMessages} messages) ---`,
-                inventory.map((entry) => `${String(entry.count).padStart(8)}  ${entry.text}`).join("\n"),
-            );
-        }
-        void navigator.clipboard?.writeText(parts.join("\n"));
+        void navigator.clipboard?.writeText(events.map(line).join("\n"));
     };
 
     return (
@@ -173,54 +140,6 @@ export default function ConsolePanel() {
                 aria-live="polite"
                 className="min-h-0 flex-1 overflow-auto px-2 py-1 font-mono text-label leading-snug select-text"
             >
-                {/* Above the timeline, and collapsed by default. Autoscroll
-                    pins to the bottom, so anything below the events would fight
-                    it for the viewport every time a line arrived. */}
-                {inventory.length > 0 && (
-                    <div className="mb-1 border border-border-subtle bg-layer-01">
-                        <button
-                            type="button"
-                            onClick={() => setInventoryOpen((open) => !open)}
-                            aria-expanded={inventoryOpen}
-                            className="flex w-full items-center gap-2 px-2 py-1 text-left text-label text-text-secondary hover:bg-layer-hover-01 hover:text-text-primary"
-                        >
-                            <span className="text-text-helper">{inventoryOpen ? "▾" : "▸"}</span>
-                            <span className="min-w-0 flex-1 truncate">
-                                MAVLink — {inventory.length} types
-                                {unhandledCount > 0 && `, ${unhandledCount} unhandled`}
-                            </span>
-                            <span className="shrink-0 tabular-nums text-text-helper">
-                                {totalMessages.toLocaleString()}
-                            </span>
-                        </button>
-
-                        {inventoryOpen &&
-                            inventory.map((entry) => {
-                                const unhandled = entry.text.includes("unhandled");
-                                return (
-                                    <div
-                                        key={entry.id}
-                                        className="flex gap-2 border-t border-border-subtle/40 px-2 py-0.5"
-                                    >
-                                        <span className="w-12 shrink-0 text-right tabular-nums text-text-helper">
-                                            {entry.count.toLocaleString()}
-                                        </span>
-                                        <span
-                                            className={`min-w-0 flex-1 break-words ${unhandled ? "text-text-secondary" : "text-text-disabled"}`}
-                                        >
-                                            {entry.text.replace(" — unhandled", "")}
-                                        </span>
-                                        {/* Only the unmatched ones are a to-do,
-                                            so those are what gets the marker. */}
-                                        {unhandled && (
-                                            <span className="shrink-0 self-start text-text-helper">•</span>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                    </div>
-                )}
-
                 {events.length === 0 ? (
                     <div className="p-2 text-text-helper">
                         {entries.length === 0

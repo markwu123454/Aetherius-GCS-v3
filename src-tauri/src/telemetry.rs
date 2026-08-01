@@ -46,6 +46,17 @@ pub struct VehicleSnapshot {
     pub roll_deg: Option<f32>,
     pub pitch_deg: Option<f32>,
     pub groundspeed: Option<f32>,
+    /// True airspeed from the pitot sensor, meters/second. Only meaningful on planes.
+    pub airspeed: Option<f32>,
+    /// Meters/second, positive climbing.
+    pub climb_rate: Option<f32>,
+    pub home_lat: Option<f64>,
+    pub home_lon: Option<f64>,
+    /// Raw MAV_SYS_STATUS_SENSOR bitmasks, forwarded as-is — the frontend
+    /// decodes individual bits into a named checklist.
+    pub sensors_present: Option<u32>,
+    pub sensors_enabled: Option<u32>,
+    pub sensors_health: Option<u32>,
 }
 
 /// Fold one message into the snapshot. Only the messages the status strip
@@ -57,8 +68,16 @@ pub fn apply(snapshot: &mut VehicleSnapshot, message: &MavMessage) {
         MavMessage::HEARTBEAT(data) => heartbeat::apply(snapshot, data),
         MavMessage::GLOBAL_POSITION_INT(data) => global_position::apply(snapshot, data),
         MavMessage::EKF_STATUS_REPORT(data) => ekf_status::apply(snapshot, data),
-        MavMessage::VFR_HUD(data) => snapshot.groundspeed = Some(data.groundspeed),
         MavMessage::RADIO_STATUS(data) => snapshot.radio_rssi = Some(data.rssi),
+        MavMessage::HOME_POSITION(data) => {
+            snapshot.home_lat = Some(data.latitude as f64 / 1e7);
+            snapshot.home_lon = Some(data.longitude as f64 / 1e7);
+        }
+        MavMessage::VFR_HUD(data) => {
+            snapshot.groundspeed = Some(data.groundspeed);
+            snapshot.airspeed = Some(data.airspeed);
+            snapshot.climb_rate = Some(data.climb);
+        }
         MavMessage::GPS_RAW_INT(data) => {
             snapshot.gps_fix = Some(data.fix_type as u8);
             snapshot.satellites = Some(data.satellites_visible);
@@ -80,6 +99,9 @@ pub fn apply(snapshot: &mut VehicleSnapshot, message: &MavMessage) {
             snapshot.battery_current = Some(data.current_battery as f32 / 100.0);
             snapshot.battery_percent = Some(data.battery_remaining);
             snapshot.comm_drop_percent = Some(data.drop_rate_comm as f32 / 100.0);
+            snapshot.sensors_present = Some(data.onboard_control_sensors_present.bits());
+            snapshot.sensors_enabled = Some(data.onboard_control_sensors_enabled.bits());
+            snapshot.sensors_health = Some(data.onboard_control_sensors_health.bits());
             snapshot.prearm_pass = Some(
                 data.onboard_control_sensors_health
                     .contains(MavSysStatusSensor::MAV_SYS_STATUS_PREARM_CHECK),

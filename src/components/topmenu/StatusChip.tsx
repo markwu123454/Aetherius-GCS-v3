@@ -1,3 +1,5 @@
+import type {ReactNode} from "react";
+
 export type Tone = "ok" | "warn" | "danger" | "info" | "neutral";
 
 export const TONE_TEXT: Record<Tone, string> = {
@@ -42,6 +44,15 @@ interface StatusChipProps {
      */
     severe?: boolean;
     onClick?: () => void;
+    /** Set when `dropdown` is provided, so the trigger reports its own state. */
+    expanded?: boolean;
+    /**
+     * Rendered absolutely-positioned below the chip, e.g. by `ArmControl` or
+     * `ModeControl`. Turns the chip from a plain reading into a dropdown
+     * trigger without every other `StatusChip` caller needing to know about
+     * dropdowns at all.
+     */
+    dropdown?: ReactNode;
 }
 
 export default function StatusChip({
@@ -55,6 +66,8 @@ export default function StatusChip({
     unknown = false,
     severe = false,
     onClick,
+    expanded,
+    dropdown,
 }: StatusChipProps) {
     const shown = unknown ? "—" : compact && compactValue !== undefined ? compactValue : value;
     const showAge = stale && typeof staleFor === "number";
@@ -66,34 +79,38 @@ export default function StatusChip({
           : `${label} ${value}`;
 
     return (
-        <button
-            type="button"
-            onClick={onClick}
-            title={title}
-            className={[
-                "flex h-full shrink-0 items-center gap-2 border-l border-border-subtle px-3",
-                "text-left whitespace-nowrap transition-colors duration-100",
-                onClick ? "hover:bg-layer-hover-01" : "cursor-default",
-            ].join(" ")}
-        >
-            <span className="text-micro text-text-helper uppercase">{label}</span>
-            <span
+        <div className="relative flex h-full shrink-0 items-stretch">
+            <button
+                type="button"
+                onClick={onClick}
+                aria-expanded={dropdown ? expanded : undefined}
+                title={title}
                 className={[
-                    "font-mono text-label tabular-nums",
-                    unknown
-                        ? "text-text-helper"
-                        : stale
-                          ? "text-text-disabled line-through decoration-1"
-                          : TONE_TEXT[tone],
+                    "flex h-full items-center gap-2 border-l border-border-subtle px-3",
+                    "text-left whitespace-nowrap transition-colors duration-100",
+                    onClick ? "hover:bg-layer-hover-01" : "cursor-default",
                 ].join(" ")}
             >
-                {shown}
-            </span>
-            {showAge && (
-                <span className={`text-micro ${severe ? "text-state-danger" : "text-state-warn"}`}>
-                    {staleFor}s
+                <span className="text-micro text-text-helper uppercase">{label}</span>
+                <span
+                    className={[
+                        "font-mono text-label tabular-nums",
+                        unknown
+                            ? "text-text-helper"
+                            : stale
+                              ? "text-text-disabled line-through decoration-1"
+                              : TONE_TEXT[tone],
+                    ].join(" ")}
+                >
+                    {shown}
                 </span>
-            )}
-        </button>
+                {showAge && (
+                    <span className={`text-micro ${severe ? "text-state-danger" : "text-state-warn"}`}>
+                        {staleFor}s
+                    </span>
+                )}
+            </button>
+            {dropdown}
+        </div>
     );
 }

@@ -1,9 +1,10 @@
 import {useEffect, useState} from "react";
-import {PREARM_CADENCE, PrearmReason, VehicleState} from "./vehicle.ts";
+import {PREARM_CHECK_INTERVAL, PrearmReason, VehicleState} from "./vehicle.ts";
 
 const TICK = 500;
 
-const INITIAL_REASONS = ["PreArm: Compass not calibrated", "PreArm: GPS horizontal speed error"];
+// Already stripped of `PREARM_TEXT_PREFIX`, matching what the real path stores.
+const INITIAL_REASONS = ["Compass not calibrated", "GPS horizontal speed error"];
 
 function initial(): VehicleState {
     const now = Date.now();
@@ -11,9 +12,13 @@ function initial(): VehicleState {
         connected: true,
         armed: false,
         mode: "LOITER",
+        customMode: 5,
         position: null,
+        home: null,
         attitude: {roll: 0, pitch: 0},
         groundspeed: 5.2,
+        airspeed: null,
+        climbRate: 0,
         vehicleKind: "multirotor",
         prearmPass: false,
         prearmReasons: INITIAL_REASONS.map((text) => ({text, lastSeen: now})),
@@ -46,7 +51,7 @@ export function useMockVehicle(): VehicleState {
 
                 // Reasons are re-emitted wholesale on the vehicle's cadence,
                 // exactly as ArduPilot does — never incrementally.
-                const dueForResend = now - (current.prearmReasons[0]?.lastSeen ?? 0) >= PREARM_CADENCE;
+                const dueForResend = now - (current.prearmReasons[0]?.lastSeen ?? 0) >= PREARM_CHECK_INTERVAL;
                 const prearmReasons: PrearmReason[] =
                     !current.prearmPass && dueForResend
                         ? current.prearmReasons.map((reason) => ({...reason, lastSeen: now}))
@@ -57,6 +62,7 @@ export function useMockVehicle(): VehicleState {
                 return {
                     ...current,
                     prearmReasons,
+                    climbRate: drift(current.climbRate ?? 0, 0.6, -4, 4),
                     battery: {
                         voltage: drift(current.battery.voltage, 0.05, 14.8, 16.8),
                         current: drift(current.battery.current, 0.4, 0.8, 24),

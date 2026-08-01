@@ -3,28 +3,12 @@ import {useTauriEvent} from "@/lib/tauriEvent.ts";
 import {logConsole} from "./consoleStore.ts";
 import {levelFromSeverity, severityName} from "./console.ts";
 import type {ConnectionStatus} from "@/lib/vehicle/connection.ts";
-import type {VehicleState} from "@/lib/vehicle/vehicle.ts";
+import {PREARM_TEXT_PREFIX, type VehicleState} from "@/lib/vehicle/vehicle.ts";
 
 /** Emitted per STATUSTEXT, after multi-chunk reassembly in Rust. */
 interface StatusTextEvent {
     severity: number;
     text: string;
-}
-
-/**
- * A tally of every MAVLink message seen since the last drain, batched on the
- * backend's existing 100ms tick. Batched rather than one event per packet
- * because the periodic streams run at ~50/s and that is a lot of IPC to spend
- * on a view that is off by default.
- */
-interface MavlinkSeenBatch {
-    entries: {
-        name: string;
-        count: number;
-        /** False means nothing in `dispatch::route` claims it — i.e. it still
-         * needs somewhere to go. */
-        handled: boolean;
-    }[];
 }
 
 /** Emitted per COMMAND_ACK. */
@@ -65,33 +49,26 @@ const LINK_TEXT: Record<ConnectionStatus, string> = {
  */
 export function useConsoleEvents(): void {
     useTauriEvent<StatusTextEvent>("statustext", (event) => {
-        logConsole(
-            levelFromSeverity(event.severity),
-            "vehicle",
-            `${severityName(event.severity)}: ${event.text}`,
-        );
-    });
-
-    useTauriEvent<MavlinkSeenBatch>("mavlink-seen", (batch) => {
-        for (const seen of batch.entries) {
-            // Trace, and coalesced by name for the whole session — so this
-            // settles into one row per message type with a running total,
-            // rather than burying the event log it shares a panel with.
-            logConsole(
-                "trace",
-                "mavlink",
-                `${seen.name}${seen.handled ? "" : " — unhandled"}`,
-                seen.count,
-            );
-        }
+        // `PreArm:` lines have their own dedicated panel now, refreshed every
+        // few seconds by the backend's own periodic recheck — surfacing them
+        // here too, at whatever severity ArduPilot tags them (usually
+        // CRITICAL), would just be the same information flooding the console
+        // at a level nobody asked to see routinely.
+        const level = event.text.startsWith(PREARM_TEXT_PREFIX) ? "debug" : levelFromSeverity(event.severity);
+        logConsole(level, "vehicle", `${severityName(event.severity)}: ${event.text}`);
     });
 
     useTauriEvent<CommandAckEvent>("command-ack", (event) => {
-        logConsole(
-            event.accepted ? "info" : "danger",
-            "command",
-            `${event.command} → ${event.result}`,
-        );
+        // Sent automatically on every connect to raise the stream rate for a
+        // handful of message types — routine housekeeping, not something the
+        // operator asked for, so it's debug rather than info/danger.
+        const level =
+            event.command === "MAV_CMD_SET_MESSAGE_INTERVAL"
+                ? "debug"
+                : event.accepted
+                    ? "info"
+                    : "danger";
+        logConsole(level, "command", `${event.command} → ${event.result}`);
     });
 
     useTauriEvent<ConnectionStatus>("link-status", (status) => {

@@ -2,6 +2,7 @@ import {ReactElement} from "react";
 import {PanelDefinition} from "@/lib/workspace/panels.ts";
 import ConsolePanel from "./console/ConsolePanel.tsx";
 import TelemetryPanel from "./telemetry/TelemetryPanel.tsx";
+import PrearmPanel from "./prearm/PrearmPanel.tsx";
 
 export type PanelComponent = (props: {panel: PanelDefinition}) => ReactElement;
 
@@ -17,6 +18,7 @@ const PANEL_COMPONENTS: Record<string, PanelComponent> = {
     placeholder: PlaceholderPanel,
     console: ConsolePanel,
     telemetry: TelemetryPanel,
+    prearm: PrearmPanel,
 };
 
 export function PanelBody({panel}: {panel: PanelDefinition}) {

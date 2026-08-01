@@ -1,5 +1,5 @@
 import {ReactElement} from "react";
-import {DisplayMode} from "./settings.ts";
+import {DisplayMode, MIN_CONSOLE_COLLAPSE_THRESHOLD} from "./settings.ts";
 import {SettingsApi} from "./useSettings.ts";
 import {AIRSPACE_CLASSES, type AirspaceClass, type AirspaceClassSettings} from "@/lib/airspace/classes.ts";
 import {resolveToken} from "@/lib/airspace/airspace.ts";
@@ -48,6 +48,38 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
                     </label>
                 ))}
             </div>
+        </section>
+    );
+}
+
+function ConsoleSettings({settings}: {settings: SettingsApi}) {
+    return (
+        <section className="flex flex-col gap-2">
+            <h2 className="text-heading text-text-primary">Console</h2>
+            <label className="flex items-center gap-2 text-body text-text-secondary">
+                Collapse a repeated line after
+                <input
+                    type="number"
+                    min={MIN_CONSOLE_COLLAPSE_THRESHOLD}
+                    step={1}
+                    value={settings.consoleCollapseThreshold}
+                    onChange={(event) => {
+                        const value = event.target.valueAsNumber;
+                        if (Number.isFinite(value)) {
+                            settings.set(
+                                "consoleCollapseThreshold",
+                                Math.max(MIN_CONSOLE_COLLAPSE_THRESHOLD, Math.round(value)),
+                            );
+                        }
+                    }}
+                    className="w-16 border-b border-border-strong bg-layer-02 px-2 py-1 text-center font-mono text-body text-text-primary"
+                />
+                repeats
+            </label>
+            <p className="text-label text-text-helper">
+                Below that, every occurrence is shown as its own line. From then on, further repeats
+                within a minute fold into the last line as a running ×N count instead of piling up.
+            </p>
         </section>
     );
 }
@@ -179,6 +211,7 @@ function AirspaceSettings({settings}: {settings: SettingsApi}) {
 const CATEGORY_COMPONENTS: Record<string, SettingsCategoryComponent> = {
     connection: ConnectionSettings,
     display: DisplaySettings,
+    console: ConsoleSettings,
     airspace: AirspaceSettings,
 };
 

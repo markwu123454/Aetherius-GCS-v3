@@ -93,7 +93,7 @@ export function useAirspace(settings: SettingsApi): AirspaceState {
                 const built = Object.entries(manifest.classes)
                     .map(([id, info]) => `${id.toUpperCase()} ${info.features}`)
                     .join(", ");
-                logConsole("info", "app", `Airspace NASR ${manifest.cycle ?? "unknown cycle"} (${built})`);
+                logConsole("debug", "app", `Airspace NASR ${manifest.cycle ?? "unknown cycle"} (${built})`);
 
                 if (!manifest.cycle) return;
                 const ageDays = (Date.now() - Date.parse(manifest.cycle)) / 86_400_000;

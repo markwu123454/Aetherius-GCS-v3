@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from "react";
 import {createRoot, type Root} from "react-dom/client";
-import {LngLatLike, Marker} from "maplibre-gl";
+import {Marker} from "maplibre-gl";
 import {AirportLocation, Drone, LocationCurrent} from "@carbon/icons-react";
 import {VehicleKind, VehiclePosition} from "@/lib/vehicle/vehicle.ts";
 import {AIRSPACE_CLASSES, airspaceColor} from "@/lib/airspace/airspace.ts";
@@ -18,16 +18,45 @@ const FIRST_FIX_ZOOM = 17;
  */
 const LOCATION_CURRENT_BEARING = 45;
 
+/**
+ * Bounds on the gap between two fixes used to pace the interpolation below.
+ * Below the floor, a near-zero interval would turn into a near-infinite
+ * interpolation speed for one frame; above the ceiling (a link hiccup, or
+ * simply the first fix after connecting), a fix that arrived late is snapped
+ * to rather than eased toward, so catching up doesn't play out as visible
+ * slow motion.
+ */
+const MIN_INTERPOLATE_MS = 20;
+const MAX_INTERPOLATE_MS = 500;
+
+function clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
+}
+
+function lerp(a: number, b: number, t: number): number {
+    return a + (b - a) * t;
+}
+
+/** Shortest-path interpolation across the 0/360 wrap, so a heading crossing
+ * north turns the marker the short way rather than spinning it almost all
+ * the way around. */
+function lerpAngle(a: number, b: number, t: number): number {
+    const delta = ((((b - a) % 360) + 540) % 360) - 180;
+    return a + delta * t;
+}
+
+function lerpLngLat(a: [number, number], b: [number, number], t: number): [number, number] {
+    return [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
+}
+
 /** `Drone` has no "front" in its artwork — four rotors in a symmetric X — so
  * there is no offset to correct for; it rotates along with heading anyway. */
 function VehicleMarkerIcon({kind}: {kind: VehicleKind | null}) {
     return kind === "multirotor" ? <Drone size={28}/> : <LocationCurrent size={28}/>;
 }
 
-function markerRotation(position: VehiclePosition, kind: VehicleKind | null): number {
-    return kind === "plane" || kind === null || kind === "other"
-        ? position.heading - LOCATION_CURRENT_BEARING
-        : position.heading;
+function markerRotation(heading: number, kind: VehicleKind | null): number {
+    return kind === "plane" || kind === null || kind === "other" ? heading - LOCATION_CURRENT_BEARING : heading;
 }
 
 interface MapViewProps {
@@ -43,14 +72,31 @@ export default function MapView({position, vehicleKind, airspace}: MapViewProps)
     const hasCenteredRef = useRef(false);
     const [following, setFollowing] = useState(false);
 
-    // Read inside the position effect without making it a dependency — the
-    // effect should only re-run on a new fix, never on a follow-state toggle,
-    // or the button's own animated recenter gets cut off by an instant jump
-    // from this effect firing a second time right behind it.
+    // Read inside the tick loop without making them dependencies — these
+    // should never restart the animation-frame loop itself, only change what
+    // a frame already in flight does.
     const followingRef = useRef(false);
     useEffect(() => {
         followingRef.current = following;
     }, [following]);
+
+    const vehicleKindRef = useRef(vehicleKind);
+    useEffect(() => {
+        vehicleKindRef.current = vehicleKind;
+    }, [vehicleKind]);
+
+    // A deliberate eased camera move in flight — the first-fix flight-in, or
+    // the recenter button — that the follow tick below must not fight. Both
+    // an `easeTo` and a per-frame `jumpTo` are direct camera commands; without
+    // this, the very next animation frame would cut the ease off almost
+    // before it starts.
+    const recenteringRef = useRef(false);
+
+    // The last two fixes and when each arrived, in browser time — what the
+    // tick loop interpolates between. Not React state: nothing here should
+    // trigger a render, only what the map draws on its own clock.
+    const previousFixRef = useRef<{lngLat: [number, number]; heading: number; at: number} | null>(null);
+    const latestFixRef = useRef<{lngLat: [number, number]; heading: number; at: number} | null>(null);
 
     // Runs after `useBaseMap`'s own effect within the same commit, so the map
     // instance already exists. These listeners die with the map itself (torn
@@ -147,11 +193,18 @@ export default function MapView({position, vehicleKind, airspace}: MapViewProps)
         }
     }, [styleReady, airspace.loaded, airspace.classes]);
 
+    // Records each new fix and (re)creates the marker — the actual on-screen
+    // position is the tick loop's job, below. Kept separate so a fix arriving
+    // doesn't have to fight a still-running interpolation toward the previous
+    // one: this only ever records where the marker is headed next.
     useEffect(() => {
         const map = mapRef.current;
         if (!map || !position) return;
 
-        const lngLat: LngLatLike = [position.lon, position.lat];
+        const lngLat: [number, number] = [position.lon, position.lat];
+
+        previousFixRef.current = latestFixRef.current;
+        latestFixRef.current = {lngLat, heading: position.heading, at: performance.now()};
 
         if (!markerRef.current) {
             const element = document.createElement("div");
@@ -164,31 +217,77 @@ export default function MapView({position, vehicleKind, airspace}: MapViewProps)
 
             iconRootRef.current = createRoot(element);
             markerRef.current = new Marker({element, rotationAlignment: "map"}).setLngLat(lngLat).addTo(map);
-        } else {
-            markerRef.current.setLngLat(lngLat);
         }
 
-        markerRef.current.setRotation(markerRotation(position, vehicleKind));
         iconRootRef.current?.render(<VehicleMarkerIcon kind={vehicleKind}/>);
 
         if (!hasCenteredRef.current) {
             // First fix ever: worth an animated flight in from the world view,
             // and worth taking over the camera for even if the operator hasn't
             // asked to follow yet — there is nothing else on screen to look at.
+            // There's no previous fix to interpolate from either, so the tick
+            // loop below just places the marker here directly.
             hasCenteredRef.current = true;
             setFollowing(true);
+            recenteringRef.current = true;
+            map.once("moveend", () => {
+                recenteringRef.current = false;
+            });
             map.easeTo({center: lngLat, zoom: FIRST_FIX_ZOOM, duration: 800});
-        } else if (followingRef.current) {
-            // Instant, not eased: fixes arrive ~10/s, and animating each one
-            // would just queue eases faster than they can finish.
-            map.jumpTo({center: lngLat});
         }
     }, [position, vehicleKind]);
+
+    // Glides the marker (and, while following, the camera) between the last
+    // two fixes on its own animation-frame clock, rather than hopping to each
+    // new one the instant it arrives. Runs continuously, independent of how
+    // often `position` actually changes — telemetry arrives in bursts at
+    // whatever rate the link allows, and this is what turns that into motion
+    // smooth enough to watch.
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map) return;
+
+        let frame: number;
+
+        const tick = () => {
+            const marker = markerRef.current;
+            const latest = latestFixRef.current;
+
+            if (marker && latest) {
+                const previous = previousFixRef.current;
+                let lngLat = latest.lngLat;
+                let heading = latest.heading;
+
+                if (previous) {
+                    const interval = clamp(latest.at - previous.at, MIN_INTERPOLATE_MS, MAX_INTERPOLATE_MS);
+                    const t = clamp((performance.now() - latest.at) / interval, 0, 1);
+                    lngLat = lerpLngLat(previous.lngLat, latest.lngLat, t);
+                    heading = lerpAngle(previous.heading, latest.heading, t);
+                }
+
+                marker.setLngLat(lngLat);
+                marker.setRotation(markerRotation(heading, vehicleKindRef.current));
+
+                if (followingRef.current && !recenteringRef.current) {
+                    map.jumpTo({center: lngLat});
+                }
+            }
+
+            frame = requestAnimationFrame(tick);
+        };
+
+        frame = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(frame);
+    }, [mapRef]);
 
     const recenter = () => {
         setFollowing(true);
         const map = mapRef.current;
         if (map && position) {
+            recenteringRef.current = true;
+            map.once("moveend", () => {
+                recenteringRef.current = false;
+            });
             map.easeTo({center: [position.lon, position.lat], duration: 400});
         }
     };
