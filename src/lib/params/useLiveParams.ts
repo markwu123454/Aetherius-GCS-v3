@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useRef, useState} from "react";
-import {useTauriEvent} from "../tauriEvent.ts";
-import {ConnectionStatus} from "../vehicle/connection.ts";
+import {useTauriEvent} from "@/lib/tauriEvent.ts";
+import {ConnectionStatus} from "@/lib/vehicle/connection.ts";
 import {LiveParamEntry, ParamBatch, refreshParams, setParam as setParamCommand} from "./liveParams.ts";
 
 export interface LiveParams {

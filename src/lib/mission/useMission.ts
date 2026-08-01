@@ -1,7 +1,7 @@
 import {useCallback, useState} from "react";
 import {DEFAULT_WAYPOINT_ALTITUDE_M, Waypoint} from "./mission.ts";
 import {uploadMission} from "./missionCommands.ts";
-import {sendVehicleCommand} from "../vehicle/commands.ts";
+import {sendVehicleCommand} from "@/lib/vehicle/commands.ts";
 
 export interface MissionApi {
     waypoints: Waypoint[];

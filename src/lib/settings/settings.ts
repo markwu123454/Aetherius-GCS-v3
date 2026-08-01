@@ -1,4 +1,4 @@
-import {DEFAULT_AIRSPACE_SETTINGS, type AirspaceSettings} from "../airspace/classes.ts";
+import {DEFAULT_AIRSPACE_SETTINGS, type AirspaceSettings} from "@/lib/airspace/classes.ts";
 
 export type DisplayMode = "windowed" | "borderless" | "fullscreen";
 

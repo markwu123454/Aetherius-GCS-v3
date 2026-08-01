@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
-import {useTauriEvent} from "../tauriEvent.ts";
+import {useTauriEvent} from "@/lib/tauriEvent.ts";
 import {ConnectionStatus, loadHistory, saveHistory, scanLinks, withAttempt, withoutAttempt} from "./connection.ts";
 
 export interface Connection {

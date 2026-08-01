@@ -1,5 +1,5 @@
 import {ReactElement} from "react";
-import {PanelDefinition} from "../lib/workspace/panels.ts";
+import {PanelDefinition} from "@/lib/workspace/panels.ts";
 import ConsolePanel from "./console/ConsolePanel.tsx";
 import TelemetryPanel from "./telemetry/TelemetryPanel.tsx";
 

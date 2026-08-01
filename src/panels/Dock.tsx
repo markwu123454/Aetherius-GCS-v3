@@ -1,5 +1,5 @@
 import {PointerEvent as ReactPointerEvent} from "react";
-import {DockArea, panelById} from "../lib/workspace/panels.ts";
+import {DockArea, panelById} from "@/lib/workspace/panels.ts";
 import {PanelBody} from "./panelComponents.tsx";
 
 interface DockProps {

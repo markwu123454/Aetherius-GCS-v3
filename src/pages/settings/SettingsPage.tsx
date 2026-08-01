@@ -1,7 +1,7 @@
 import {useState} from "react";
-import {SettingsApi} from "../../lib/settings/useSettings.ts";
-import {SETTINGS_CATEGORIES} from "../../lib/settings/categories.ts";
-import {SettingsCategoryBody} from "../../lib/settings/categoryComponents.tsx";
+import {SettingsApi} from "@/lib/settings/useSettings.ts";
+import {SETTINGS_CATEGORIES} from "@/lib/settings/categories.ts";
+import {SettingsCategoryBody} from "@/lib/settings/categoryComponents.tsx";
 
 interface SettingsPageProps {
     settings: SettingsApi;

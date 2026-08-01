@@ -2,10 +2,10 @@ import {useEffect, useRef, useState} from "react";
 import {createRoot, type Root} from "react-dom/client";
 import {LngLatLike, Marker} from "maplibre-gl";
 import {AirportLocation, Drone, LocationCurrent} from "@carbon/icons-react";
-import {VehicleKind, VehiclePosition} from "../../lib/vehicle/vehicle.ts";
-import {AIRSPACE_CLASSES, airspaceColor} from "../../lib/airspace/airspace.ts";
-import type {AirspaceState} from "../../lib/airspace/useAirspace.ts";
-import {useBaseMap} from "../../lib/map/useBaseMap.ts";
+import {VehicleKind, VehiclePosition} from "@/lib/vehicle/vehicle.ts";
+import {AIRSPACE_CLASSES, airspaceColor} from "@/lib/airspace/airspace.ts";
+import type {AirspaceState} from "@/lib/airspace/useAirspace.ts";
+import {useBaseMap} from "@/lib/map/useBaseMap.ts";
 
 /** Camera zoom the first fix settles at — close enough to be useful, not so
  * close that a GPS jump before the fix settles reads as a wild camera swing. */

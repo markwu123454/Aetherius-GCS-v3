@@ -1,12 +1,12 @@
 import {useId} from "react";
-import {useConnection} from "../../lib/vehicle/useConnection.ts";
-import {isLinkFailing, isLinkIdle} from "../../lib/vehicle/connection.ts";
-import {useVehicle} from "../../lib/vehicle/useVehicle.ts";
-import {useNow} from "../../lib/vehicle/useMockVehicle.ts";
-import {useTelemetryHistory} from "../../lib/vehicle/useTelemetryHistory.ts";
-import {fixLabel} from "../../lib/vehicle/vehicle.ts";
-import {Tone, TONE_TEXT} from "../../components/topmenu/StatusChip.tsx";
-import Sparkline from "../../components/Sparkline.tsx";
+import {useConnection} from "@/lib/vehicle/useConnection.ts";
+import {isLinkFailing, isLinkIdle} from "@/lib/vehicle/connection.ts";
+import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
+import {useNow} from "@/lib/vehicle/useMockVehicle.ts";
+import {useTelemetryHistory} from "@/lib/vehicle/useTelemetryHistory.ts";
+import {fixLabel} from "@/lib/vehicle/vehicle.ts";
+import {Tone, TONE_TEXT} from "@/components/topmenu/StatusChip.tsx";
+import Sparkline from "@/components/Sparkline.tsx";
 
 const BAR_TONE: Record<Tone, string> = {
     ok: "bg-state-ok",

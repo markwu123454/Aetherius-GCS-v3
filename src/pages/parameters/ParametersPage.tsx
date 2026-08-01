@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState} from "react";
 import {Search} from "@carbon/icons-react";
-import {useParamSheet} from "../../lib/params/useParamSheet.ts";
+import {useParamSheet} from "@/lib/params/useParamSheet.ts";
 import {
     ALL_GROUPS_KEY,
     groupLabel,
@@ -10,15 +10,15 @@ import {
     ParamOption,
     searchParams,
     VehicleFirmware,
-} from "../../lib/params/paramSheet.ts";
-import {formatParamValue, LiveParamEntry} from "../../lib/params/liveParams.ts";
-import {useLiveParams} from "../../lib/params/useLiveParams.ts";
-import {useConnection} from "../../lib/vehicle/useConnection.ts";
-import {useVehicle} from "../../lib/vehicle/useVehicle.ts";
-import {VehicleKind} from "../../lib/vehicle/vehicle.ts";
-import {buildGroupTree, findAncestorIds, GroupRelation, GroupTreeNode} from "../../lib/params/groupRelations.ts";
-import {ARDUCOPTER_GROUP_RELATIONS} from "../../lib/params/groupRelations.ArduCopter.ts";
-import {ARDUPLANE_GROUP_RELATIONS} from "../../lib/params/groupRelations.ArduPlane.ts";
+} from "@/lib/params/paramSheet.ts";
+import {formatParamValue, LiveParamEntry} from "@/lib/params/liveParams.ts";
+import {useLiveParams} from "@/lib/params/useLiveParams.ts";
+import {useConnection} from "@/lib/vehicle/useConnection.ts";
+import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
+import {VehicleKind} from "@/lib/vehicle/vehicle.ts";
+import {buildGroupTree, findAncestorIds, GroupRelation, GroupTreeNode} from "@/lib/params/groupRelations.ts";
+import {ARDUCOPTER_GROUP_RELATIONS} from "@/lib/params/groupRelations.ArduCopter.ts";
+import {ARDUPLANE_GROUP_RELATIONS} from "@/lib/params/groupRelations.ArduPlane.ts";
 
 const RELATIONS_BY_VEHICLE: Record<VehicleFirmware, GroupRelation[]> = {
     ArduCopter: ARDUCOPTER_GROUP_RELATIONS,

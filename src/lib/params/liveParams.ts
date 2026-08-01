@@ -1,5 +1,5 @@
 import {invoke} from "@tauri-apps/api/core";
-import {requireBackend} from "../vehicle/connection.ts";
+import {requireBackend} from "@/lib/vehicle/connection.ts";
 
 export interface LiveParamEntry {
     name: string;

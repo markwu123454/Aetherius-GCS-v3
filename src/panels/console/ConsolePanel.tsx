@@ -7,8 +7,8 @@ import {
     ConsoleLevel,
     DEFAULT_VISIBLE_LEVELS,
     formatConsoleTime,
-} from "../../lib/console/console.ts";
-import {clearConsole, getConsoleSnapshot, subscribeConsole} from "../../lib/console/consoleStore.ts";
+} from "@/lib/console/console.ts";
+import {clearConsole, getConsoleSnapshot, subscribeConsole} from "@/lib/console/consoleStore.ts";
 
 /** How close to the bottom still counts as "following". Anything less and a
  * one-pixel rounding difference would silently stop autoscroll. */

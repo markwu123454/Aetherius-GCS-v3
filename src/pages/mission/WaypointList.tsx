@@ -1,5 +1,5 @@
 import {TrashCan} from "@carbon/icons-react";
-import type {Waypoint} from "../../lib/mission/mission.ts";
+import type {Waypoint} from "@/lib/mission/mission.ts";
 
 interface WaypointListProps {
     waypoints: Waypoint[];

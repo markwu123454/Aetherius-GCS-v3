@@ -1,8 +1,8 @@
 import {useEffect, useRef} from "react";
 import {GeoJSONSource, LngLatLike, MapMouseEvent, Marker} from "maplibre-gl";
-import {useBaseMap} from "../../lib/map/useBaseMap.ts";
-import {resolveToken} from "../../lib/airspace/airspace.ts";
-import type {MissionApi} from "../../lib/mission/useMission.ts";
+import {useBaseMap} from "@/lib/map/useBaseMap.ts";
+import {resolveToken} from "@/lib/airspace/airspace.ts";
+import type {MissionApi} from "@/lib/mission/useMission.ts";
 
 const ROUTE_SOURCE_ID = "mission-route";
 const ROUTE_LAYER_ID = "mission-route-line";

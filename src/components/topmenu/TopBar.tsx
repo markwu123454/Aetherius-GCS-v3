@@ -9,7 +9,7 @@ import {isLinkFailing, isLinkIdle, linkSeverity} from "@/lib/vehicle/connection.
 import {PANEL_DEFINITIONS} from "@/lib/workspace/panels.ts";
 import {useConnection} from "@/lib/vehicle/useConnection.ts";
 import {SettingsApi} from "@/lib/settings/useSettings.ts";
-import {useNavigation} from "../../lib/navigation/useNavigation.tsx";
+import {useNavigation} from "@/lib/navigation/useNavigation.tsx";
 import {PAGE_TITLES, PageId} from "@/lib/navigation/navigation.ts";
 import {AIRSPACE_CLASSES} from "@/lib/airspace/classes.ts";
 import type {AirspaceState} from "@/lib/airspace/useAirspace.ts";

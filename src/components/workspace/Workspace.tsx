@@ -1,14 +1,14 @@
 import {CSSProperties, PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef} from "react";
 import MapView from "./MapView.tsx";
-import Dock from "../../panels/Dock.tsx";
-import FloatingPanel from "../../panels/FloatingPanel.tsx";
-import Splitter from "../Splitter.tsx";
-import {DockArea, panelById} from "../../lib/workspace/panels.ts";
-import {FLOATING_SIZE, FloatingWindow} from "../../lib/workspace/layout.ts";
-import {useWorkspace} from "../../lib/workspace/useWorkspace.ts";
-import {Box, usePanelDrag} from "../../lib/workspace/usePanelDrag.ts";
-import {VehicleKind, VehiclePosition} from "../../lib/vehicle/vehicle.ts";
-import type {AirspaceState} from "../../lib/airspace/useAirspace.ts";
+import Dock from "@/panels/Dock.tsx";
+import FloatingPanel from "@/panels/FloatingPanel.tsx";
+import Splitter from "@/components/Splitter.tsx";
+import {DockArea, panelById} from "@/lib/workspace/panels.ts";
+import {FLOATING_SIZE, FloatingWindow} from "@/lib/workspace/layout.ts";
+import {useWorkspace} from "@/lib/workspace/useWorkspace.ts";
+import {Box, usePanelDrag} from "@/lib/workspace/usePanelDrag.ts";
+import {VehicleKind, VehiclePosition} from "@/lib/vehicle/vehicle.ts";
+import type {AirspaceState} from "@/lib/airspace/useAirspace.ts";
 
 /** Pointer travel before a press on a tab becomes a drag rather than a click. */
 const DRAG_THRESHOLD = 4;

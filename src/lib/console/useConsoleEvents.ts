@@ -1,9 +1,9 @@
 import {useRef} from "react";
-import {useTauriEvent} from "../tauriEvent.ts";
+import {useTauriEvent} from "@/lib/tauriEvent.ts";
 import {logConsole} from "./consoleStore.ts";
 import {levelFromSeverity, severityName} from "./console.ts";
-import type {ConnectionStatus} from "../vehicle/connection.ts";
-import type {VehicleState} from "../vehicle/vehicle.ts";
+import type {ConnectionStatus} from "@/lib/vehicle/connection.ts";
+import type {VehicleState} from "@/lib/vehicle/vehicle.ts";
 
 /** Emitted per STATUSTEXT, after multi-chunk reassembly in Rust. */
 interface StatusTextEvent {

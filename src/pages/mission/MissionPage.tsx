@@ -1,6 +1,6 @@
 import MissionMap from "./MissionMap.tsx";
 import WaypointList from "./WaypointList.tsx";
-import type {MissionApi} from "../../lib/mission/useMission.ts";
+import type {MissionApi} from "@/lib/mission/useMission.ts";
 
 interface MissionPageProps {
     mission: MissionApi;

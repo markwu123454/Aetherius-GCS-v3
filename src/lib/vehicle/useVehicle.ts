@@ -1,5 +1,5 @@
 import {useState} from "react";
-import {useTauriEvent} from "../tauriEvent.ts";
+import {useTauriEvent} from "@/lib/tauriEvent.ts";
 import {FixType, VehicleAttitude, VehicleKind, VehiclePosition, VehicleState} from "./vehicle.ts";
 import {modeLabel} from "./modes.ts";
 
