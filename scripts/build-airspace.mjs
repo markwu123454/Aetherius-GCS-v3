@@ -33,7 +33,7 @@ import {join, relative, basename} from "node:path";
 import {fileURLToPath} from "node:url";
 import {open} from "shapefile";
 import geographiclib from "geographiclib-geodesic";
-import {expandRing} from "../src/airspace/expand.js";
+import {expandRing} from "@/lib/airspace/expand.js";
 
 const geodesic = geographiclib.Geodesic.WGS84;
 

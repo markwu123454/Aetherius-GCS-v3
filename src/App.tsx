@@ -1,19 +1,19 @@
 import {useMemo, useState} from "react";
-import TopBar from "./components/TopBar";
-import Workspace from "./components/Workspace";
-import FullScreenPage from "./components/FullScreenPage";
-import SettingsPage from "./components/SettingsPage";
-import ParametersPage from "./components/ParametersPage";
-import MissionPage from "./components/MissionPage";
-import {useWorkspace} from "./workspace/useWorkspace";
-import {useAirspace} from "./airspace/useAirspace";
-import {useConsoleEvents} from "./console/useConsoleEvents";
-import {useVehicle} from "./vehicle/useVehicle";
-import {useMission} from "./mission/useMission";
-import {useSettings} from "./settings/useSettings";
-import {useApplyDisplayMode} from "./settings/useApplyDisplayMode";
-import {NavigationApi, NavigationProvider} from "./navigation/useNavigation";
-import {PageId} from "./navigation/navigation";
+import TopBar from "./components/topmenu/TopBar.tsx";
+import Workspace from "./components/workspace/Workspace.tsx";
+import FullScreenPage from "./pages/FullScreenPage.tsx";
+import SettingsPage from "./pages/settings/SettingsPage.tsx";
+import ParametersPage from "./pages/parameters/ParametersPage.tsx";
+import MissionPage from "./pages/mission/MissionPage.tsx";
+import {useWorkspace} from "./lib/workspace/useWorkspace.ts";
+import {useAirspace} from "./lib/airspace/useAirspace.ts";
+import {useConsoleEvents} from "./lib/console/useConsoleEvents.ts";
+import {useVehicle} from "./lib/vehicle/useVehicle.ts";
+import {useMission} from "./lib/mission/useMission.ts";
+import {useSettings} from "./lib/settings/useSettings.ts";
+import {useApplyDisplayMode} from "./lib/settings/useApplyDisplayMode.ts";
+import {NavigationApi, NavigationProvider} from "./lib/navigation/useNavigation.tsx";
+import {PageId} from "./lib/navigation/navigation.ts";
 import "./App.css";
 
 function App() {
