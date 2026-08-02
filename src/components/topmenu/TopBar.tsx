@@ -27,9 +27,10 @@ interface TopBarProps {
     page: PageId | null;
     airspace: AirspaceState;
     mission: MissionApi;
+    onResetWorkspace: () => void;
 }
 
-export default function TopBar({vehicle, settings, openIds, page, airspace, mission}: TopBarProps) {
+export default function TopBar({vehicle, settings, openIds, page, airspace, mission, onResetWorkspace}: TopBarProps) {
     const now = useNow();
 
     // The backend owns the link state machine; this only reflects it.
@@ -109,27 +110,28 @@ export default function TopBar({vehicle, settings, openIds, page, airspace, miss
             {
                 label: "Vehicle",
                 items: [
-                    {label: "Connect…"},
                     {label: "Parameters", action: () => navigation.openPage("parameters")},
-                    {label: "Firmware"},
-                    {label: "Calibration"},
+                    {label: "Calibration", action: () => navigation.openPage("calibration")},
+                    {label: "Scripting", action: () => navigation.openPage("scripting")},
                 ],
             },
             {
                 label: "Mission",
                 items: [
                     {label: "Edit Mission…", action: () => navigation.openPage("mission")},
-                    {label: "Load…"},
-                    {label: "Save As…"},
                     {
                         label: "Upload to Vehicle",
                         action: () => void mission.upload().catch(() => {}),
                         disabled: mission.waypoints.length === 0 || mission.uploading,
                     },
-                    {label: "Download"},
+                    {
+                        label: "Start Mission",
+                        action: () => void mission.start().catch(() => {}),
+                        disabled: mission.starting,
+                        title: mission.starting ? "Already starting" : undefined,
+                    },
                 ],
             },
-            {label: "Logs", items: [{label: "Download Logs"}, {label: "Analyse…"}]},
             {
                 label: "View",
                 items: [
@@ -159,19 +161,15 @@ export default function TopBar({vehicle, settings, openIds, page, airspace, miss
                         separatorBefore: index === 0,
                         action: () => airspace.toggle(definition.id),
                     })),
-                    {label: "Reset Workspace", separatorBefore: true},
+                    {label: "Reset Workspace", separatorBefore: true, action: onResetWorkspace},
                 ],
             },
             {
-                label: "Help",
-                items: [
-                    {label: "Documentation"},
-                    {label: "About"},
-                    {label: "Preferences…", separatorBefore: true, action: () => navigation.openPage("settings")},
-                ],
+                label: "Settings",
+                items: [{label: "Preferences…", action: () => navigation.openPage("settings")}],
             },
         ],
-        [openIds, navigation, airspace, mission],
+        [openIds, navigation, airspace, mission, onResetWorkspace],
     );
 
     const compact = menuExpanded;

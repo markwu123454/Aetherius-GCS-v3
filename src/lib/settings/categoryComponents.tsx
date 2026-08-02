@@ -77,8 +77,9 @@ function ConsoleSettings({settings}: {settings: SettingsApi}) {
                 repeats
             </label>
             <p className="text-label text-text-helper">
-                Below that, every occurrence is shown as its own line. From then on, further repeats
-                within a minute fold into the last line as a running ×N count instead of piling up.
+                Below that, every occurrence is shown as its own line. The repeat that crosses this
+                count folds all of them — the earlier lines too — into one, and further repeats
+                within a minute keep incrementing that running ×N count instead of piling up.
             </p>
         </section>
     );

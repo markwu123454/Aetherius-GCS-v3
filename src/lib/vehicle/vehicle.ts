@@ -8,13 +8,17 @@ export interface PrearmReason {
      * reason itself, not the tag ArduPilot uses to route it. */
     text: string;
     /**
-     * When this batch (see `useVehicle`) arrived. ArduPilot re-sends the
-     * *entire* current set of failing reasons every time the checks re-run,
-     * never incrementally, so the whole list is replaced wholesale on each
-     * cycle rather than merged into — this is simply that cycle's timestamp,
-     * not a per-reason "last confirmed" tracked individually.
+     * How many consecutive recheck cycles have passed without ArduPilot
+     * repeating this reason. `0` means it was in the most recent cycle's
+     * report — certain. `1` means it wasn't, but was the cycle before —
+     * shown as a grace period rather than dropped immediately, since a
+     * missing report is ambiguous: it might mean the check actually passed,
+     * or just that one STATUSTEXT got lost, or that an earlier gated check
+     * changed and this one simply wasn't evaluated this pass. Dropped once
+     * this reaches 2 — ArduPilot has no "resolved" signal, so two straight
+     * misses is as much confidence as the protocol can offer.
      */
-    lastSeen: number;
+    missedCycles: number;
 }
 
 export interface VehiclePosition {
@@ -70,9 +74,9 @@ export interface VehicleState {
      */
     prearmPass: boolean;
     /**
-     * The current batch of `PreArm:` reasons — replaced wholesale each cycle,
-     * so this is exactly what ArduPilot most recently reported, not an
-     * accumulation. Empty once `prearmPass` is true.
+     * `PreArm:` reasons ArduPilot has reported recently — reconciled against
+     * each fresh recheck cycle rather than accumulated forever (see
+     * `PrearmReason.missedCycles`). Empty once `prearmPass` is true.
      */
     prearmReasons: PrearmReason[];
     /** ARMING_CHECK categories the operator has switched off. */
@@ -87,14 +91,6 @@ export interface VehicleState {
 
 /** A reading older than this is shown as stale rather than as a live value. */
 export const STALE_AFTER = 3_000;
-
-/**
- * Matches `PREARM_CHECK_INTERVAL` in `link.rs` — how often the backend
- * re-triggers `MAV_CMD_RUN_PREARM_CHECKS`. `prearmReasons` is replaced
- * wholesale on roughly this cadence, so nothing needs to guess at staleness;
- * this is only used to describe the cadence in the UI.
- */
-export const PREARM_CHECK_INTERVAL = 3_000;
 
 export type AlertLevel = "none" | "warn" | "danger";
 

@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
 import {useTauriEvent} from "@/lib/tauriEvent.ts";
-import {ConnectionStatus, loadHistory, saveHistory, scanLinks, withAttempt, withoutAttempt} from "./connection.ts";
+import {ConnectionStatus, loadHistory, saveHistory, scanLinks, ScannedLink, withAttempt, withoutAttempt} from "./connection.ts";
 
 export interface Connection {
     /** The address currently typed into the connect field, not yet submitted. */
@@ -11,14 +11,18 @@ export interface Connection {
     history: string[];
     removeFromHistory: (endpoint: string) => void;
     /** Endpoints found by the last `scan()`, in whatever order the backend returned them. */
-    available: string[];
+    available: ScannedLink[];
     /** Re-runs the scan. Resolves once `available` is updated; never rejects. */
     scan: () => Promise<void>;
     status: ConnectionStatus;
     /** The address the transport was asked to open. */
     endpoint: string | null;
     error: string | null;
-    connect: () => Promise<void>;
+    /** Connects to `address`, or to the current `draft` if omitted — the
+     * override exists for callers reconnecting to a known-good endpoint
+     * (e.g. after a reboot) without disturbing whatever the operator has
+     * since typed into the address field. */
+    connect: (address?: string) => Promise<void>;
     disconnect: () => Promise<void>;
 }
 
@@ -40,7 +44,7 @@ function message(error: unknown): string {
 export function useConnection(): Connection {
     const [history, setHistory] = useState<string[]>(loadHistory);
     const [draft, setDraftState] = useState<string>(() => history[0] ?? "");
-    const [available, setAvailable] = useState<string[]>([]);
+    const [available, setAvailable] = useState<ScannedLink[]>([]);
     const [status, setStatus] = useState<ConnectionStatus>("disconnected");
     const [endpoint, setEndpoint] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -83,10 +87,10 @@ export function useConnection(): Connection {
         setHistory((prev) => withoutAttempt(prev, address));
     }, []);
 
-    const connect = useCallback(async () => {
+    const connect = useCallback(async (explicitAddress?: string) => {
         setError(null);
 
-        const address = draft.trim();
+        const address = (explicitAddress ?? draft).trim();
         if (!address) {
             setError("Enter an address to connect to.");
             return;

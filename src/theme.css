@@ -67,6 +67,8 @@
     --color-text-disabled: rgba(244, 244, 244, 0.25);
     --color-text-on-color: #ffffff;
     --color-focus: #ffffff;
+    /* Carbon's g100 modal scrim — gray-100 at 50%, not an invented value. */
+    --color-overlay: rgba(22, 22, 22, 0.5);
 
     /* State colours. Reserved for vehicle health — nothing decorative uses
        these, so nothing competes with them for attention. */

@@ -8,6 +8,9 @@ export interface MenuItem {
     /** Rendered with a tick. Used for panels, which toggle open and closed. */
     checked?: boolean;
     separatorBefore?: boolean;
+    /** Shown as a native tooltip — mainly for explaining why a disabled item
+     * is disabled. */
+    title?: string;
 }
 
 export interface Menu {
@@ -100,6 +103,7 @@ export default function AppMenu({menus, expanded, onExpandedChange}: AppMenuProp
                                         <button
                                             type="button"
                                             disabled={item.disabled}
+                                            title={item.title}
                                             onClick={() => {
                                                 item.action?.();
                                                 onExpandedChange(false);

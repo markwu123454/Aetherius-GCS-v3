@@ -20,6 +20,7 @@ pub enum VehicleCommand {
     ReturnToLaunch,
     Land,
     StartMission,
+    Reboot,
 }
 
 /// Translate an app-level command into the `MavCmd` and seven-float param
@@ -62,6 +63,10 @@ fn to_mav_command(command: &VehicleCommand) -> (MavCmd, [f32; 7]) {
         VehicleCommand::StartMission => (
             MavCmd::MAV_CMD_MISSION_START,
             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        ),
+        VehicleCommand::Reboot => (
+            MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+            [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         ),
     }
 }

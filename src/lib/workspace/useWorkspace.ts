@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useMemo, useState} from "react";
 import {DockArea, DOCK_AREAS, panelById} from "./panels.ts";
 import {
+    defaultState,
     FLOATING_CASCADE,
     FLOATING_ORIGIN,
     FLOATING_SIZE,
@@ -69,6 +70,11 @@ export interface WorkspaceActions {
     open: (panelId: string) => void;
     activate: (area: DockArea, panelId: string) => void;
     resizeDock: (area: DockArea, size: number) => void;
+    /** Discards docking, sizing, and placement history and returns to the
+     * registry's own defaults — the only way back for a layout dragged into
+     * an unrecoverable state. Floating windows already don't survive a
+     * restart (see `defaultState`), so there's nothing extra to clear there. */
+    resetToDefault: () => void;
 }
 
 export function useWorkspace() {
@@ -159,9 +165,13 @@ export function useWorkspace() {
         }));
     }, []);
 
+    const resetToDefault = useCallback(() => {
+        setState(defaultState());
+    }, []);
+
     const actions = useMemo<WorkspaceActions>(
-        () => ({dock, float, close, open, activate, resizeDock}),
-        [dock, float, close, open, activate, resizeDock],
+        () => ({dock, float, close, open, activate, resizeDock, resetToDefault}),
+        [dock, float, close, open, activate, resizeDock, resetToDefault],
     );
 
     /** A dock only occupies space when it holds at least one panel. */

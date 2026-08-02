@@ -1,5 +1,5 @@
 import {useEffect, useState} from "react";
-import {PREARM_CHECK_INTERVAL, PrearmReason, VehicleState} from "./vehicle.ts";
+import {VehicleState} from "./vehicle.ts";
 
 const TICK = 500;
 
@@ -21,7 +21,7 @@ function initial(): VehicleState {
         climbRate: 0,
         vehicleKind: "multirotor",
         prearmPass: false,
-        prearmReasons: INITIAL_REASONS.map((text) => ({text, lastSeen: now})),
+        prearmReasons: INITIAL_REASONS.map((text) => ({text, missedCycles: 0})),
         disabledChecks: ["Board voltage"],
         battery: {voltage: 16.4, current: 2.1, consumed: 320, percent: 82},
         gps: {fix: "3d", satellites: 17, hdop: 0.8},
@@ -48,20 +48,10 @@ export function useMockVehicle(): VehicleState {
         const timer = window.setInterval(() => {
             setState((current) => {
                 const now = Date.now();
-
-                // Reasons are re-emitted wholesale on the vehicle's cadence,
-                // exactly as ArduPilot does — never incrementally.
-                const dueForResend = now - (current.prearmReasons[0]?.lastSeen ?? 0) >= PREARM_CHECK_INTERVAL;
-                const prearmReasons: PrearmReason[] =
-                    !current.prearmPass && dueForResend
-                        ? current.prearmReasons.map((reason) => ({...reason, lastSeen: now}))
-                        : current.prearmReasons;
-
                 const consumed = current.battery.consumed + current.battery.current * (TICK / 3_600_000) * 1000;
 
                 return {
                     ...current,
-                    prearmReasons,
                     climbRate: drift(current.climbRate ?? 0, 0.6, -4, 4),
                     battery: {
                         voltage: drift(current.battery.voltage, 0.05, 14.8, 16.8),

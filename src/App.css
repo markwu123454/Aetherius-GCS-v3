@@ -167,3 +167,8 @@ body {
         background-color: color-mix(in srgb, var(--color-state-danger) 20%, var(--color-layer-01));
     }
 }
+
+/* TODO: delete and replace with proper attribution */
+.maplibregl-ctrl {
+    display: none;
+}

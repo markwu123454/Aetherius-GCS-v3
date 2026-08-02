@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use mavlink::{
     error::MessageReadError,
@@ -234,21 +234,83 @@ fn set_status(app: &AppHandle, status: LinkStatus) {
     let _ = app.emit("link-status", status);
 }
 
+#[derive(Clone, Copy, Deserialize)]
+enum UsbBoardClass {
+    Pixhawk,
+    SiKRadio,
+    RtkGps,
+    OpenPilot,
+}
+
+#[derive(Deserialize)]
+struct UsbBoard {
+    vendor_id: u16,
+    product_id: u16,
+    class: UsbBoardClass,
+    name: String,
+}
+
+/// Parsed once from `usb_boards.json` (embedded into the binary at compile
+/// time via `include_str!`, not read from disk at runtime) and cached —
+/// `scan_links` runs on a few-second timer while the connect dropdown is
+/// open, so re-parsing on every call would be wasted work. A malformed file
+/// is a build-time mistake, not something that can happen in the field, so
+/// panicking on it here rather than silently returning no boards is the
+/// right failure mode.
+fn usb_boards() -> &'static [UsbBoard] {
+    static BOARDS: std::sync::OnceLock<Vec<UsbBoard>> = std::sync::OnceLock::new();
+    BOARDS.get_or_init(|| {
+        serde_json::from_str(include_str!("usb_boards.json")).expect("usb_boards.json is malformed")
+    })
+}
+
+/// `product_id: 0` in the table is a vendor-only wildcard (matches any
+/// product from that vendor) — used for vendors that only ship flight
+/// controllers, e.g. CubePilot.
+fn identify_usb_board(vendor_id: u16, product_id: u16) -> Option<&'static UsbBoard> {
+    usb_boards()
+        .iter()
+        .find(|board| board.vendor_id == vendor_id && (board.product_id == product_id || board.product_id == 0))
+}
+
+fn board_baud(class: UsbBoardClass) -> u32 {
+    match class {
+        UsbBoardClass::SiKRadio => 57_600,
+        _ => 115_200,
+    }
+}
+
+/// `label` is what the UI shows, `address` is the exact string that would be
+/// passed to `connect_link` if this entry is picked — kept separate so a
+/// recognized board can show a friendly name *and* the literal connect
+/// string it resolves to, rather than hiding one behind the other.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScannedLink {
+    pub label: String,
+    pub address: String,
+}
+
 #[tauri::command]
-pub fn scan_links() -> Vec<String> {
+pub fn scan_links() -> Vec<ScannedLink> {
     let mut found = Vec::new();
 
     if let Ok(ports) = serialport::available_ports() {
-        found.extend(
-            ports
-                .into_iter()
-                .map(|p| format!("serial:{}:115200", p.port_name)),
-        );
+        for port in ports {
+            let matched = match &port.port_type {
+                serialport::SerialPortType::UsbPort(usb) => identify_usb_board(usb.vid, usb.pid),
+                _ => None,
+            };
+            if let Some(board) = matched {
+                let address = format!("serial:{}:{}", port.port_name, board_baud(board.class));
+                found.push(ScannedLink {label: board.name.clone(), address});
+            }
+        }
     }
 
     let sitl: SocketAddr = "127.0.0.1:5760".parse().unwrap();
     if TcpStream::connect_timeout(&sitl, SCAN_PROBE_TIMEOUT).is_ok() {
-        found.push("tcp:127.0.0.1:5760".to_string());
+        found.push(ScannedLink {label: "SITL".to_string(), address: "tcp:127.0.0.1:5760".to_string()});
     }
 
     found
@@ -257,6 +319,7 @@ pub fn scan_links() -> Vec<String> {
 #[tauri::command]
 pub fn connect_link(endpoint: String, app: AppHandle, state: State<LinkState>) -> Result<(), String> {
     let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
+    state.last_heartbeat_ms.store(0, Ordering::SeqCst);
     set_status(&app, LinkStatus::Connecting);
 
     let address = to_mavlink_address(&endpoint);

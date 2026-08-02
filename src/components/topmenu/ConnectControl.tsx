@@ -2,6 +2,7 @@ import {useEffect, useRef, useState} from "react";
 import {Close} from "@carbon/icons-react";
 import {ConnectionStatus, HISTORY_DISPLAY_LIMIT} from "@/lib/vehicle/connection.ts";
 import {Connection} from "@/lib/vehicle/useConnection.ts";
+import {sendVehicleCommand} from "@/lib/vehicle/commands.ts";
 
 interface ConnectControlProps {
     connection: Connection;
@@ -10,6 +11,16 @@ interface ConnectControlProps {
     /** Operator preference: can be switched off in Settings. */
     confirmDisconnectWhenArmed: boolean;
 }
+
+function message(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+/** How often to retry connecting after a reboot, and how many tries before
+ * giving up and leaving it to the operator — a real board can take anywhere
+ * from a few seconds (SITL) to over ten (USB re-enumeration) to come back. */
+const RECONNECT_INTERVAL_MS = 3_000;
+const RECONNECT_MAX_ATTEMPTS = 20;
 
 export default function ConnectControl({connection, armed, confirmDisconnectWhenArmed}: ConnectControlProps) {
     const {
@@ -27,11 +38,23 @@ export default function ConnectControl({connection, armed, confirmDisconnectWhen
     } = connection;
     const [open, setOpen] = useState(false);
     const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
+    const [confirmingReboot, setConfirmingReboot] = useState(false);
+    const [rebooting, setRebooting] = useState(false);
+    const [rebootError, setRebootError] = useState<string | null>(null);
+    // Drives the post-reboot reconnect retries. `hasDropped` gates the very
+    // first "connected" reading out of the loop — right after sending the
+    // command the link is still the pre-reboot one, and treating that as
+    // "back already" would cancel the retry before the vehicle ever left.
+    const [awaitingReconnect, setAwaitingReconnect] = useState(false);
+    const reconnectTargetRef = useRef<string | null>(null);
+    const reconnectAttemptsRef = useRef(0);
+    const hasDroppedRef = useRef(false);
     const rootRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!open) {
             setConfirmingDisconnect(false);
+            setConfirmingReboot(false);
             return;
         }
 
@@ -76,6 +99,51 @@ export default function ConnectControl({connection, armed, confirmDisconnectWhen
         return () => window.clearInterval(interval);
     }, [open, settingsLocked, scan]);
 
+    // Retries `connect()` against the pre-reboot endpoint until the vehicle
+    // comes back or the attempt budget runs out. Runs independently of the
+    // panel being open — a reboot kicked off before closing the dropdown
+    // should still reconnect in the background.
+    useEffect(() => {
+        if (!awaitingReconnect) {
+            return;
+        }
+        if (!hasDroppedRef.current) {
+            if (status === "connected") {
+                // Still the pre-reboot link — wait for it to actually drop
+                // before treating a "connected" reading as the reboot
+                // having come full circle.
+                return;
+            }
+            hasDroppedRef.current = true;
+        }
+        if (status === "connected") {
+            setAwaitingReconnect(false);
+            hasDroppedRef.current = false;
+            reconnectAttemptsRef.current = 0;
+            return;
+        }
+        if (status === "connecting") {
+            // A `connect()` attempt is already in flight — wait for it to settle.
+            return;
+        }
+        if (reconnectAttemptsRef.current >= RECONNECT_MAX_ATTEMPTS) {
+            setAwaitingReconnect(false);
+            hasDroppedRef.current = false;
+            setRebootError("Vehicle did not come back after reboot — reconnect manually.");
+            return;
+        }
+        const target = reconnectTargetRef.current;
+        if (!target) {
+            setAwaitingReconnect(false);
+            return;
+        }
+        const timer = window.setTimeout(() => {
+            reconnectAttemptsRef.current += 1;
+            void connect(target);
+        }, RECONNECT_INTERVAL_MS);
+        return () => window.clearTimeout(timer);
+    }, [awaitingReconnect, status, connect]);
+
     const STATUS_LABELS: Record<ConnectionStatus, string> = {
         connected: endpoint ?? "Connected",
         connecting: "Waiting for heartbeat…",
@@ -112,6 +180,29 @@ export default function ConnectControl({connection, armed, confirmDisconnectWhen
         }
         setConfirmingDisconnect(false);
         void disconnect();
+    };
+
+    const handleReboot = async () => {
+        // Same reasoning as disconnect: armed is the one state where this
+        // shouldn't be a single click.
+        if (armed && !confirmingReboot) {
+            setConfirmingReboot(true);
+            return;
+        }
+        setConfirmingReboot(false);
+        setRebooting(true);
+        setRebootError(null);
+        try {
+            await sendVehicleCommand({type: "reboot"});
+            reconnectTargetRef.current = endpoint;
+            hasDroppedRef.current = false;
+            reconnectAttemptsRef.current = 0;
+            setAwaitingReconnect(true);
+        } catch (err) {
+            setRebootError(message(err));
+        } finally {
+            setRebooting(false);
+        }
     };
 
     return (
@@ -173,13 +264,13 @@ export default function ConnectControl({connection, armed, confirmDisconnectWhen
                                 <span className="text-micro text-text-helper uppercase">Available</span>
                                 {available.map((entry) => (
                                     <button
-                                        key={entry}
+                                        key={entry.address}
                                         type="button"
                                         disabled={settingsLocked}
-                                        onClick={() => setDraft(entry)}
+                                        onClick={() => setDraft(entry.address)}
                                         className="truncate px-1 text-left font-mono text-label text-text-secondary hover:bg-layer-hover-01 hover:text-text-primary disabled:text-text-disabled"
                                     >
-                                        {entry}
+                                        {entry.label}
                                     </button>
                                 ))}
                             </div>
@@ -218,6 +309,34 @@ export default function ConnectControl({connection, armed, confirmDisconnectWhen
                                       ? "Disconnect"
                                       : "Connect"}
                         </button>
+
+                        {connected && (
+                            <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
+                                {confirmingReboot && (
+                                    <p className="text-label text-state-warn">The vehicle is armed. Reboot anyway?</p>
+                                )}
+                                <button
+                                    type="button"
+                                    disabled={rebooting || awaitingReconnect}
+                                    onClick={() => void handleReboot()}
+                                    className={[
+                                        "h-control-sm w-full text-label disabled:opacity-50",
+                                        confirmingReboot
+                                            ? "bg-red-60 text-text-on-color hover:bg-red-50"
+                                            : "bg-layer-02 text-text-primary hover:bg-layer-hover-02",
+                                    ].join(" ")}
+                                >
+                                    {confirmingReboot
+                                        ? "Confirm Reboot"
+                                        : awaitingReconnect
+                                          ? "Rebooting — waiting to reconnect…"
+                                          : rebooting
+                                            ? "Rebooting…"
+                                            : "Reboot Vehicle"}
+                                </button>
+                                {rebootError && <p className="text-label text-state-danger">{rebootError}</p>}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

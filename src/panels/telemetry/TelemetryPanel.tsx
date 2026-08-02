@@ -8,9 +8,10 @@ import {distanceMeters} from "@/lib/vehicle/vehicle.ts";
 import {Tone, TONE_TEXT} from "@/components/topmenu/StatusChip.tsx";
 import Sparkline from "@/components/Sparkline.tsx";
 
-// FIXME: styling and layout are broken — needs a full pass once all the
-// panel's elements are in (e.g. tapes incorrectly hidden below `@3xl`, Alt/GS
-// duplicating the tapes at `@3xl+`, inconsistent spacing/sizing throughout).
+// Bottom-dock only: this panel always renders as a single horizontal row
+// (tapes + attitude ball, badges, sparklines). There's no narrower/stacked
+// layout to support since it can no longer live in a side dock, so there
+// are no width-based breakpoints anywhere below.
 
 function formatDuration(totalSeconds: number): string {
     const seconds = Math.max(0, Math.floor(totalSeconds));
@@ -73,7 +74,7 @@ interface BatteryGaugeProps {
 function BatteryGauge({percent, voltage, current, consumed, tone, unknown}: BatteryGaugeProps) {
     const clamped = Math.max(0, Math.min(100, percent));
     return (
-        <div className="@xs:col-span-2 flex flex-col gap-1 border border-border-subtle bg-layer-01 px-2 py-1.5">
+        <div className="col-span-2 flex flex-col gap-1 border border-border-subtle bg-layer-01 px-2 py-1.5">
             <div className="flex items-center justify-between">
                 <span className="text-micro text-text-helper uppercase">Battery</span>
                 <span className={`font-mono text-label tabular-nums ${TONE_TEXT[tone]}`}>
@@ -287,15 +288,14 @@ function AttitudeIndicator({heading, roll, pitch, unknown, attitudeUnknown}: Att
             <circle cx={50} cy={50} r={BEZEL_R} fill="none" className="stroke-border-subtle" strokeWidth={1}/>
             <circle cx={50} cy={50} r={HORIZON_R} fill="none" className="stroke-border-subtle" strokeWidth={0.75}/>
 
-            {/* Corner labels — the square falls outside the bezel ring at its
-                own corners no matter what, so GS and Alt mark the tapes'
-                contents there instead of leaving the space empty. The values
-                themselves already live on the tapes, so only the label goes
-                here. Sized to match the HDG label below (`text-micro`, 10px):
-                at this instrument's typical render scale (viewBox 100 over a
-                ~224px square) that's a fontSize of 4.5 user units. */}
-            <text x={5} y={11} fontSize={4.5} className="fill-text-helper font-mono">GS</text>
-            <text x={95} y={11} textAnchor="end" fontSize={4.5} className="fill-text-helper font-mono">ALT</text>
+            {/* Corner labels — the square viewBox falls outside the circular
+                bezel at its own corners no matter what, so that space is
+                always free. GS and ALT live there permanently to label the
+                flanking tapes, which otherwise carry no unit of their own —
+                units are spelled out here too, same abbreviations used by
+                the badges elsewhere in the panel (m/s, m). */}
+            <text x={5} y={11} fontSize={4.5} className="fill-text-helper font-mono">GS m/s</text>
+            <text x={95} y={11} textAnchor="end" fontSize={4.5} className="fill-text-helper font-mono">ALT m</text>
         </svg>
     );
 }
@@ -347,7 +347,8 @@ function Tape({value, tickInterval, majorEvery, pxPerUnit, decimals, side}: Tape
         <svg
             viewBox={`0 0 ${TAPE_WIDTH} ${TAPE_HEIGHT}`}
             preserveAspectRatio="none"
-            className="h-full w-14"
+            className="h-full"
+            style={{aspectRatio: TAPE_WIDTH / TAPE_HEIGHT}}
             role="img"
             aria-label={value === null ? "unknown" : value.toFixed(decimals)}
         >
@@ -440,7 +441,7 @@ function ModeArmedBadge({mode, armed, armedFor, prearmPass, unknown, stale, stal
     return (
         <div
             className={[
-                "@xs:col-span-2 flex flex-wrap items-center gap-2 border px-2 py-1.5",
+                "col-span-2 flex flex-wrap items-center gap-2 border px-2 py-1.5",
                 armed ? "border-state-danger bg-state-danger/10" : "border-border-subtle bg-layer-01",
             ].join(" ")}
         >
@@ -515,126 +516,107 @@ export default function TelemetryPanel() {
     const vTone = vibeTone(vehicle.ekf.vibe);
 
     return (
-        // `@container`, not viewport breakpoints — this panel can be a 320px
-        // side dock or a 1400px bottom dock in the same session, and switches
-        // from a vertical stack to a horizontal instrument row at `@xl` based
-        // on its own box, not the window's.
-        <div className="@container flex h-full min-h-0 w-full flex-col overflow-auto bg-background">
-            {/* The row switches to horizontal at `@3xl`, not `@xl` — the instrument
-                block (up to 400px now that the tapes flank it) and badges (256px)
-                are both fixed-width and shrink-0 once in row mode, and below
-                ~700px there isn't room left over for the sparklines' own
-                fixed-width labels alongside them. */}
-            <div className="flex flex-1 min-h-0 flex-col gap-3 p-3 @3xl:flex-row @3xl:items-stretch">
-                <div className="mx-auto hidden shrink-0 flex-col items-center @sm:flex @3xl:mx-0 @3xl:h-full">
-                    <div className="flex min-h-0 items-stretch @3xl:flex-1">
-                        {/* Tapes only join in row mode — a vertical side dock
-                            has no spare width for them, and the numbers they'd
-                            show (groundspeed, altitude) still reach the operator
-                            through the Alt/GS badges either way. */}
-                        <div className="hidden @3xl:block @3xl:max-h-72">
-                            <Tape
-                                value={vehicle.groundspeed}
-                                tickInterval={1}
-                                majorEvery={2}
-                                pxPerUnit={TAPE_HEIGHT / 2 / 6}
-                                decimals={1}
-                                side="left"
-                            />
-                        </div>
-                        <div className="aspect-square w-full max-w-72 @3xl:h-full @3xl:max-h-72 @3xl:w-auto">
-                            <AttitudeIndicator
-                                heading={heading}
-                                roll={roll}
-                                pitch={pitch}
-                                unknown={unknown}
-                                attitudeUnknown={attitudeUnknown}
-                            />
-                        </div>
-                        <div className="hidden @3xl:block @3xl:max-h-72">
-                            <Tape
-                                value={alt}
-                                tickInterval={5}
-                                majorEvery={10}
-                                pxPerUnit={TAPE_HEIGHT / 2 / 25}
-                                decimals={1}
-                                side="right"
-                            />
-                        </div>
-                    </div>
-                    {/* The only reading left as plain text — the ring deliberately
-                        carries no numbers of its own, so this is heading's one
-                        precise source (besides the map). */}
-                    <div className="mt-1 font-mono text-micro text-text-helper tabular-nums">
-                        HDG {unknown ? "—" : `${Math.round(heading)}°`}
-                    </div>
+        // Bottom-dock only: always a single horizontal row. Every child's
+        // height comes straight from this row (which itself gets a real
+        // height from the dock), so nothing below depends on a width
+        // breakpoint to size or show itself correctly.
+        <div className="flex h-full min-h-0 w-full items-stretch gap-3 overflow-x-auto bg-background p-3">
+            <div className="flex h-full min-w-0 shrink-0 items-stretch justify-center">
+                <div className="h-full max-h-72">
+                    <Tape
+                        value={vehicle.groundspeed}
+                        tickInterval={1}
+                        majorEvery={2}
+                        pxPerUnit={TAPE_HEIGHT / 2 / 6}
+                        decimals={1}
+                        side="left"
+                    />
                 </div>
-
-                <div className="grid grid-cols-1 content-start gap-2 @xs:grid-cols-2 @3xl:w-64 @3xl:shrink-0">
-                    <ModeArmedBadge
-                        mode={vehicle.mode}
-                        armed={vehicle.armed}
-                        armedFor={armedFor}
-                        prearmPass={vehicle.prearmPass}
+                <div className="aspect-square h-full max-h-72 w-auto">
+                    <AttitudeIndicator
+                        heading={heading}
+                        roll={roll}
+                        pitch={pitch}
                         unknown={unknown}
-                        stale={stale}
-                        staleFor={staleFor}
+                        attitudeUnknown={attitudeUnknown}
                     />
-                    <BatteryGauge
-                        percent={vehicle.battery.percent}
-                        voltage={vehicle.battery.voltage}
-                        current={vehicle.battery.current}
-                        consumed={vehicle.battery.consumed}
-                        tone={battTone}
-                        unknown={unknown}
-                    />
-                    <Badge
-                        label="Climb"
-                        value={vehicle.climbRate === null ? "—" : `${vehicle.climbRate.toFixed(1)}m/s`}
-                    />
-                    {vehicle.vehicleKind === "plane" && (
-                        <Badge
-                            label="AS"
-                            value={vehicle.airspeed === null ? "—" : `${vehicle.airspeed.toFixed(1)}m/s`}
-                        />
-                    )}
-                    <Badge
-                        label="Position"
-                        value={
-                            vehicle.position
-                                ? `${vehicle.position.lat.toFixed(5)}, ${vehicle.position.lon.toFixed(5)}`
-                                : "—"
-                        }
-                    />
-                    <Badge label="Home" value={homeDistance === null ? "—" : `${Math.round(homeDistance)}m`}/>
                 </div>
+                <div className="h-full max-h-72">
+                    <Tape
+                        value={alt}
+                        tickInterval={5}
+                        majorEvery={10}
+                        pxPerUnit={TAPE_HEIGHT / 2 / 25}
+                        decimals={1}
+                        side="right"
+                    />
+                </div>
+            </div>
 
-                <div className="hidden min-w-0 flex-col justify-center gap-2 @md:flex @3xl:flex-1">
-                    <SparkRow
-                        label="Volt"
-                        tone={battTone}
-                        values={history.map((p) => p.voltage)}
-                        min={13}
-                        max={17.5}
-                        display={unknown ? "—" : `${vehicle.battery.voltage.toFixed(1)}V`}
+            <div className="grid w-64 shrink-0 grid-cols-2 content-start gap-2">
+                <ModeArmedBadge
+                    mode={vehicle.mode}
+                    armed={vehicle.armed}
+                    armedFor={armedFor}
+                    prearmPass={vehicle.prearmPass}
+                    unknown={unknown}
+                    stale={stale}
+                    staleFor={staleFor}
+                />
+                <BatteryGauge
+                    percent={vehicle.battery.percent}
+                    voltage={vehicle.battery.voltage}
+                    current={vehicle.battery.current}
+                    consumed={vehicle.battery.consumed}
+                    tone={battTone}
+                    unknown={unknown}
+                />
+                <Badge
+                    label="Climb"
+                    value={vehicle.climbRate === null ? "—" : `${vehicle.climbRate.toFixed(1)}m/s`}
+                />
+                {vehicle.vehicleKind === "plane" && (
+                    <Badge
+                        label="AS"
+                        value={vehicle.airspeed === null ? "—" : `${vehicle.airspeed.toFixed(1)}m/s`}
                     />
-                    <SparkRow
-                        label="Vibe"
-                        tone={vTone}
-                        values={history.map((p) => p.vibe)}
-                        min={0}
-                        max={40}
-                        display={unknown ? "—" : Math.round(vehicle.ekf.vibe).toString()}
-                    />
-                    <SparkRow
-                        label="Loss"
-                        tone={lTone}
-                        values={history.map((p) => p.lossPercent)}
-                        min={0}
-                        max={10}
-                        display={unknown ? "—" : `${vehicle.link.lossPercent.toFixed(1)}%`}
-                    />
-                </div>
+                )}
+                <Badge
+                    label="Position"
+                    value={
+                        vehicle.position
+                            ? `${vehicle.position.lat.toFixed(5)}, ${vehicle.position.lon.toFixed(5)}`
+                            : "—"
+                    }
+                />
+                <Badge label="Home" value={homeDistance === null ? "—" : `${Math.round(homeDistance)}m`}/>
+            </div>
+
+            <div className="flex min-w-0 flex-1 flex-col justify-center gap-2">
+                <SparkRow
+                    label="Volt"
+                    tone={battTone}
+                    values={history.map((p) => p.voltage)}
+                    min={13}
+                    max={17.5}
+                    display={unknown ? "—" : `${vehicle.battery.voltage.toFixed(1)}V`}
+                />
+                <SparkRow
+                    label="Vibe"
+                    tone={vTone}
+                    values={history.map((p) => p.vibe)}
+                    min={0}
+                    max={40}
+                    display={unknown ? "—" : Math.round(vehicle.ekf.vibe).toString()}
+                />
+                <SparkRow
+                    label="Loss"
+                    tone={lTone}
+                    values={history.map((p) => p.lossPercent)}
+                    min={0}
+                    max={10}
+                    display={unknown ? "—" : `${vehicle.link.lossPercent.toFixed(1)}%`}
+                />
             </div>
         </div>
     );

@@ -100,15 +100,28 @@ export function requireBackend(): void {
 }
 
 /**
- * Endpoints worth offering as a faster alternative to typing one by hand:
- * every serial port currently present, plus the default SITL TCP port if
- * something is actually listening on it. Deliberately lenient — no VID/PID
- * filtering on serial ports, since the user already knows what they plugged
- * in and a missed real port is worse than an extra unlikely one shown.
+ * One scanned endpoint. `label` is what's shown in the UI — a recognized
+ * board's name, or "SITL" for the local sim port; `address` is the literal
+ * string that gets connected to if it's picked, kept separate so the label
+ * can stay a plain name without the connect string cluttering it.
  */
-export function scanLinks(): Promise<string[]> {
+export interface ScannedLink {
+    label: string;
+    address: string;
+}
+
+/**
+ * Endpoints worth offering as a one-click alternative to typing one by hand.
+ * Only ports the backend can actually identify are included — matched by USB
+ * VID/PID against the same board table QGroundControl uses — plus the
+ * default SITL TCP port if something is listening on it. An unrecognized
+ * serial port is left out rather than shown with a guessed baud rate, since
+ * a wrong guess that looks like a real option is worse than the operator
+ * just typing the address themselves.
+ */
+export function scanLinks(): Promise<ScannedLink[]> {
     requireBackend();
-    return invoke<string[]>("scan_links");
+    return invoke<ScannedLink[]>("scan_links");
 }
 
 /**

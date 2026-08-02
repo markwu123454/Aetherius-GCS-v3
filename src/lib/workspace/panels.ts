@@ -33,17 +33,6 @@ export const PANEL_DEFINITIONS: PanelDefinition[] = [
         openByDefault: true,
     },
     {
-        id: "mission",
-        title: "Mission",
-        component: "placeholder",
-        dockLeft: true,
-        dockRight: true,
-        dockBottom: false,
-        floatable: true,
-        defaultDock: "right",
-        openByDefault: false,
-    },
-    {
         id: "console",
         title: "Console",
         component: "console",

@@ -18,6 +18,24 @@ interface CommandAckEvent {
     accepted: boolean;
 }
 
+/**
+ * A readable line for a *failed* command — the one case with no other signal
+ * of what happened. A success needs nothing here: arm/disarm and mode
+ * changes already produce their own readable line from the `vehicle` state
+ * diff below, which is generic (it fires for a change from any source, not
+ * just this app's own commands) and doesn't need duplicating per command.
+ * Falls back to the raw command name for anything not in this table, rather
+ * than showing nothing.
+ */
+const FAILURE_MESSAGE: Record<string, string> = {
+    MAV_CMD_COMPONENT_ARM_DISARM: "Arming failed.",
+    MAV_CMD_DO_SET_MODE: "Mode change failed.",
+    MAV_CMD_NAV_TAKEOFF: "Takeoff failed.",
+    MAV_CMD_NAV_RETURN_TO_LAUNCH: "Return to launch failed.",
+    MAV_CMD_NAV_LAND: "Land failed.",
+    MAV_CMD_MISSION_START: "Mission start failed.",
+};
+
 const LINK_LEVEL: Record<ConnectionStatus, "danger" | "warn" | "info"> = {
     disconnected: "info",
     connecting: "info",
@@ -59,16 +77,15 @@ export function useConsoleEvents(): void {
     });
 
     useTauriEvent<CommandAckEvent>("command-ack", (event) => {
-        // Sent automatically on every connect to raise the stream rate for a
-        // handful of message types — routine housekeeping, not something the
-        // operator asked for, so it's debug rather than info/danger.
-        const level =
-            event.command === "MAV_CMD_SET_MESSAGE_INTERVAL"
-                ? "debug"
-                : event.accepted
-                    ? "info"
-                    : "danger";
-        logConsole(level, "command", `${event.command} → ${event.result}`);
+        // The raw ack is always debug — MAVLink constant names are only
+        // useful when digging into what actually went out over the link.
+        // A failure gets a second, readable line at a visible level right
+        // here, since it's the only signal that specific attempt produced;
+        // a success needs nothing extra (see `FAILURE_MESSAGE`'s doc).
+        logConsole("debug", "command", `${event.command} → ${event.result}`);
+        if (!event.accepted) {
+            logConsole("danger", "vehicle", FAILURE_MESSAGE[event.command] ?? `${event.command} failed`);
+        }
     });
 
     useTauriEvent<ConnectionStatus>("link-status", (status) => {

@@ -164,34 +164,47 @@ interface StatusTextEvent {
     text: string;
 }
 
+/** Emitted per COMMAND_ACK — only `command` is needed here. */
+interface CommandAckEvent {
+    command: string;
+}
+
 /**
  * ArduPilot's `PreArm: ...` lines, kept separately from `vehicleStore` because
  * they arrive on a different event (`statustext`, not `vehicle`).
  *
  * ArduPilot never sends these incrementally — every time the checks re-run it
  * re-sends the *entire* current set of failing reasons as one burst, back to
- * back, then goes quiet until the next cycle. So rather than accumulating
- * individual lines forever (which piles up stale entries, and needs fragile
- * text-matching to recognize "the same reason, reworded" — e.g. an EKF yaw
- * error's angle drifting a degree between cycles), incoming lines are
- * buffered and the whole buffer replaces the store at once, on a short quiet
- * period after the last line arrives. This makes the list self-correcting: a
- * resolved reason simply isn't in the next batch, with no expiry timer needed.
+ * back, then goes quiet until the next cycle. Reconciliation is keyed off the
+ * backend's own re-trigger, not a debounce guess: every `PreArm:` line is
+ * buffered, and the buffer is reconciled into the store exactly when the next
+ * `MAV_CMD_RUN_PREARM_CHECKS` ack arrives — which reliably marks "the previous
+ * cycle's burst is complete, a new one is starting." A reason missing from
+ * that reconciliation gets one grace cycle (see `PrearmReason.missedCycles`)
+ * before being dropped, rather than vanishing the instant it isn't repeated —
+ * ArduPilot has no way to say "resolved," so a single missed report is
+ * ambiguous between that and a dropped packet.
  */
 const prearmReasonsStore = createStore<PrearmReason[]>([]);
 
-/** Gap since the last `PreArm:` line before a batch is considered complete.
- * Long enough to span one burst (lines arrive back-to-back), far shorter than
- * the ~3s gap to the next cycle, so it never straddles two cycles. */
-const PREARM_BATCH_QUIET_MS = 500;
+/** Time of the most recent reconciliation (an ack) or pass-confirmation —
+ * "how fresh is this list," shown in the panel instead of a per-reason age
+ * now that every reason in a cycle arrives at the same moment anyway. */
+const lastPrearmUpdateStore = createStore<number | null>(null);
 
-let pendingReasons: PrearmReason[] = [];
-let batchTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingReasonTexts: string[] = [];
 
-function commitPendingReasons(): void {
-    batchTimer = null;
-    prearmReasonsStore.set(pendingReasons);
-    pendingReasons = [];
+function reconcilePendingReasons(): void {
+    const seen = new Set(pendingReasonTexts);
+    prearmReasonsStore.update((current) => {
+        const confirmed: PrearmReason[] = [...seen].map((text) => ({text, missedCycles: 0}));
+        const graced = current
+            .filter((reason) => !seen.has(reason.text))
+            .map((reason) => ({...reason, missedCycles: reason.missedCycles + 1}))
+            .filter((reason) => reason.missedCycles <= 1);
+        return [...confirmed, ...graced];
+    });
+    pendingReasonTexts = [];
 }
 
 listen<StatusTextEvent>("statustext", (message) => {
@@ -199,12 +212,17 @@ listen<StatusTextEvent>("statustext", (message) => {
     if (!text.startsWith(PREARM_TEXT_PREFIX)) {
         return;
     }
-    const reasonText = text.slice(PREARM_TEXT_PREFIX.length);
-    pendingReasons = [...pendingReasons, {text: reasonText, lastSeen: Date.now()}];
-    if (batchTimer !== null) {
-        window.clearTimeout(batchTimer);
+    pendingReasonTexts.push(text.slice(PREARM_TEXT_PREFIX.length));
+}).catch(() => {
+    // No Tauri backend — the store just never updates.
+});
+
+listen<CommandAckEvent>("command-ack", (message) => {
+    if (message.payload.command !== "MAV_CMD_RUN_PREARM_CHECKS") {
+        return;
     }
-    batchTimer = window.setTimeout(commitPendingReasons, PREARM_BATCH_QUIET_MS);
+    reconcilePendingReasons();
+    lastPrearmUpdateStore.set(Date.now());
 }).catch(() => {
     // No Tauri backend — the store just never updates.
 });
@@ -235,11 +253,16 @@ listen<Snapshot>("vehicle", (message) => {
     wasArmed = state.armed;
     vehicleStore.set(state);
 
-    // Once checks pass, ArduPilot stops sending `PreArm:` lines entirely —
-    // there's no next batch to replace the old one, so this is the fallback
-    // that clears it.
-    if (state.prearmPass && prearmReasonsStore.getSnapshot().length > 0) {
-        prearmReasonsStore.set([]);
+    // Once checks pass, ArduPilot stops sending `PreArm:` lines entirely — no
+    // ack-triggered reconciliation will ever clear the list on its own, so
+    // this is the fallback that does. It's also a fresher, more immediate
+    // signal than waiting for the next ack, so it updates the timestamp too.
+    if (state.prearmPass) {
+        pendingReasonTexts = [];
+        if (prearmReasonsStore.getSnapshot().length > 0) {
+            prearmReasonsStore.set([]);
+            lastPrearmUpdateStore.set(Date.now());
+        }
     }
 }).catch(() => {
     // No Tauri backend (a plain browser tab) — the store just never updates.
@@ -255,6 +278,12 @@ export function useVehicle(): VehicleState {
  * an elapsed duration — this only holds the edge timestamp, not a live count. */
 export function useArmedSince(): number | null {
     return useSyncExternalStore(armedSinceStore.subscribe, armedSinceStore.getSnapshot);
+}
+
+/** `null` until the first prearm recheck cycle has been heard from. Pair with
+ * a ticking clock (e.g. `useNow`) to render "Xs ago". */
+export function usePrearmLastUpdate(): number | null {
+    return useSyncExternalStore(lastPrearmUpdateStore.subscribe, lastPrearmUpdateStore.getSnapshot);
 }
 
 /** For stores that need the current vehicle state without subscribing to it

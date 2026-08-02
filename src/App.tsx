@@ -5,6 +5,8 @@ import FullScreenPage from "@/pages/FullScreenPage.tsx";
 import SettingsPage from "@/pages/settings/SettingsPage.tsx";
 import ParametersPage from "@/pages/parameters/ParametersPage.tsx";
 import MissionPage from "@/pages/mission/MissionPage.tsx";
+import ScriptingPage from "@/pages/scripting/ScriptingPage.tsx";
+import CalibrationPage from "@/pages/calibration/CalibrationPage.tsx";
 import {useWorkspace} from "@/lib/workspace/useWorkspace.ts";
 import {useAirspace} from "@/lib/airspace/useAirspace.ts";
 import {useConsoleEvents} from "@/lib/console/useConsoleEvents.ts";
@@ -73,6 +75,7 @@ function App() {
                     page={page}
                     airspace={airspace}
                     mission={mission}
+                    onResetWorkspace={workspace.actions.resetToDefault}
                 />
                 <div className="relative min-h-0 flex-1">
                     {/* `inert` because the workspace is still in the tree behind
@@ -91,6 +94,8 @@ function App() {
                             {page === "settings" && <SettingsPage settings={settings}/>}
                             {page === "parameters" && <ParametersPage/>}
                             {page === "mission" && <MissionPage mission={mission}/>}
+                            {page === "scripting" && <ScriptingPage/>}
+                            {page === "calibration" && <CalibrationPage/>}
                         </FullScreenPage>
                     )}
                 </div>

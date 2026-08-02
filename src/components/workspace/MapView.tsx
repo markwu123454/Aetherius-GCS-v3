@@ -72,13 +72,22 @@ export default function MapView({position, vehicleKind, airspace}: MapViewProps)
     const hasCenteredRef = useRef(false);
     const [following, setFollowing] = useState(false);
 
-    // Read inside the tick loop without making them dependencies — these
-    // should never restart the animation-frame loop itself, only change what
-    // a frame already in flight does.
+    // The tick loop's own source of truth for whether to keep calling
+    // `jumpTo` — set synchronously, in the same call as `setFollowing`,
+    // rather than mirrored from `following` via an effect. An effect only
+    // runs after React re-renders, which during an active drag can lag the
+    // tick loop's own 60fps `requestAnimationFrame` calls by several frames:
+    // long enough for `jumpTo` to keep re-centering on the vehicle and cancel
+    // out the drag the user is actively performing, making the map look like
+    // it can't be dragged at all. Reading and writing this ref is the only
+    // thing that has to be instantaneous; the `following` state is purely for
+    // the button's own styling, which can lag a frame with no visible cost.
     const followingRef = useRef(false);
-    useEffect(() => {
-        followingRef.current = following;
-    }, [following]);
+
+    function setFollowingNow(value: boolean): void {
+        followingRef.current = value;
+        setFollowing(value);
+    }
 
     const vehicleKindRef = useRef(vehicleKind);
     useEffect(() => {
@@ -105,9 +114,18 @@ export default function MapView({position, vehicleKind, airspace}: MapViewProps)
         const map = mapRef.current;
         if (!map) return;
 
-        // The operator taking the camera back: dragstart fires solely for
-        // pointer-driven pan, never for our own jumpTo/easeTo.
-        map.on("dragstart", () => setFollowing(false));
+        // The operator taking the camera back. `mousedown`/`touchstart`, not
+        // `dragstart` — `dragstart` only fires once MapLibre's own gesture
+        // recognition decides the pointer has moved enough to count as a
+        // drag, and every frame before that the tick loop's `jumpTo` (while
+        // following) keeps winning and resetting the camera right back,
+        // which for a vehicle sitting still made a whole short drag gesture
+        // look completely inert. `mousedown` fires the instant the pointer
+        // goes down, closing that gap — and as a side effect, a plain click
+        // (not just a drag) now stops tracking too, which reads as more
+        // predictable than only some pointer gestures taking the camera back.
+        map.on("mousedown", () => setFollowingNow(false));
+        map.on("touchstart", () => setFollowingNow(false));
 
         // Zoom needs an extra check dragstart doesn't: zoomstart fires for
         // both a user's wheel/pinch/double-click *and* our own easeTo (the
@@ -115,7 +133,7 @@ export default function MapView({position, vehicleKind, airspace}: MapViewProps)
         // for the former, so this doesn't cancel follow the moment it starts.
         map.on("zoomstart", (event) => {
             if (event.originalEvent) {
-                setFollowing(false);
+                setFollowingNow(false);
             }
         });
     }, [mapRef]);
@@ -228,7 +246,7 @@ export default function MapView({position, vehicleKind, airspace}: MapViewProps)
             // There's no previous fix to interpolate from either, so the tick
             // loop below just places the marker here directly.
             hasCenteredRef.current = true;
-            setFollowing(true);
+            setFollowingNow(true);
             recenteringRef.current = true;
             map.once("moveend", () => {
                 recenteringRef.current = false;
@@ -281,7 +299,7 @@ export default function MapView({position, vehicleKind, airspace}: MapViewProps)
     }, [mapRef]);
 
     const recenter = () => {
-        setFollowing(true);
+        setFollowingNow(true);
         const map = mapRef.current;
         if (map && position) {
             recenteringRef.current = true;
