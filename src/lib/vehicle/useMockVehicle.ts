@@ -15,7 +15,7 @@ function initial(): VehicleState {
         customMode: 5,
         position: null,
         home: null,
-        attitude: {roll: 0, pitch: 0},
+        attitude: {roll: 0, pitch: 0, yaw: 0, rollRateDps: 0, pitchRateDps: 0, yawRateDps: 0},
         groundspeed: 5.2,
         airspeed: null,
         climbRate: 0,

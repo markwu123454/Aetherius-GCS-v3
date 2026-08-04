@@ -126,9 +126,6 @@ pub fn send_async(
 }
 
 pub fn on_ack(app: &AppHandle, data: &COMMAND_ACK_DATA) {
-    // Emitted for every ack, not only ones with a waiting sender. Commands sent
-    // via `send_async` have no oneshot to resolve, so their outcome is
-    // otherwise invisible — which is exactly what a console is for.
     let _ = app.emit(
         "command-ack",
         serde_json::json!({
@@ -137,6 +134,15 @@ pub fn on_ack(app: &AppHandle, data: &COMMAND_ACK_DATA) {
             "accepted": matches!(data.result, MavResult::MAV_RESULT_ACCEPTED),
         }),
     );
+
+    // A long-running command (gyro calibration, others like it) acks
+    // MAV_RESULT_IN_PROGRESS immediately and sends the real accepted/failed
+    // result later, for the same command id — resolving the pending sender
+    // here would hand send_sync's caller that placeholder instead of the
+    // actual outcome. Leave it pending and wait for the terminal ack.
+    if matches!(data.result, MavResult::MAV_RESULT_IN_PROGRESS) {
+        return;
+    }
 
     let Some(command_id) = data.command.to_u32() else {
         return;

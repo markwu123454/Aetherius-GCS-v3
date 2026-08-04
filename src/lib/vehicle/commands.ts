@@ -14,7 +14,13 @@ export type VehicleCommand =
     | {type: "returnToLaunch"}
     | {type: "land"}
     | {type: "startMission"}
-    | {type: "reboot"};
+    | {type: "reboot"}
+    | {type: "startAccelCalibration"}
+    | {type: "confirmAccelPosition"; position: number}
+    | {type: "cancelAccelCalibration"}
+    | {type: "startGyroCalibration"}
+    | {type: "startCompassCalibration"}
+    | {type: "cancelCompassCalibration"};
 
 /**
  * Sends one vehicle action and waits for the backend to confirm the

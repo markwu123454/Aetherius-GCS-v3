@@ -3,6 +3,7 @@
 mod commands;
 mod dispatch;
 mod link;
+mod logs;
 mod mission;
 mod params;
 mod scripting;
@@ -15,12 +16,15 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_drag::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(link::LinkState::default())
         .manage(commands::CommandState::default())
         .manage(params::ParamState::default())
         .manage(mission::MissionState::default())
         .manage(dispatch::DispatchState::default())
         .manage(scripting::FtpState::default())
+        .manage(logs::LogsState::default())
         .invoke_handler(tauri::generate_handler![
             link::connect_link,
             link::disconnect_link,
@@ -50,6 +54,8 @@ pub fn run() {
             scripting::clear_vehicle_cache,
             scripting::absolute_vehicle_path,
             scripting::absolute_local_path,
+            logs::list_logs,
+            logs::download_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

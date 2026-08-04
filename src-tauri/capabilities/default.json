@@ -9,6 +9,8 @@
     "store:default",
     "core:window:allow-set-fullscreen",
     "core:window:allow-set-decorations",
-    "drag:default"
+    "drag:default",
+    "updater:default",
+    "process:default"
   ]
 }

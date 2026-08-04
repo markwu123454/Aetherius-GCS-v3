@@ -23,6 +23,10 @@ function average(points: TelemetryHistoryPoint[], key: keyof TelemetryHistoryPoi
     return points.reduce((sum, point) => sum + point[key], 0) / points.length;
 }
 
+function peak(points: TelemetryHistoryPoint[], key: keyof TelemetryHistoryPoint): number {
+    return points.reduce((max, point) => Math.max(max, point[key]), 0);
+}
+
 /**
  * Sampled on its own module-level timers rather than in a component effect, so
  * the ten-minute window keeps accumulating whether or not `TelemetryPanel` is
@@ -30,11 +34,16 @@ function average(points: TelemetryHistoryPoint[], key: keyof TelemetryHistoryPoi
  * trace that already covers what happened while it was away, not an empty one.
  *
  * Capture and record run at different rates on purpose. Recording one point a
- * second, each averaged from five captures, smooths out packet-to-packet
- * jitter (radio RSSI bounce, instantaneous vibration readings) that would
- * otherwise show up as noise in a 100px-wide line — capturing faster than
- * that would just add more jitter to average away, not more information a
- * sparkline could actually show.
+ * second, averaged from five captures, smooths out packet-to-packet jitter
+ * (radio RSSI bounce) that would otherwise show up as noise in a 100px-wide
+ * line — capturing faster than that would just add more jitter to average
+ * away, not more information a sparkline could actually show.
+ *
+ * Vibration is recorded as that same second's *peak* instead, not its
+ * average — it's a spike metric, not a trend, and a brief bad reading
+ * (throttling up, a gust) matters even if it only lasted one 200ms capture.
+ * Averaging it the same way as voltage would smooth a real spike down to
+ * looking like nothing happened.
  *
  * Keeps sampling even while the link is stale, so a flatlined trace is
  * visible truth ("this stopped changing") rather than a gap.
@@ -54,7 +63,7 @@ window.setInterval(() => {
     }
     const point: TelemetryHistoryPoint = {
         voltage: average(captureBuffer, "voltage"),
-        vibe: average(captureBuffer, "vibe"),
+        vibe: peak(captureBuffer, "vibe"),
         lossPercent: average(captureBuffer, "lossPercent"),
     };
     captureBuffer = [];

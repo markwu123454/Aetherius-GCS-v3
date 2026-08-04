@@ -46,6 +46,10 @@ interface Snapshot {
     vibe: number | null;
     rollDeg: number | null;
     pitchDeg: number | null;
+    yawDeg: number | null;
+    rollRateDps: number | null;
+    pitchRateDps: number | null;
+    yawRateDps: number | null;
     groundspeed?: number | null;
     airspeed?: number | null;
     climbRate?: number | null;
@@ -99,7 +103,14 @@ function attitudeOf(snapshot: Snapshot): VehicleAttitude | null {
     if (snapshot.rollDeg == null || snapshot.pitchDeg == null) {
         return null;
     }
-    return {roll: snapshot.rollDeg, pitch: snapshot.pitchDeg};
+    return {
+        roll: snapshot.rollDeg,
+        pitch: snapshot.pitchDeg,
+        yaw: snapshot.yawDeg ?? 0,
+        rollRateDps: snapshot.rollRateDps ?? 0,
+        pitchRateDps: snapshot.pitchRateDps ?? 0,
+        yawRateDps: snapshot.yawRateDps ?? 0,
+    };
 }
 
 /** `null` until ArduPilot has actually reported home — distinct from a real 0,0. */

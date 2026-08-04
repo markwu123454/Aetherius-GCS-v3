@@ -113,6 +113,7 @@ export default function TopBar({vehicle, settings, openIds, page, airspace, miss
                     {label: "Parameters", action: () => navigation.openPage("parameters")},
                     {label: "Calibration", action: () => navigation.openPage("calibration")},
                     {label: "Scripting", action: () => navigation.openPage("scripting")},
+                    {label: "Logs", action: () => navigation.openPage("logs")},
                 ],
             },
             {
@@ -166,7 +167,10 @@ export default function TopBar({vehicle, settings, openIds, page, airspace, miss
             },
             {
                 label: "Settings",
-                items: [{label: "Preferences…", action: () => navigation.openPage("settings")}],
+                items: [
+                    {label: "Preferences…", action: () => navigation.openPage("settings")},
+                    {label: "About", action: () => navigation.openPage("about")},
+                ],
             },
         ],
         [openIds, navigation, airspace, mission, onResetWorkspace],

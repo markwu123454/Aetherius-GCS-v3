@@ -68,8 +68,9 @@ fn request_data_streams(app: &AppHandle, target_system: u8, target_component: u8
 
     // Raw MAVLink message IDs, from common.xml — stable across dialects, so
     // these don't depend on whatever symbolic constants this crate version
-    // does or doesn't export: ATTITUDE, GLOBAL_POSITION_INT, VFR_HUD.
-    for message_id in [30.0, 33.0, 74.0] {
+    // does or doesn't export: ATTITUDE, GLOBAL_POSITION_INT, VFR_HUD,
+    // RC_CHANNELS.
+    for message_id in [30.0, 33.0, 74.0, 65.0] {
         let _ = commands::send_async(
             app,
             MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,

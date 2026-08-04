@@ -57,6 +57,13 @@ pub struct VehicleSnapshot {
     pub sensors_present: Option<u32>,
     pub sensors_enabled: Option<u32>,
     pub sensors_health: Option<u32>,
+    /// Degrees/second, from ATTITUDE's rollspeed/pitchspeed/yawspeed — how fast
+    /// the vehicle is currently rotating on each axis. Used to gate gyro
+    /// calibration on the vehicle actually being still.
+    pub yaw_deg: Option<f32>,
+    pub roll_rate_dps: Option<f32>,
+    pub pitch_rate_dps: Option<f32>,
+    pub yaw_rate_dps: Option<f32>,
 }
 
 /// Fold one message into the snapshot. Only the messages the status strip
@@ -93,6 +100,10 @@ pub fn apply(snapshot: &mut VehicleSnapshot, message: &MavMessage) {
         MavMessage::ATTITUDE(data) => {
             snapshot.roll_deg = Some(data.roll.to_degrees());
             snapshot.pitch_deg = Some(data.pitch.to_degrees());
+            snapshot.yaw_deg = Some(data.yaw.to_degrees());
+            snapshot.roll_rate_dps = Some(data.rollspeed.to_degrees());
+            snapshot.pitch_rate_dps = Some(data.pitchspeed.to_degrees());
+            snapshot.yaw_rate_dps = Some(data.yawspeed.to_degrees());
         }
         MavMessage::SYS_STATUS(data) => {
             snapshot.battery_voltage = Some(data.voltage_battery as f32 / 1000.0);

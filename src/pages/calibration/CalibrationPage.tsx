@@ -4,6 +4,10 @@ import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
 import {useLiveParams} from "@/lib/params/useLiveParams.ts";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {VehicleKind} from "@/lib/vehicle/vehicle.ts";
+import RadioCalibrationPanel from "./RadioCalibrationPanel.tsx";
+import AccelCalibrationPanel from "./AccelCalibrationPanel.tsx";
+import GyroCalibrationPanel from "./GyroCalibrationPanel.tsx";
+import CompassCalibrationPanel from "./CompassCalibrationPanel.tsx";
 
 type CalibrationStatus = "complete" | "incomplete" | "not-needed" | "unknown";
 
@@ -101,6 +105,13 @@ function buildItems(vehicleKind: VehicleKind | null, live: Map<string, LiveParam
             label: "Accelerometer",
             description: "Corrects accelerometer bias so attitude and altitude readings are accurate.",
             status: accelStatus(live),
+        },
+        {
+            id: "gyro",
+            label: "Gyroscope",
+            description: "Corrects gyro bias so the vehicle doesn't drift when it should be still.",
+            status: "unknown",
+            note: "Recalibrates automatically on every boot — run manually only if the vehicle was disturbed while powering up.",
         },
     ];
 
@@ -242,7 +253,20 @@ export default function CalibrationPage() {
                     />
                 ))}
             </nav>
-            <div className="min-h-0 flex-1 overflow-auto p-6">{selected && <DetailPane item={selected}/>}</div>
+            <div className="min-h-0 flex-1 overflow-auto p-6">
+                {selected &&
+                    (selected.id === "radio" ? (
+                        <RadioCalibrationPanel live={live.values} vehicleKind={vehicle.vehicleKind}/>
+                    ) : selected.id === "accel" ? (
+                        <AccelCalibrationPanel live={live.values}/>
+                    ) : selected.id === "gyro" ? (
+                        <GyroCalibrationPanel/>
+                    ) : selected.id.startsWith("compass-") ? (
+                        <CompassCalibrationPanel live={live.values}/>
+                    ) : (
+                        <DetailPane item={selected}/>
+                    ))}
+            </div>
         </div>
     );
 }

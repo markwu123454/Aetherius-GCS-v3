@@ -32,6 +32,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMwMjU5RDU5M0JBQTgyMkIKUldRcmdxbzdXWjBsd1B6aWJDbWUwM3duaUVZdkxEU2crZDJXNnhRS3dWZjlhR1hSZDZQc05EaloK",
+      "endpoints": [
+        "https://github.com/markwu123454/Aetherius-GCS-v3/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

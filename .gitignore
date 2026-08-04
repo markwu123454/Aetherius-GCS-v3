@@ -38,3 +38,8 @@ dist-ssr
 # missing layer file as unavailable rather than an error, and the View menu
 # shows it as "not built".
 /public/airspace/class-e.json
+
+# Updater signing keypair (private key + password). Only the public key
+# (copied into tauri.conf.json) is meant to be committed — the private key
+# and password belong in GitHub Actions secrets, never in the repo.
+/.secrets/

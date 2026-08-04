@@ -1,12 +1,15 @@
-import {useMemo, useState} from "react";
+import {useEffect, useMemo, useState} from "react";
 import TopBar from "@/components/topmenu/TopBar.tsx";
 import Workspace from "@/components/workspace/Workspace.tsx";
+import UpdatePromptModal from "@/components/UpdatePromptModal.tsx";
 import FullScreenPage from "@/pages/FullScreenPage.tsx";
 import SettingsPage from "@/pages/settings/SettingsPage.tsx";
 import ParametersPage from "@/pages/parameters/ParametersPage.tsx";
 import MissionPage from "@/pages/mission/MissionPage.tsx";
 import ScriptingPage from "@/pages/scripting/ScriptingPage.tsx";
 import CalibrationPage from "@/pages/calibration/CalibrationPage.tsx";
+import LogsPage from "@/pages/logs/LogsPage.tsx";
+import AboutPage from "@/pages/about/AboutPage.tsx";
 import {useWorkspace} from "@/lib/workspace/useWorkspace.ts";
 import {useAirspace} from "@/lib/airspace/useAirspace.ts";
 import {useConsoleEvents} from "@/lib/console/useConsoleEvents.ts";
@@ -15,6 +18,7 @@ import {useMission} from "@/lib/mission/useMission.ts";
 import {useSettings} from "@/lib/settings/useSettings.ts";
 import {useApplyDisplayMode} from "@/lib/settings/useApplyDisplayMode.ts";
 import {useApplyConsoleSettings} from "@/lib/settings/useApplyConsoleSettings.ts";
+import {useUpdateCheck} from "@/lib/update/useUpdateCheck.ts";
 import {NavigationApi, NavigationProvider} from "@/lib/navigation/useNavigation.tsx";
 import {PageId} from "@/lib/navigation/navigation.ts";
 import "./App.css";
@@ -47,6 +51,32 @@ function App() {
     // Same reasoning: the console store lives outside React and needs the
     // preference pushed to it, not just read once at mount.
     useApplyConsoleSettings(settings.consoleCollapseThreshold);
+    // Owned here rather than inside `AboutPage` so a launch-time check and a
+    // manual "Check for Updates" click share one `Update` resource instead of
+    // each holding its own.
+    const update = useUpdateCheck();
+    useEffect(() => {
+        void update.checkNow();
+        // Launch only — `update.checkNow` is stable but including it would
+        // still be wrong here, since re-checking on every render is not what
+        // "on launch" means.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    // Sticky once `status` first reaches "available", rather than reflecting
+    // `status` directly — clicking "Update" in the prompt drives `status`
+    // through "downloading" / "ready" / "error", and the prompt needs to stay
+    // up through all of that instead of unmounting the moment it stops being
+    // exactly "available".
+    const [updatePromptOpen, setUpdatePromptOpen] = useState(false);
+    useEffect(() => {
+        if (update.status === "available") {
+            setUpdatePromptOpen(true);
+        }
+    }, [update.status]);
+    // Not persisted anywhere on purpose: "remind me next time" means exactly
+    // that — the prompt reappears on the next launch's check, not on a timer
+    // or a second click within this session.
+    const [updatePromptDismissed, setUpdatePromptDismissed] = useState(false);
     // `null` is the bare workspace; anything else lays that page over the top
     // of it. Over, not instead of: unmounting the workspace takes `MapView`
     // with it, and its cleanup calls `map.remove()` — so a two-second trip to
@@ -96,9 +126,14 @@ function App() {
                             {page === "mission" && <MissionPage mission={mission}/>}
                             {page === "scripting" && <ScriptingPage/>}
                             {page === "calibration" && <CalibrationPage/>}
+                            {page === "logs" && <LogsPage/>}
+                            {page === "about" && <AboutPage update={update}/>}
                         </FullScreenPage>
                     )}
                 </div>
+                {updatePromptOpen && !updatePromptDismissed && (
+                    <UpdatePromptModal update={update} onDismiss={() => setUpdatePromptDismissed(true)}/>
+                )}
             </main>
         </NavigationProvider>
     );

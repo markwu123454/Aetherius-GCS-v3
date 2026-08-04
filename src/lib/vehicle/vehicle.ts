@@ -35,6 +35,19 @@ export interface VehicleAttitude {
     roll: number;
     /** Degrees. Positive is nose up. */
     pitch: number;
+    /** Degrees, -180..180, from ATTITUDE's own `yaw` (EKF/AHRS heading) —
+     * not GPS course-made-good, which is meaningless while a disarmed
+     * vehicle is being hand-rotated rather than moving over the ground.
+     * Used to keep a body-anchored 3D overlay (e.g. the compass
+     * calibration coverage sphere) turning with the vehicle. */
+    yaw: number;
+    /** Degrees/second, from ATTITUDE's rollspeed/pitchspeed/yawspeed — how
+     * fast the vehicle is currently rotating on each axis. Used to tell a
+     * vehicle at rest from one being handled, e.g. gating gyro calibration
+     * on actual stillness rather than trusting the operator. */
+    rollRateDps: number;
+    pitchRateDps: number;
+    yawRateDps: number;
 }
 
 export interface HomePosition {

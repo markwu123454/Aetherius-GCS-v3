@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from "react";
+import {type ReactNode, useEffect, useMemo, useState} from "react";
 import {Search} from "@carbon/icons-react";
 import {useParamSheet} from "@/lib/params/useParamSheet.ts";
 import {
@@ -64,6 +64,37 @@ function FlagBadges({param}: {param: ParamDef}) {
             ))}
         </span>
     );
+}
+
+/** Wraps every occurrence of `query` inside `text` in a highlight — used to
+ * show which part of a param's name or human name matched the search box. */
+function HighlightMatch({text, query}: {text: string; query: string}) {
+    const q = query.trim();
+    if (!q) {
+        return <>{text}</>;
+    }
+
+    const lowerText = text.toLowerCase();
+    const lowerQuery = q.toLowerCase();
+    const nodes: ReactNode[] = [];
+    let cursor = 0;
+    let index = lowerText.indexOf(lowerQuery, cursor);
+    while (index !== -1) {
+        if (index > cursor) {
+            nodes.push(text.slice(cursor, index));
+        }
+        nodes.push(
+            <mark key={index} className="bg-state-warn text-background">
+                {text.slice(index, index + q.length)}
+            </mark>,
+        );
+        cursor = index + q.length;
+        index = lowerText.indexOf(lowerQuery, cursor);
+    }
+    if (cursor < text.length) {
+        nodes.push(text.slice(cursor));
+    }
+    return <>{nodes}</>;
 }
 
 function OptionTable({title, options}: {title: string; options: ParamOption[]}) {
@@ -390,9 +421,10 @@ interface ParamRowsProps {
     selected: ParamMatch | null;
     onSelect: (match: ParamMatch) => void;
     live: Map<string, LiveParamEntry>;
+    query: string;
 }
 
-function ParamRows({rows, showGroup, selected, onSelect, live}: ParamRowsProps) {
+function ParamRows({rows, showGroup, selected, onSelect, live, query}: ParamRowsProps) {
     return (
         <table className="w-full border-collapse text-label">
             <thead className="sticky top-0 bg-layer-01 text-text-helper">
@@ -428,14 +460,18 @@ function ParamRows({rows, showGroup, selected, onSelect, live}: ParamRowsProps) 
                         >
                             <td className="px-3 py-1.5">
                                 <div className="flex items-center gap-2">
-                                    <span className="font-mono text-text-primary">{row.param.name}</span>
+                                    <span className="font-mono text-text-primary">
+                                        <HighlightMatch text={row.param.name} query={query}/>
+                                    </span>
                                     <FlagBadges param={row.param}/>
                                 </div>
                             </td>
                             {showGroup && (
                                 <td className="px-3 py-1.5 text-text-helper">{groupLabel(row.group)}</td>
                             )}
-                            <td className="px-3 py-1.5 text-text-secondary">{row.param.humanName}</td>
+                            <td className="px-3 py-1.5 text-text-secondary">
+                                <HighlightMatch text={row.param.humanName} query={query}/>
+                            </td>
                             <td
                                 className={[
                                     "px-3 py-1.5 font-mono",
@@ -888,6 +924,7 @@ export default function ParametersPage() {
                                 selected={selected}
                                 onSelect={setSelected}
                                 live={live.values}
+                                query={searching ? query : ""}
                             />
                         </div>
                     </div>

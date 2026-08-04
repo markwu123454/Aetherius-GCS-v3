@@ -3,11 +3,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use mavlink::{dialects::ardupilotmega::{MavMessage, STATUSTEXT_DATA}};
+use mavlink::{dialects::ardupilotmega::{COMMAND_LONG_DATA, MavCmd, MavMessage, RC_CHANNELS_DATA, STATUSTEXT_DATA, MAG_CAL_PROGRESS_DATA, MAG_CAL_REPORT_DATA,}};
 use num_traits::ToPrimitive;
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::{commands, mission, params, scripting, telemetry, telemetry::VehicleSnapshot};
+use crate::{commands, logs, mission, params, scripting, telemetry, telemetry::VehicleSnapshot};
 
 /// How long a full-length STATUSTEXT chunk waits for a continuation before
 /// being shown standalone. ArduPilot sends split chunks back-to-back with no
@@ -82,6 +82,30 @@ pub fn route(app: &AppHandle, snapshot: &mut VehicleSnapshot, message: &MavMessa
             scripting::on_ftp_reply(app, data);
             true
         }
+        MavMessage::RC_CHANNELS(data) => {
+            on_rc_channels(app, data);
+            true
+        }
+        MavMessage::COMMAND_LONG(data) => {
+            on_command_long(app, data);
+            true
+        }
+        MavMessage::MAG_CAL_PROGRESS(data) => {
+            on_mag_cal_progress(app, data);
+            true
+        }
+        MavMessage::MAG_CAL_REPORT(data) => {
+            on_mag_cal_report(app, data);
+            true
+        }
+        MavMessage::LOG_ENTRY(data) => {
+            logs::on_log_entry(app, data);
+            true
+        }
+        MavMessage::LOG_DATA(data) => {
+            logs::on_log_data(app, data);
+            true
+        }
         _ => false,
     };
 }
@@ -151,5 +175,64 @@ fn emit_statustext(app: &AppHandle, severity: u8, text: &str) {
         // (INFO) rather than dropping the line: a message with an
         // unreadable severity is still worth showing.
         serde_json::json!({"severity": severity, "text": text}),
+    );
+}
+
+/// `chancount` can claim more channels than this message actually carries
+/// (ArduPilot's own doc note: "can be larger than 18") — clamped so the
+/// slice never reads past the 18 fields that exist.
+fn on_rc_channels(app: &AppHandle, data: &RC_CHANNELS_DATA) {
+    let raw = [
+        data.chan1_raw, data.chan2_raw, data.chan3_raw, data.chan4_raw,
+        data.chan5_raw, data.chan6_raw, data.chan7_raw, data.chan8_raw,
+        data.chan9_raw, data.chan10_raw, data.chan11_raw, data.chan12_raw,
+        data.chan13_raw, data.chan14_raw, data.chan15_raw, data.chan16_raw,
+        data.chan17_raw, data.chan18_raw,
+    ];
+    let count = (data.chancount as usize).min(raw.len());
+    let _ = app.emit("rc-channels", serde_json::json!({"channels": raw[..count].to_vec()}));
+}
+
+/// ArduPilot drives its own 6-position accelerometer calibration by pushing
+/// `MAV_CMD_ACCELCAL_VEHICLE_POS` to the GCS as a `COMMAND_LONG` — the
+/// vehicle is the sender here, the reverse of this message's usual
+/// direction. `param1` is the `ACCELCAL_VEHICLE_POS` enum value (which
+/// orientation to hold next, or the SUCCESS/FAILED sentinels), forwarded
+/// as-is for the frontend to interpret.
+fn on_command_long(app: &AppHandle, data: &COMMAND_LONG_DATA) {
+    if data.command == MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS {
+        let _ = app.emit("accel-cal-pos", serde_json::json!({"position": data.param1 as u32}));
+    }
+}
+
+/// Streamed per compass while `MAV_CMD_DO_START_MAG_CAL` is running.
+/// `completion_mask` is ArduPilot's own 80-section geodesic-grid coverage
+/// bitmap (10 bytes, 8 sections each), forwarded as-is — the frontend
+/// (`magCalGrid.ts`) knows how to turn it into sphere positions.
+fn on_mag_cal_progress(app: &AppHandle, data: &MAG_CAL_PROGRESS_DATA) {
+    let _ = app.emit(
+        "mag-cal-progress",
+        serde_json::json!({
+            "compassId": data.compass_id,
+            "calMask": data.cal_mask,
+            "completionPct": data.completion_pct,
+            "completionMask": data.completion_mask.to_vec(),
+        }),
+    );
+}
+
+/// Sent once per compass when `MAV_CMD_DO_START_MAG_CAL` finishes for it —
+/// `fitness` is the real quality number (RMS milligauss residual from
+/// ArduPilot's ellipsoid fit), the only calibration in this app that reports
+/// one.
+fn on_mag_cal_report(app: &AppHandle, data: &MAG_CAL_REPORT_DATA) {
+    let _ = app.emit(
+        "mag-cal-report",
+        serde_json::json!({
+            "compassId": data.compass_id,
+            "calMask": data.cal_mask,
+            "calStatus": data.cal_status.to_u32().unwrap_or(0),
+            "fitness": data.fitness,
+        }),
     );
 }
