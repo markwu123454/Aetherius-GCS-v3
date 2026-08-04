@@ -1,5 +1,7 @@
-# Logs
-logs
+# Logs. Anchored to the repo root — a bare `logs` pattern matches any path
+# component named "logs" anywhere in the tree, which was silently swallowing
+# the Logs feature's own source directories (src/pages/logs, src/lib/logs).
+/logs
 *.log
 npm-debug.log*
 yarn-debug.log*
