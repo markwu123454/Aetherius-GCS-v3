@@ -31,6 +31,12 @@ jobs:
 
       - run: npm ci
 
+      # Bakes the tag's version into package.json/tauri.conf.json/Cargo.toml
+      # for this build only (not committed back) — so the built app, its
+      # installer filenames, and what the updater embeds always match the
+      # tag, without a separate manual version bump before tagging.
+      - run: node scripts/sync-version.mjs "${{ github.ref_name }}"
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
