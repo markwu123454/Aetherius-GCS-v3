@@ -1,5 +1,6 @@
-import {useCallback, useEffect, useRef, useState} from "react";
-import {useTauriEvent} from "@/lib/tauriEvent.ts";
+import {useSyncExternalStore} from "react";
+import {listen} from "@tauri-apps/api/event";
+import {createStore} from "@/lib/store.ts";
 import {ConnectionStatus} from "@/lib/vehicle/connection.ts";
 import {LiveParamEntry, ParamBatch, refreshParams, setParam as setParamCommand} from "./liveParams.ts";
 
@@ -11,59 +12,67 @@ export interface LiveParams {
     setParam: (name: string, value: number) => Promise<number>;
 }
 
-/**
- * Live parameter values, kept in step with the connection rather than the
- * page's own lifecycle. A link that stops being `connected` invalidates
- * every value on hand — a stale *parameter* being trusted is a configuration
- * mistake, not just a display one, so this clears outright on disconnect
- * rather than freezing-and-graying the way telemetry does.
- */
-export function useLiveParams(connectionStatus: ConnectionStatus): LiveParams {
-    const [values, setValues] = useState<Map<string, LiveParamEntry>>(new Map());
-    const [total, setTotal] = useState<number | null>(null);
+interface ParamsState {
+    values: Map<string, LiveParamEntry>;
+    total: number | null;
+}
 
-    const refresh = useCallback(async () => {
-        setValues(new Map());
-        setTotal(null);
+const paramsStore = createStore<ParamsState>({values: new Map(), total: null});
+
+function refresh(): void {
+    paramsStore.set({values: new Map(), total: null});
+    // `refreshParams()` throws synchronously (not a rejected promise) when
+    // there's no Tauri backend at all — wrapped in an `async` IIFE so that's
+    // caught the same way a real rejection would be, same reasoning the old
+    // per-page hook used.
+    void (async () => {
         try {
-            // `requireBackend()` inside this throws synchronously outside
-            // Tauri, not as a rejection — the try/await here is what turns
-            // that into something this function can actually catch.
             await refreshParams();
         } catch {
-            // Nothing to show for it beyond `values` staying empty — this
-            // runs from an effect as often as from a button press, so there
-            // is no single place to surface an error message.
+            // Nothing to show for it beyond `values` staying empty.
         }
-    }, []);
+    })();
+}
 
-    useTauriEvent<ParamBatch>("param-values", (batch) => {
-        setValues((prev) => {
-            const next = new Map(prev);
-            for (const entry of batch.values) {
-                next.set(entry.name, entry);
-            }
-            return next;
-        });
-        if (batch.total !== null) {
-            setTotal(batch.total);
+listen<ParamBatch>("param-values", (message) => {
+    paramsStore.update((prev) => {
+        const next = new Map(prev.values);
+        for (const entry of message.payload.values) {
+            next.set(entry.name, entry);
         }
+        return {values: next, total: message.payload.total ?? prev.total};
     });
+}).catch(() => {
+    // No Tauri backend — the store just never updates.
+});
 
-    // Runs the refresh once per connect, and forgets everything on the way
-    // back down. `wasConnected` starting false means a page that mounts
-    // while already connected still gets its first read.
-    const wasConnected = useRef(false);
-    useEffect(() => {
-        const isConnected = connectionStatus === "connected";
-        if (isConnected && !wasConnected.current) {
-            void refresh();
-        } else if (!isConnected && wasConnected.current) {
-            setValues(new Map());
-            setTotal(null);
-        }
-        wasConnected.current = isConnected;
-    }, [connectionStatus, refresh]);
+/**
+ * Live parameter values, kept in step with the connection rather than any
+ * one page's lifecycle — a persistent module-scope store (see `store.ts`),
+ * the same pattern `vehicleStore` uses, rather than a `useState` any page
+ * that reads params owned independently. Before this, `Parameters`,
+ * `Calibration`, `Setup`, and `Scripting` each held their own copy and each
+ * re-ran the full parameter dump on their own first mount after a connect —
+ * visiting a second page after the first meant waiting through the whole
+ * dump again for no reason. Now the dump runs once per connect, and every
+ * page just reads the same cache.
+ *
+ * A link that stops being `connected` invalidates every value on hand — a
+ * stale *parameter* being trusted is a configuration mistake, not just a
+ * display one, so this clears outright on disconnect rather than
+ * freezing-and-graying the way telemetry does.
+ */
+listen<ConnectionStatus>("link-status", (event) => {
+    if (event.payload === "connected") {
+        refresh();
+    } else {
+        paramsStore.set({values: new Map(), total: null});
+    }
+}).catch(() => {
+    // No Tauri backend — the store just never updates.
+});
 
-    return {values, total, refresh, setParam: setParamCommand};
+export function useLiveParams(): LiveParams {
+    const state = useSyncExternalStore(paramsStore.subscribe, paramsStore.getSnapshot);
+    return {...state, refresh, setParam: setParamCommand};
 }

@@ -24,7 +24,7 @@ export interface Vec3 {
     z: number;
 }
 
-export interface MagCalSection {
+export interface CompassCalSection {
     /** 0-79, matches the bit index into `MAG_CAL_PROGRESS.completion_mask`. */
     index: number;
     /** Unit vector, this section's representative direction in body frame. */
@@ -79,10 +79,10 @@ const TRIANGLES: [number, number, number][] = [
     ),
 ];
 
-export const MAG_CAL_SECTION_COUNT = 80;
+export const COMPASS_CAL_SECTION_COUNT = 80;
 
 /** All 80 sections, index order matching `completion_mask`'s bit order. */
-export const MAG_CAL_SECTIONS: MagCalSection[] = TRIANGLES.flatMap(([ia, ib, ic], triangleIndex) => {
+export const COMPASS_CAL_SECTIONS: CompassCalSection[] = TRIANGLES.flatMap(([ia, ib, ic], triangleIndex) => {
     const a = VERTICES[ia];
     const b = VERTICES[ib];
     const c = VERTICES[ic];

@@ -112,6 +112,8 @@ export default function TopBar({vehicle, settings, openIds, page, airspace, miss
                 items: [
                     {label: "Parameters", action: () => navigation.openPage("parameters")},
                     {label: "Calibration", action: () => navigation.openPage("calibration")},
+                    {label: "Setup", action: () => navigation.openPage("setup")},
+                    {label: "Firmware", action: () => navigation.openPage("firmware")},
                     {label: "Scripting", action: () => navigation.openPage("scripting")},
                     {label: "Logs", action: () => navigation.openPage("logs")},
                 ],

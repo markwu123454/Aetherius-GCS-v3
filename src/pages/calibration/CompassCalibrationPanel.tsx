@@ -3,8 +3,8 @@ import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
 import {sendVehicleCommand} from "@/lib/vehicle/commands.ts";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {useCompassCalibration} from "@/lib/calibration/useCompassCalibration.ts";
-import {MAG_CAL_SECTION_COUNT} from "@/lib/calibration/magCalGrid.ts";
-import CompassCoverageViewport from "./CompassCoverageViewport.tsx";
+import {COMPASS_CAL_SECTION_COUNT} from "@/lib/calibration/compassCalGrid.ts";
+import CompassCoverageViewport from "./viewport/CompassCoverageViewport.tsx";
 
 interface CompassCalibrationPanelProps {
     live: Map<string, LiveParamEntry>;
@@ -84,7 +84,7 @@ function isExternal(live: Map<string, LiveParamEntry>, compassId: number): boole
  * Compass calibration — ArduPilot rotates through orientations freely rather
  * than a fixed position sequence (see `useCompassCalibration`), so the panel
  * centers on one thing QGroundControl doesn't show at all: a live coverage
- * sphere (see `magCalGrid.ts`/`CoverageSphere`) painting which directions
+ * sphere (see `compassCalGrid.ts`/`CoverageSphere`) painting which directions
  * `MAG_CAL_PROGRESS` has actually sampled, so the operator can see *which
  * way* to keep turning instead of watching a bare percentage climb.
  *
@@ -105,7 +105,7 @@ export default function CompassCalibrationPanel({live}: CompassCalibrationPanelP
     // sphere has at least one compass sampled," the simplest single signal
     // to rotate against when several compasses are running at once.
     const coveredMask = useMemo(() => {
-        const combined = new Array<boolean>(MAG_CAL_SECTION_COUNT).fill(false);
+        const combined = new Array<boolean>(COMPASS_CAL_SECTION_COUNT).fill(false);
         for (const compass of calibration.progress.values()) {
             compass.coveredMask.forEach((covered, i) => {
                 if (covered) combined[i] = true;

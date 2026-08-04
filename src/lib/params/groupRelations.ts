@@ -1,5 +1,15 @@
 import {groupLabel, ParamGroup} from "./paramSheet.ts";
 
+/**
+ * This file holds the generic tree-building logic only. The actual relation
+ * data lives in sibling `groupRelations.<Variant>.ts` files (`.shared.ts`,
+ * `.ArduCopter.ts`, `.ArduPlane.ts`) — a dotted-suffix split rather than a
+ * feature subfolder because the data is genuinely one concern (which param
+ * groups nest under which) fanned out by vehicle firmware, not separate
+ * features; keeping them side-by-side as `groupRelations.*` makes the
+ * shared/per-vehicle relationship obvious from the file list alone.
+ */
+
 /** A relation's leaf is just a real group key; anything else is another
  * relation nesting deeper. Recursive by construction — a `sequential`
  * member can itself branch into a `parentChild`, and vice versa. */

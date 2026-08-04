@@ -27,12 +27,12 @@ export default function ScriptingPage() {
     const open = useOpenScripts(editor);
     const connection = useConnection();
     const connected = connection.status === "connected";
-    const vehicleSync = useVehicleScriptSync(connected);
+    const vehicleSync = useVehicleScriptSync();
     // The vehicle side of the tree isn't safe to list until its mirror has
     // actually synced — `connected` alone (link up) isn't enough.
     const vehicleReady = connected && vehicleSync.ready;
-    const tree = useFileTree(vehicleReady);
-    const live = useLiveParams(connection.status);
+    const tree = useFileTree();
+    const live = useLiveParams();
 
     const scrEnable = live.values.get("SCR_ENABLE")?.value;
     const scrHeapSize = live.values.get("SCR_HEAP_SIZE")?.value;

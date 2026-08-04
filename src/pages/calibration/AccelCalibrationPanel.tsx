@@ -4,33 +4,20 @@ import {sendVehicleCommand} from "@/lib/vehicle/commands.ts";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {useAccelCalibration} from "@/lib/calibration/useAccelCalibration.ts";
 import {ACCEL_CAL_STEPS} from "@/lib/calibration/accelCalSteps.ts";
-import OrientationViewport from "./OrientationViewport.tsx";
+import {paramDefaultStatus, ParamDefaultStatus} from "@/lib/calibration/paramDefaultStatus.ts";
+import OrientationViewport from "./viewport/OrientationViewport.tsx";
 
 interface AccelCalibrationPanelProps {
     live: Map<string, LiveParamEntry>;
 }
 
-type AccelStatus = "complete" | "incomplete" | "unknown";
-
-/** Same rule `CalibrationPage` uses for the sidebar dot
- * (`APMSensorsComponent::accelSetupNeeded`) — read straight from the live
- * parameter map here rather than threaded down as a prop, matching how
- * `RadioCalibrationPanel` reads `RCx_MIN/MAX/TRIM` itself. */
-function accelStatus(live: Map<string, LiveParamEntry>): AccelStatus {
-    const values = ["INS_ACCOFFS_X", "INS_ACCOFFS_Y", "INS_ACCOFFS_Z"].map((name) => live.get(name)?.value);
-    if (values.some((value) => value === undefined)) {
-        return "unknown";
-    }
-    return values.every((value) => value === 0) ? "incomplete" : "complete";
-}
-
-const STATUS_LABEL: Record<AccelStatus, string> = {
+const STATUS_LABEL: Record<ParamDefaultStatus, string> = {
     complete: "Calibrated",
     incomplete: "Needs calibration",
     unknown: "Unknown",
 };
 
-const STATUS_TONE: Record<AccelStatus, string> = {
+const STATUS_TONE: Record<ParamDefaultStatus, string> = {
     complete: "text-state-ok",
     incomplete: "text-state-danger",
     unknown: "text-text-helper",
@@ -53,7 +40,7 @@ export default function AccelCalibrationPanel({live}: AccelCalibrationPanelProps
     const calibration = useAccelCalibration();
     const [viewYaw, setViewYaw] = useState(0);
 
-    const status = accelStatus(live);
+    const status = paramDefaultStatus(live, ["INS_ACCOFFS_X", "INS_ACCOFFS_Y", "INS_ACCOFFS_Z"]);
     const targetRotation = calibration.step?.rotationDeg ?? LEVEL_ROTATION;
     const liveRotation = {roll: vehicle.attitude?.roll ?? 0, pitch: vehicle.attitude?.pitch ?? 0};
 

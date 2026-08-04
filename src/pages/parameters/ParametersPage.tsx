@@ -809,7 +809,7 @@ export default function ParametersPage() {
     const firmware = firmwareOf(vehicleTelemetry.vehicleKind);
 
     const state = useParamSheet(firmware);
-    const live = useLiveParams(connection.status);
+    const live = useLiveParams();
 
     const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
     const [query, setQuery] = useState("");

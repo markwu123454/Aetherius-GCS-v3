@@ -7,6 +7,7 @@ use mavlink::{
 };
 
 use std::{
+    collections::HashMap,
     io::ErrorKind,
     net::{SocketAddr, TcpStream},
     sync::{
@@ -235,9 +236,20 @@ fn set_status(app: &AppHandle, status: LinkStatus) {
     let _ = app.emit("link-status", status);
 }
 
-#[derive(Clone, Copy, Deserialize)]
-enum UsbBoardClass {
+/// `rename_all` is deliberately `serialize`-only: the frontend wants
+/// camelCase, but `usb_boards.json` spells these variants exactly as they're
+/// written here, so renaming the *deserialize* side too would make every row
+/// of that file fail to parse — and because `usb_boards()` parses lazily
+/// inside `scan_links`, that failure surfaces as a non-unwinding panic in a
+/// WebView2 callback (a hard abort, not an error dialog) rather than at
+/// startup. `SiKRadio` gets an explicit wire name because serde's camelCase
+/// rule only lowercases the first character (`siKRadio`), which isn't what
+/// `UsbBoardClass` in `connection.ts` declares.
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Debug)]
+#[serde(rename_all(serialize = "camelCase"))]
+pub enum UsbBoardClass {
     Pixhawk,
+    #[serde(rename(serialize = "sikRadio"))]
     SiKRadio,
     RtkGps,
     OpenPilot,
@@ -290,28 +302,105 @@ fn board_baud(class: UsbBoardClass) -> u32 {
 pub struct ScannedLink {
     pub label: String,
     pub address: String,
+    /// `None` for non-USB entries (SITL) — a recognized USB board always
+    /// has a class, used by the firmware-flashing port picker to filter
+    /// out radios/GPS units that obviously aren't a flight controller.
+    pub class: Option<UsbBoardClass>,
+    /// USB vendor and product ID, `None` for non-USB entries. ArduPilot's
+    /// firmware manifest lists a `USBID` per build, so these are what let
+    /// the firmware picker narrow ~300 boards down to the one plugged in —
+    /// the same thing QGroundControl does.
+    pub vid: Option<u16>,
+    pub pid: Option<u16>,
+    /// The bare serial port name (e.g. `COM5`), independent of `address`'s
+    /// `serial:<port>:<baud>` MAVLink connection string — flashing opens
+    /// the port directly at the bootloader's own baud rate, not whatever
+    /// baud this board talks MAVLink at.
+    pub port_name: Option<String>,
+}
+
+/// Collapses a board's several USB CDC interfaces down to the one worth
+/// connecting to.
+///
+/// An ArduPilot flight controller enumerates as more than one serial port
+/// from a single physical board — a Pixhawk 6C appears as interface 0 and
+/// interface 2, two COM ports with the same vendor, product and serial
+/// number. Interface 0 is the one carrying MAVLink; the other is the
+/// secondary port (SLCAN on boards that have it) and never answers a
+/// heartbeat. Offering both makes the operator pick between two names for
+/// one board, half of which silently fail to connect.
+///
+/// Only deduplicated when the board reports a serial number. Without one,
+/// two identical boards are indistinguishable from one board's two
+/// interfaces, and silently hiding a second real board is worse than
+/// listing one board twice.
+fn primary_interface_only(ports: Vec<serialport::SerialPortInfo>) -> Vec<serialport::SerialPortInfo> {
+    // key -> (lowest interface seen, index of the port that had it)
+    let mut best: HashMap<(u16, u16, String), (u8, usize)> = HashMap::new();
+    let mut keep = vec![true; ports.len()];
+
+    for (index, port) in ports.iter().enumerate() {
+        let serialport::SerialPortType::UsbPort(usb) = &port.port_type else {
+            continue;
+        };
+        let Some(serial) = usb.serial_number.clone() else {
+            continue;
+        };
+        // A port with no interface number sorts last, so a known interface
+        // is always preferred over an unknown one.
+        let interface = usb.interface.unwrap_or(u8::MAX);
+        let key = (usb.vid, usb.pid, serial);
+
+        match best.get(&key).copied() {
+            Some((best_interface, _)) if best_interface <= interface => keep[index] = false,
+            Some((_, previous_index)) => {
+                keep[previous_index] = false;
+                best.insert(key, (interface, index));
+            }
+            None => {
+                best.insert(key, (interface, index));
+            }
+        }
+    }
+
+    ports.into_iter().zip(keep).filter_map(|(port, keep)| keep.then_some(port)).collect()
 }
 
 #[tauri::command]
 pub fn scan_links() -> Vec<ScannedLink> {
     let mut found = Vec::new();
 
-    if let Ok(ports) = serialport::available_ports() {
+    if let Ok(ports) = serialport::available_ports().map(primary_interface_only) {
         for port in ports {
-            let matched = match &port.port_type {
-                serialport::SerialPortType::UsbPort(usb) => identify_usb_board(usb.vid, usb.pid),
+            let usb = match &port.port_type {
+                serialport::SerialPortType::UsbPort(usb) => Some(usb),
                 _ => None,
             };
+            let matched = usb.and_then(|usb| identify_usb_board(usb.vid, usb.pid));
             if let Some(board) = matched {
                 let address = format!("serial:{}:{}", port.port_name, board_baud(board.class));
-                found.push(ScannedLink {label: board.name.clone(), address});
+                found.push(ScannedLink {
+                    label: board.name.clone(),
+                    address,
+                    class: Some(board.class),
+                    vid: usb.map(|u| u.vid),
+                    pid: usb.map(|u| u.pid),
+                    port_name: Some(port.port_name.clone()),
+                });
             }
         }
     }
 
     let sitl: SocketAddr = "127.0.0.1:5760".parse().unwrap();
     if TcpStream::connect_timeout(&sitl, SCAN_PROBE_TIMEOUT).is_ok() {
-        found.push(ScannedLink {label: "SITL".to_string(), address: "tcp:127.0.0.1:5760".to_string()});
+        found.push(ScannedLink {
+            label: "SITL".to_string(),
+            address: "tcp:127.0.0.1:5760".to_string(),
+            class: None,
+            vid: None,
+            pid: None,
+            port_name: None,
+        });
     }
 
     found
@@ -368,4 +457,127 @@ pub fn disconnect_link(app: AppHandle, state: State<LinkState>) {
     state.last_heartbeat_ms.store(0, Ordering::SeqCst);
     params::clear(&app);
     set_status(&app, LinkStatus::Disconnected);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `usb_boards.json` is `include_str!`'d and parsed lazily on the first
+    /// `scan_links`, so a mismatch between the file and the types here isn't
+    /// a compile error — it's a runtime abort in front of the operator. This
+    /// forces the same `OnceLock` the app does, turning that into an
+    /// ordinary test failure.
+    #[test]
+    fn usb_boards_json_matches_the_types_it_deserializes_into() {
+        let boards = usb_boards();
+        assert!(!boards.is_empty(), "the board table should not be empty");
+        assert!(
+            boards.iter().any(|b| b.class == UsbBoardClass::Pixhawk),
+            "the board table should contain at least one flashable flight controller"
+        );
+    }
+
+    /// Checks the shape `scan_links` hands the frontend. Note this only
+    /// reaches the board table if the machine running the tests actually has
+    /// a serial port — `identify_usb_board` is what forces it — so it can't
+    /// stand in for `usb_boards_json_matches_the_types_it_deserializes_into`
+    /// above, which forces the parse unconditionally. Asserts on shape
+    /// rather than contents, since what's plugged in varies.
+    #[test]
+    fn scan_links_serializes_for_the_frontend_without_panicking() {
+        let json = serde_json::to_value(scan_links()).expect("scanned links should serialize");
+        for link in json.as_array().expect("an array") {
+            assert!(link.get("label").is_some_and(|v| v.is_string()));
+            assert!(link.get("address").is_some_and(|v| v.is_string()));
+            // camelCase, not `port_name` — `FirmwarePage` reads `portName`.
+            assert!(link.get("portName").is_some());
+            assert!(link.get("class").is_some());
+        }
+    }
+
+    fn usb_port(name: &str, vid: u16, pid: u16, interface: Option<u8>, serial: Option<&str>) -> serialport::SerialPortInfo {
+        serialport::SerialPortInfo {
+            port_name: name.to_string(),
+            port_type: serialport::SerialPortType::UsbPort(serialport::UsbPortInfo {
+                vid,
+                pid,
+                serial_number: serial.map(str::to_string),
+                manufacturer: None,
+                product: None,
+                interface,
+            }),
+        }
+    }
+
+    fn names(ports: Vec<serialport::SerialPortInfo>) -> Vec<String> {
+        ports.into_iter().map(|p| p.port_name).collect()
+    }
+
+    /// Exactly what a Pixhawk 6C reports over USB: one board, one serial
+    /// number, two COM ports on interfaces 0 and 2. Only interface 0 speaks
+    /// MAVLink, so listing both offers a choice where one option can only
+    /// fail.
+    #[test]
+    fn a_boards_second_usb_interface_is_not_offered_as_a_second_board() {
+        let ports = vec![
+            usb_port("COM12", 0x3162, 0x0053, Some(2), Some("350048001451333531333639")),
+            usb_port("COM11", 0x3162, 0x0053, Some(0), Some("350048001451333531333639")),
+        ];
+        assert_eq!(names(primary_interface_only(ports)), ["COM11"]);
+    }
+
+    /// Order must not decide the winner — the lowest interface wins whether
+    /// it was enumerated first or second.
+    #[test]
+    fn the_lowest_interface_wins_regardless_of_enumeration_order() {
+        let low_first = vec![
+            usb_port("COM11", 0x3162, 0x0053, Some(0), Some("A")),
+            usb_port("COM12", 0x3162, 0x0053, Some(2), Some("A")),
+        ];
+        assert_eq!(names(primary_interface_only(low_first)), ["COM11"]);
+    }
+
+    /// Two of the same board are two boards. They differ only by serial
+    /// number, and dropping one would hide hardware the operator has
+    /// plugged in.
+    #[test]
+    fn two_identical_boards_both_survive() {
+        let ports = vec![
+            usb_port("COM11", 0x3162, 0x0053, Some(0), Some("BOARD-A")),
+            usb_port("COM12", 0x3162, 0x0053, Some(2), Some("BOARD-A")),
+            usb_port("COM21", 0x3162, 0x0053, Some(0), Some("BOARD-B")),
+            usb_port("COM22", 0x3162, 0x0053, Some(2), Some("BOARD-B")),
+        ];
+        assert_eq!(names(primary_interface_only(ports)), ["COM11", "COM21"]);
+    }
+
+    /// With no serial number there is no way to tell one board's two
+    /// interfaces from two boards. Listing a board twice is recoverable;
+    /// hiding a real one is not.
+    #[test]
+    fn ports_without_a_serial_number_are_left_alone() {
+        let ports = vec![
+            usb_port("COM3", 0x1209, 0x5741, Some(0), None),
+            usb_port("COM4", 0x1209, 0x5741, Some(2), None),
+        ];
+        assert_eq!(names(primary_interface_only(ports)), ["COM3", "COM4"]);
+    }
+
+    /// The frontend's `UsbBoardClass` union in `connection.ts` is matched
+    /// against by string (`link.class === "pixhawk"` in the flashing port
+    /// picker), so these wire names are load-bearing, not cosmetic.
+    #[test]
+    fn usb_board_class_serializes_to_the_names_the_frontend_declares() {
+        let names: Vec<String> = [
+            UsbBoardClass::Pixhawk,
+            UsbBoardClass::SiKRadio,
+            UsbBoardClass::RtkGps,
+            UsbBoardClass::OpenPilot,
+        ]
+        .iter()
+        .map(|c| serde_json::to_string(c).unwrap())
+        .collect();
+        assert_eq!(names, [r#""pixhawk""#, r#""sikRadio""#, r#""rtkGps""#, r#""openPilot""#]);
+    }
 }

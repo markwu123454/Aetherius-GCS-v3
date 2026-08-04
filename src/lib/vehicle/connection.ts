@@ -99,15 +99,30 @@ export function requireBackend(): void {
     }
 }
 
+/** Mirrors the Rust `UsbBoardClass` enum — which USB board table entry
+ * matched, used to tell a flashable flight controller apart from a radio or
+ * GPS unit that also happens to show up in the connect dropdown. */
+export type UsbBoardClass = "pixhawk" | "sikRadio" | "rtkGps" | "openPilot";
+
 /**
  * One scanned endpoint. `label` is what's shown in the UI — a recognized
  * board's name, or "SITL" for the local sim port; `address` is the literal
  * string that gets connected to if it's picked, kept separate so the label
- * can stay a plain name without the connect string cluttering it.
+ * can stay a plain name without the connect string cluttering it. `class`
+ * and `portName` are `undefined` for non-USB entries (SITL).
  */
 export interface ScannedLink {
     label: string;
     address: string;
+    class?: UsbBoardClass;
+    /** USB vendor/product ID, `undefined` for non-USB entries (SITL). What
+     * the firmware picker matches against the manifest's `USBID` to work out
+     * which builds are for the board that's plugged in. */
+    vid?: number;
+    pid?: number;
+    /** Bare serial port name (e.g. `COM5`) — what firmware flashing opens
+     * directly, independent of `address`'s MAVLink baud rate. */
+    portName?: string;
 }
 
 /**

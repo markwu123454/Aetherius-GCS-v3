@@ -4,6 +4,7 @@ import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
 import {useLiveParams} from "@/lib/params/useLiveParams.ts";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {VehicleKind} from "@/lib/vehicle/vehicle.ts";
+import {paramDefaultStatus} from "@/lib/calibration/paramDefaultStatus.ts";
 import RadioCalibrationPanel from "./RadioCalibrationPanel.tsx";
 import AccelCalibrationPanel from "./AccelCalibrationPanel.tsx";
 import GyroCalibrationPanel from "./GyroCalibrationPanel.tsx";
@@ -53,17 +54,6 @@ function paramValue(live: Map<string, LiveParamEntry>, name: string): number | u
 }
 
 /**
- * Mirrors QGroundControl's own ArduPilot detection
- * (`APMSensorsComponent::accelSetupNeeded`): uncalibrated iff every
- * `INS_ACCOFFS` axis is still exactly the firmware's zero default.
- */
-function accelStatus(live: Map<string, LiveParamEntry>): CalibrationStatus {
-    const values = ["INS_ACCOFFS_X", "INS_ACCOFFS_Y", "INS_ACCOFFS_Z"].map((name) => paramValue(live, name));
-    if (values.some((value) => value === undefined)) return "unknown";
-    return values.every((value) => value === 0) ? "incomplete" : "complete";
-}
-
-/**
  * One compass instance (1-3), the same rule QGroundControl uses
  * (`APMSensorsComponent::compassSetupNeeded`): a `DEV_ID` of 0 means the
  * slot has no compass fitted at all; a `USE` of 0 means one is fitted but
@@ -94,17 +84,21 @@ const NOT_AUTO_DETECTED =
 
 /**
  * Every calibration this page could offer, for the connected vehicle's own
- * type. Deliberately scoped to sensor calibration only — ESC calibration and
+ * type. Sensor calibration only — Frame setup, Servo output, and anything
+ * else that's a plain parameter form rather than a calibration procedure
+ * lives on the Setup page instead (see `SetupPage`). ESC calibration and
  * motor testing are bench/system tests, not sensor corrections, and belong
  * on a future page of their own.
  */
 function buildItems(vehicleKind: VehicleKind | null, live: Map<string, LiveParamEntry>): CalibrationItem[] {
-    const items: CalibrationItem[] = [
+    const items: CalibrationItem[] = [];
+
+    items.push(
         {
             id: "accel",
             label: "Accelerometer",
             description: "Corrects accelerometer bias so attitude and altitude readings are accurate.",
-            status: accelStatus(live),
+            status: paramDefaultStatus(live, ["INS_ACCOFFS_X", "INS_ACCOFFS_Y", "INS_ACCOFFS_Z"]),
         },
         {
             id: "gyro",
@@ -113,7 +107,7 @@ function buildItems(vehicleKind: VehicleKind | null, live: Map<string, LiveParam
             status: "unknown",
             note: "Recalibrates automatically on every boot — run manually only if the vehicle was disturbed while powering up.",
         },
-    ];
+    );
 
     for (const instance of [1, 2, 3] as const) {
         const {fitted, status} = compassStatus(live, instance);
@@ -204,19 +198,19 @@ function DetailPane({item}: {item: CalibrationItem}) {
 }
 
 /**
- * Sensor calibration only (accelerometer, compass, radio, airspeed) — see
- * `buildItems`. Accelerometer/compass status mirrors QGroundControl's own
- * ArduPilot detection, read from the same live parameter map the Parameters
- * page uses. Every "Calibrate" button is disabled: running an actual
- * calibration routine needs backend command support that doesn't exist yet,
- * and a button that looks live but does nothing is worse than an honestly
- * disabled one.
+ * Sensor calibration only — accelerometer, gyroscope, compass, radio,
+ * airspeed — see `buildItems`. Accelerometer/compass status mirrors
+ * QGroundControl's own ArduPilot detection, read from the same live
+ * parameter map the Parameters page uses. Every `DetailPane` "Calibrate"
+ * button is disabled: running an actual calibration routine needs backend
+ * command support that doesn't exist yet for that sensor, and a button that
+ * looks live but does nothing is worse than an honestly disabled one.
  */
 export default function CalibrationPage() {
     const connection = useConnection();
     const vehicle = useVehicle();
     const connected = connection.status === "connected";
-    const live = useLiveParams(connection.status);
+    const live = useLiveParams();
 
     const items = useMemo(() => buildItems(vehicle.vehicleKind, live.values), [vehicle.vehicleKind, live.values]);
 

@@ -1,9 +1,10 @@
 import {useMemo, useState} from "react";
-import {useRcChannels, RC_CHANNEL_UNUSED} from "@/lib/calibration/rcChannels.ts";
+import {useRcChannels} from "@/lib/calibration/useRcChannels.ts";
+import {RC_CHANNEL_UNUSED} from "@/lib/calibration/rcChannels.ts";
 import {ChannelCalInfo, useRadioCalibration, StickFunction} from "@/lib/calibration/useRadioCalibration.ts";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {VehicleKind} from "@/lib/vehicle/vehicle.ts";
-import RadioStickDiagram, {RadioMode} from "./RadioStickDiagram.tsx";
+import RadioStickDiagram, {RadioMode} from "./viewport/RadioStickDiagram.tsx";
 
 interface RadioCalibrationPanelProps {
     live: Map<string, LiveParamEntry>;

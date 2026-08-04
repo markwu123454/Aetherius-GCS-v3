@@ -1,14 +1,14 @@
 import {useCallback, useRef, useState} from "react";
 import {sendVehicleCommand} from "@/lib/vehicle/commands.ts";
 import {useTauriEvent} from "@/lib/tauriEvent.ts";
-import {MAG_CAL_SECTION_COUNT, sectionCovered} from "./magCalGrid.ts";
+import {COMPASS_CAL_SECTION_COUNT, sectionCovered} from "./compassCalGrid.ts";
 
 /** ArduPilot's `MagCalStatus::MAG_CAL_SUCCESS`. */
 const MAG_CAL_SUCCESS = 4;
 
 export interface CompassCalProgress {
     completionPct: number;
-    /** Length `MAG_CAL_SECTION_COUNT`, index-aligned with `magCalGrid.ts`. */
+    /** Length `COMPASS_CAL_SECTION_COUNT`, index-aligned with `compassCalGrid.ts`. */
     coveredMask: boolean[];
 }
 
@@ -52,7 +52,7 @@ function idsInMask(mask: number): number[] {
  * ArduPilot's onboard compass calibration (`MAV_CMD_DO_START_MAG_CAL`) runs
  * every requested compass in parallel: each streams its own
  * `MAG_CAL_PROGRESS` (completion percentage, plus which of the 80
- * coverage-sphere sections it's sampled — see `magCalGrid.ts`) and finishes
+ * coverage-sphere sections it's sampled — see `compassCalGrid.ts`) and finishes
  * with its own `MAG_CAL_REPORT` (pass/fail and fitness). Calibration as a
  * whole is done once every compass named in `cal_mask` has reported —
  * there's no single "finished" message for the group.
@@ -96,7 +96,7 @@ export function useCompassCalibration() {
             return; // stale event from a calibration this session no longer owns
         }
         calMaskRef.current = payload.calMask;
-        const coveredMask = Array.from({length: MAG_CAL_SECTION_COUNT}, (_, i) =>
+        const coveredMask = Array.from({length: COMPASS_CAL_SECTION_COUNT}, (_, i) =>
             sectionCovered(payload.completionMask, i),
         );
         setProgress((current) => {

@@ -25,6 +25,7 @@ dist-ssr
 *.sln
 *.sw?
 /CLAUDE.md
+.claude/
 
 # Raw FAA NASR subscription cycles — ~600MB per cycle, re-downloadable from
 # faa.gov, and superseded every 28 days. Only the GeoJSON derived from it is

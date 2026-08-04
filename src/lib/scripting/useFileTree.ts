@@ -1,5 +1,7 @@
-import {useCallback, useEffect, useState} from "react";
+import {useSyncExternalStore} from "react";
+import {createStore} from "@/lib/store.ts";
 import {FsEntry, listLocalDir, listVehicleDir, Root} from "./scriptFiles.ts";
+import {getVehicleScriptSync, subscribeVehicleScriptSync} from "./useVehicleScriptSync.ts";
 
 export interface TreeNode {
     expanded: boolean;
@@ -29,65 +31,80 @@ export interface FileTree {
     refresh: (root: Root, path: string) => void;
 }
 
+const treeStore = createStore<Map<string, TreeNode>>(new Map());
+
+async function load(root: Root, path: string): Promise<void> {
+    const key = nodeKey(root, path);
+    treeStore.update((prev) => {
+        const next = new Map(prev);
+        next.set(key, {expanded: true, children: prev.get(key)?.children ?? null, loading: true, error: null});
+        return next;
+    });
+    try {
+        const children = root === "local" ? await listLocalDir(path) : await listVehicleDir(path);
+        children.sort((a, b) => Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name));
+        treeStore.update((prev) => new Map(prev).set(key, {expanded: true, children, loading: false, error: null}));
+    } catch (err) {
+        treeStore.update((prev) => new Map(prev).set(key, {expanded: true, children: null, loading: false, error: message(err)}));
+    }
+}
+
+function toggle(root: Root, path: string): void {
+    const key = nodeKey(root, path);
+    const existing = treeStore.getSnapshot().get(key);
+    if (existing?.expanded) {
+        treeStore.update((prev) => new Map(prev).set(key, {...existing, expanded: false}));
+    } else if (existing?.children) {
+        treeStore.update((prev) => new Map(prev).set(key, {...existing, expanded: true}));
+    } else {
+        void load(root, path);
+    }
+}
+
+function refresh(root: Root, path: string): void {
+    void load(root, path);
+}
+
+function clearVehicleNodes(): void {
+    treeStore.update((prev) => {
+        const next = new Map(prev);
+        for (const key of next.keys()) {
+            if (key.startsWith("vehicle:")) next.delete(key);
+        }
+        return next;
+    });
+}
+
+// Local loads once at module load — it's a local disk read with nothing to
+// wait on, and doesn't depend on a vehicle connection.
+void load("local", "");
+
+// Reacts to the vehicle scripts mirror's own ready/not-ready edge (see
+// `useVehicleScriptSync`) rather than raw connection status — the vehicle
+// side of this tree isn't safe to list until that mirror has actually
+// synced. Subscribed once, at module load, so the tree is already populated
+// by the time the Scripting page is opened rather than starting fresh every
+// visit; vehicle nodes are dropped entirely when the mirror goes away rather
+// than left showing a listing from whatever was last plugged in.
+let wasReady = false;
+subscribeVehicleScriptSync(() => {
+    const ready = getVehicleScriptSync().ready;
+    if (ready === wasReady) return;
+    wasReady = ready;
+    if (ready) {
+        void load("vehicle", "");
+    } else {
+        clearVehicleNodes();
+    }
+});
+
 /**
- * Two independent lazy trees sharing one node map, keyed by `root:path`.
- * Local loads eagerly — it's a local disk read, nothing to wait on. Vehicle
- * only loads once connected, and is dropped entirely on disconnect rather
- * than left showing a listing from whatever was last plugged in.
+ * Two independent lazy trees sharing one node map, keyed by `root:path` — a
+ * persistent module-scope store (see `store.ts`) rather than per-component
+ * state, so the tree is already populated whether or not the Scripting page
+ * happened to be open when the vehicle connected.
  */
-export function useFileTree(vehicleConnected: boolean): FileTree {
-    const [nodes, setNodes] = useState<Map<string, TreeNode>>(new Map());
-
-    const load = useCallback(async (root: Root, path: string) => {
-        const key = nodeKey(root, path);
-        setNodes((prev) => {
-            const next = new Map(prev);
-            next.set(key, {expanded: true, children: prev.get(key)?.children ?? null, loading: true, error: null});
-            return next;
-        });
-        try {
-            const children = root === "local" ? await listLocalDir(path) : await listVehicleDir(path);
-            children.sort((a, b) => Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name));
-            setNodes((prev) => new Map(prev).set(key, {expanded: true, children, loading: false, error: null}));
-        } catch (err) {
-            setNodes((prev) => new Map(prev).set(key, {expanded: true, children: null, loading: false, error: message(err)}));
-        }
-    }, []);
-
-    const toggle = useCallback(
-        (root: Root, path: string) => {
-            const key = nodeKey(root, path);
-            const existing = nodes.get(key);
-            if (existing?.expanded) {
-                setNodes((prev) => new Map(prev).set(key, {...existing, expanded: false}));
-            } else if (existing?.children) {
-                setNodes((prev) => new Map(prev).set(key, {...existing, expanded: true}));
-            } else {
-                void load(root, path);
-            }
-        },
-        [nodes, load],
-    );
-
-    const refresh = useCallback((root: Root, path: string) => void load(root, path), [load]);
-
-    useEffect(() => {
-        void load("local", "");
-    }, [load]);
-
-    useEffect(() => {
-        if (vehicleConnected) {
-            void load("vehicle", "");
-            return;
-        }
-        setNodes((prev) => {
-            const next = new Map(prev);
-            for (const key of next.keys()) {
-                if (key.startsWith("vehicle:")) next.delete(key);
-            }
-            return next;
-        });
-    }, [vehicleConnected, load]);
-
+export function useFileTree(): FileTree {
+    const nodes = useSyncExternalStore(treeStore.subscribe, treeStore.getSnapshot);
     return {nodes, toggle, refresh};
 }

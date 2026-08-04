@@ -8,6 +8,8 @@ import ParametersPage from "@/pages/parameters/ParametersPage.tsx";
 import MissionPage from "@/pages/mission/MissionPage.tsx";
 import ScriptingPage from "@/pages/scripting/ScriptingPage.tsx";
 import CalibrationPage from "@/pages/calibration/CalibrationPage.tsx";
+import SetupPage from "@/pages/setup/SetupPage.tsx";
+import FirmwarePage from "@/pages/firmware/FirmwarePage.tsx";
 import LogsPage from "@/pages/logs/LogsPage.tsx";
 import AboutPage from "@/pages/about/AboutPage.tsx";
 import {useWorkspace} from "@/lib/workspace/useWorkspace.ts";
@@ -126,6 +128,8 @@ function App() {
                             {page === "mission" && <MissionPage mission={mission}/>}
                             {page === "scripting" && <ScriptingPage/>}
                             {page === "calibration" && <CalibrationPage/>}
+                            {page === "setup" && <SetupPage/>}
+                            {page === "firmware" && <FirmwarePage/>}
                             {page === "logs" && <LogsPage/>}
                             {page === "about" && <AboutPage update={update}/>}
                         </FullScreenPage>

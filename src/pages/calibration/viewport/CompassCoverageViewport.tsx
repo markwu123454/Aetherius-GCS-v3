@@ -9,7 +9,7 @@ interface CompassCoverageViewportProps {
      * rotate together, since `MAG_CAL_PROGRESS`'s coverage mask is anchored
      * to the vehicle body, not the world. */
     rotationDeg: PlaneRotationDeg;
-    /** Length 80, index-aligned with `magCalGrid.ts`'s `MAG_CAL_SECTIONS`. */
+    /** Length 80, index-aligned with `compassCalGrid.ts`'s `COMPASS_CAL_SECTIONS`. */
     coveredMask: boolean[];
 }
 

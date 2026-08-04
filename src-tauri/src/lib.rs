@@ -2,6 +2,7 @@
 
 mod commands;
 mod dispatch;
+mod firmware;
 mod link;
 mod logs;
 mod mission;
@@ -25,6 +26,7 @@ pub fn run() {
         .manage(dispatch::DispatchState::default())
         .manage(scripting::FtpState::default())
         .manage(logs::LogsState::default())
+        .manage(firmware::flash::FlashState::default())
         .invoke_handler(tauri::generate_handler![
             link::connect_link,
             link::disconnect_link,
@@ -56,6 +58,9 @@ pub fn run() {
             scripting::absolute_local_path,
             logs::list_logs,
             logs::download_log,
+            firmware::flash::flash_fetch_manifest,
+            firmware::flash::flash_prepare,
+            firmware::flash::flash_start,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

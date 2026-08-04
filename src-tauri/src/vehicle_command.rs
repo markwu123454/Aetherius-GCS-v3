@@ -21,6 +21,7 @@ pub enum VehicleCommand {
     Land,
     StartMission,
     Reboot,
+    RebootToBootloader,
     StartRadioCalibration,
     StopRadioCalibration,
     StartAccelCalibration,
@@ -75,6 +76,15 @@ fn to_mav_command(command: &VehicleCommand) -> (MavCmd, [f32; 7]) {
         VehicleCommand::Reboot => (
             MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
             [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        ),
+        VehicleCommand::RebootToBootloader => (
+            // param1 = 3: ArduPilot's own documented meaning is "reboot and
+            // hold in the bootloader" rather than booting back into flight
+            // firmware — sent before the firmware-flashing flow drops the
+            // MAVLink link and starts talking the raw bootloader protocol on
+            // the same serial port.
+            MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+            [3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         ),
         VehicleCommand::StartRadioCalibration => (
             // ArduPilot switches to streaming raw, unscaled RC input while
