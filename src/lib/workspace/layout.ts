@@ -8,6 +8,11 @@ export interface FloatingWindow {
     height: number;
 }
 
+export interface FloatingSize {
+    width: number;
+    height: number;
+}
+
 export type Placement =
     | {kind: "dock"; area: DockArea; index: number}
     | {kind: "floating"; x: number; y: number; width: number; height: number};
@@ -18,6 +23,14 @@ export interface WorkspaceState {
     active: Record<DockArea, string | null>;
     sizes: Record<DockArea, number>;
     floating: FloatingWindow[];
+    /**
+     * Last known width/height per panel, independent of whether it's docked
+     * or currently floating at all — updated on every `float()` call (drag
+     * out of a dock, live resize, or a plain reopen). Unlike `floating`
+     * itself this *is* persisted: a size preference is worth keeping even
+     * though the open floating window it came from is not.
+     */
+    floatingSizes: Record<string, FloatingSize>;
     /**
      * Where each panel was when it was last closed, so reopening restores it.
      * Only the `dock` half is persisted: a floating window is temporary, so
@@ -36,6 +49,7 @@ export interface WorkspaceState {
 export const DEFAULT_SIZES: Record<DockArea, number> = {left: 320, right: 320, bottom: 260};
 export const MIN_SIZES: Record<DockArea, number> = {left: 180, right: 180, bottom: 120};
 export const FLOATING_SIZE = {width: 380, height: 300};
+export const MIN_FLOATING_SIZE = {width: 220, height: 140};
 
 /** Where a panel with no placement history appears, near the panel launcher. */
 export const FLOATING_ORIGIN = {x: 16, y: 48};
@@ -64,6 +78,7 @@ export function defaultState(): WorkspaceState {
         },
         sizes: {...DEFAULT_SIZES},
         floating: [],
+        floatingSizes: {},
         placements: {},
         known: PANEL_DEFINITIONS.map((panel) => panel.id),
     };
@@ -113,6 +128,23 @@ function reconcile(raw: unknown): WorkspaceState {
         }
     }
 
+    const floatingSizes: Record<string, FloatingSize> = {};
+    for (const [id, size] of Object.entries(saved.floatingSizes ?? {})) {
+        if (
+            panelById(id) &&
+            size &&
+            typeof size.width === "number" &&
+            typeof size.height === "number" &&
+            Number.isFinite(size.width) &&
+            Number.isFinite(size.height)
+        ) {
+            floatingSizes[id] = {
+                width: Math.max(MIN_FLOATING_SIZE.width, size.width),
+                height: Math.max(MIN_FLOATING_SIZE.height, size.height),
+            };
+        }
+    }
+
     const active = {} as Record<DockArea, string | null>;
     const sizes = {} as Record<DockArea, number>;
     for (const area of DOCK_AREAS) {
@@ -127,7 +159,7 @@ function reconcile(raw: unknown): WorkspaceState {
     }
 
     // Floating windows are deliberately not restored — they are temporary.
-    return {docks, active, sizes, floating: [], placements, known};
+    return {docks, active, sizes, floating: [], floatingSizes, placements, known};
 }
 
 export function loadState(): WorkspaceState {
@@ -141,14 +173,14 @@ export function loadState(): WorkspaceState {
 
 export function saveState(state: WorkspaceState): void {
     try {
-        const {docks, active, sizes, known} = state;
+        const {docks, active, sizes, floatingSizes, known} = state;
         // Only dock placements survive a restart; floating ones are temporary.
         const placements = Object.fromEntries(
             Object.entries(state.placements).filter(([, placement]) => placement.kind === "dock"),
         );
         window.localStorage.setItem(
             STORAGE_KEY,
-            JSON.stringify({docks, active, sizes, placements, known}),
+            JSON.stringify({docks, active, sizes, floatingSizes, placements, known}),
         );
     } catch {
         // A full or unavailable storage quota must not take the workspace down.

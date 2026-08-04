@@ -1,11 +1,11 @@
 import {PointerEvent as ReactPointerEvent, useRef} from "react";
 import {Close} from "@carbon/icons-react";
-import {FloatingWindow} from "@/lib/workspace/layout.ts";
+import {FloatingWindow, MIN_FLOATING_SIZE} from "@/lib/workspace/layout.ts";
 import {panelById} from "@/lib/workspace/panels.ts";
 import {PanelBody} from "./panelComponents.tsx";
 
-const MIN_WIDTH = 220;
-const MIN_HEIGHT = 140;
+const MIN_WIDTH = MIN_FLOATING_SIZE.width;
+const MIN_HEIGHT = MIN_FLOATING_SIZE.height;
 
 type Edge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
@@ -25,9 +25,12 @@ interface FloatingPanelProps {
     onTitlePointerDown: (event: ReactPointerEvent) => void;
     onClose: () => void;
     onResize: (box: Omit<FloatingWindow, "panelId">) => void;
+    /** Non-null while this window should show the "here it is" flash;
+     * changes value on every re-trigger so it restarts even if already showing. */
+    flashToken: number | null;
 }
 
-export default function FloatingPanel({win, onTitlePointerDown, onClose, onResize}: FloatingPanelProps) {
+export default function FloatingPanel({win, onTitlePointerDown, onClose, onResize, flashToken}: FloatingPanelProps) {
     const panel = panelById(win.panelId);
     const startRef = useRef<{edge: Edge; x: number; y: number; box: FloatingWindow} | null>(null);
 
@@ -112,6 +115,8 @@ export default function FloatingPanel({win, onTitlePointerDown, onClose, onResiz
                     }}
                 />
             ))}
+
+            {flashToken !== null && <div key={flashToken} className="panel-flash pointer-events-none absolute inset-0"/>}
         </div>
     );
 }

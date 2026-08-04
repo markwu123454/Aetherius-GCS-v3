@@ -170,6 +170,28 @@ export default function AboutPage({update}: AboutPageProps) {
                         </a>
                         .
                     </p>
+
+                    <p className="text-label text-text-helper">
+                        Frame class/type diagrams:{" "}
+                        <a
+                            href="https://ardupilot.org/copter/docs/connect-escs-and-motors.html"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline"
+                        >
+                            ArduPilot Dev Team
+                        </a>
+                        , licensed{" "}
+                        <a
+                            href="https://creativecommons.org/licenses/by-sa/3.0/"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline"
+                        >
+                            CC BY-SA 3.0
+                        </a>
+                        .
+                    </p>
                 </section>
             </div>
         </div>

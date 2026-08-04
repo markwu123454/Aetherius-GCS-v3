@@ -6,9 +6,6 @@ import {PrearmReason} from "@/lib/vehicle/vehicle.ts";
 import {TONE_TEXT} from "@/components/topmenu/StatusChip.tsx";
 
 function ReasonRow({reason}: {reason: PrearmReason}) {
-    // `missedCycles` still gates whether a reason is shown at all (see
-    // `useVehicle`'s reconciliation) — a one-cycle grace period against a
-    // dropped packet — but doesn't change how it's shown once it is.
     return (
         <div className="border-b border-border-subtle/40 px-2 py-1.5 last:border-b-0">
             <span className={`text-label ${TONE_TEXT.danger}`}>{reason.text}</span>
@@ -37,8 +34,7 @@ export default function PrearmPanel() {
     const now = useNow();
 
     const unknown = isLinkIdle(connection.status) || vehicle.updatedAt === 0;
-    // Confirmed reasons first; the ones about to age out sink to the bottom.
-    const reasons = [...vehicle.prearmReasons].sort((a, b) => a.missedCycles - b.missedCycles);
+    const reasons = vehicle.prearmReasons;
 
     return (
         <div className="@container flex h-full min-h-0 w-full flex-col overflow-auto bg-background">

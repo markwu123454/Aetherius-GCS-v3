@@ -168,6 +168,28 @@ body {
     }
 }
 
+/* "Where is it" cue for reopening a panel that's already on screen — an inset
+   ring so it never nudges layout, unlike a real border would. */
+@keyframes panel-flash {
+    0% {
+        box-shadow: inset 0 0 0 2px var(--color-state-info);
+    }
+    100% {
+        box-shadow: inset 0 0 0 2px transparent;
+    }
+}
+
+.panel-flash {
+    animation: panel-flash 600ms var(--ease-productive);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .panel-flash {
+        animation: none;
+        box-shadow: inset 0 0 0 2px var(--color-state-info);
+    }
+}
+
 /* TODO: delete and replace with proper attribution */
 .maplibregl-ctrl {
     display: none;

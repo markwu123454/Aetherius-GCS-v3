@@ -7,18 +7,6 @@ export interface PrearmReason {
     /** With `PREARM_TEXT_PREFIX` already stripped — the panel shows the
      * reason itself, not the tag ArduPilot uses to route it. */
     text: string;
-    /**
-     * How many consecutive recheck cycles have passed without ArduPilot
-     * repeating this reason. `0` means it was in the most recent cycle's
-     * report — certain. `1` means it wasn't, but was the cycle before —
-     * shown as a grace period rather than dropped immediately, since a
-     * missing report is ambiguous: it might mean the check actually passed,
-     * or just that one STATUSTEXT got lost, or that an earlier gated check
-     * changed and this one simply wasn't evaluated this pass. Dropped once
-     * this reaches 2 — ArduPilot has no "resolved" signal, so two straight
-     * misses is as much confidence as the protocol can offer.
-     */
-    missedCycles: number;
 }
 
 export interface VehiclePosition {
@@ -87,9 +75,9 @@ export interface VehicleState {
      */
     prearmPass: boolean;
     /**
-     * `PreArm:` reasons ArduPilot has reported recently — reconciled against
-     * each fresh recheck cycle rather than accumulated forever (see
-     * `PrearmReason.missedCycles`). Empty once `prearmPass` is true.
+     * `PreArm:` reasons ArduPilot reported on its most recent recheck cycle —
+     * replaced wholesale on every cycle rather than accumulated, so a reason
+     * that isn't repeated is gone immediately. Empty once `prearmPass` is true.
      */
     prearmReasons: PrearmReason[];
     /** ARMING_CHECK categories the operator has switched off. */

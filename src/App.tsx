@@ -105,7 +105,6 @@ function App() {
                     settings={settings}
                     openIds={workspace.openIds}
                     page={page}
-                    airspace={airspace}
                     mission={mission}
                     onResetWorkspace={workspace.actions.resetToDefault}
                 />

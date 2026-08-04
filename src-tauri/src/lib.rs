@@ -33,6 +33,7 @@ pub fn run() {
             link::scan_links,
             link::link_status,
             vehicle_command::send_vehicle_command,
+            vehicle_command::send_rc_override,
             params::refresh_params,
             params::set_param,
             mission::upload_mission,

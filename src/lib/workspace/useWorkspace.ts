@@ -1,10 +1,11 @@
-import {useCallback, useEffect, useMemo, useState} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {DockArea, DOCK_AREAS, panelById} from "./panels.ts";
 import {
     defaultState,
     FLOATING_CASCADE,
     FLOATING_ORIGIN,
     FLOATING_SIZE,
+    FloatingSize,
     FloatingWindow,
     MIN_SIZES,
     Placement,
@@ -12,6 +13,10 @@ import {
     loadState,
     saveState,
 } from "./layout.ts";
+
+/** How long a re-triggered-open flash stays visible; matches the CSS
+ * animation duration in App.css's `.panel-flash` rule. */
+const FLASH_DURATION_MS = 600;
 
 /** Where a panel currently lives, recorded so reopening can restore it. */
 function placementOf(state: WorkspaceState, panelId: string): Placement | null {
@@ -59,8 +64,13 @@ function cascadeSlot(state: WorkspaceState) {
     return {
         x: FLOATING_ORIGIN.x + step * FLOATING_CASCADE,
         y: FLOATING_ORIGIN.y + step * FLOATING_CASCADE,
-        ...FLOATING_SIZE,
     };
+}
+
+/** A panel's remembered floating size, or the shared default for one that has
+ * never been floated before. */
+function floatingSizeFor(state: WorkspaceState, panelId: string): FloatingSize {
+    return state.floatingSizes[panelId] ?? FLOATING_SIZE;
 }
 
 export interface WorkspaceActions {
@@ -77,12 +87,38 @@ export interface WorkspaceActions {
     resetToDefault: () => void;
 }
 
+export interface FlashSignal {
+    panelId: string;
+    token: number;
+}
+
 export function useWorkspace() {
     const [state, setState] = useState<WorkspaceState>(loadState);
 
     useEffect(() => {
         saveState(state);
     }, [state]);
+
+    // Purely transient "where is it" cue for reopening an already-open
+    // panel — never persisted, never affects layout. A token rather than a
+    // boolean so flashing the same panel twice in a row still restarts the
+    // animation instead of no-op'ing because the className didn't change.
+    const [flashSignal, setFlashSignal] = useState<FlashSignal | null>(null);
+    const flashTokenRef = useRef(0);
+    const flash = useCallback((panelId: string) => {
+        flashTokenRef.current += 1;
+        setFlashSignal({panelId, token: flashTokenRef.current});
+    }, []);
+
+    useEffect(() => {
+        if (!flashSignal) {
+            return;
+        }
+        const timer = setTimeout(() => {
+            setFlashSignal((current) => (current?.token === flashSignal.token ? null : current));
+        }, FLASH_DURATION_MS);
+        return () => clearTimeout(timer);
+    }, [flashSignal]);
 
     const dock = useCallback((panelId: string, area: DockArea, index?: number) => {
         setState((current) => {
@@ -104,7 +140,14 @@ export function useWorkspace() {
     const float = useCallback((panelId: string, box: Omit<FloatingWindow, "panelId">) => {
         setState((current) => {
             const next = detach(current, panelId);
-            return remember({...next, floating: [...next.floating, {panelId, ...box}]}, panelId);
+            return remember(
+                {
+                    ...next,
+                    floating: [...next.floating, {panelId, ...box}],
+                    floatingSizes: {...next.floatingSizes, [panelId]: {width: box.width, height: box.height}},
+                },
+                panelId,
+            );
         });
     }, []);
 
@@ -124,8 +167,23 @@ export function useWorkspace() {
             return;
         }
 
+        // Already on screen: opening it again is a "where is it" gesture, not
+        // a re-open — bring its dock tab forward if needed, leave
+        // position/size alone entirely, and just flash it so it's easy to
+        // spot rather than moving or duplicating anything.
+        const dockedArea = DOCK_AREAS.find((area) => state.docks[area].includes(panelId));
+        const isFloating = state.floating.some((win) => win.panelId === panelId);
+        if (dockedArea || isFloating) {
+            flash(panelId);
+            if (dockedArea && state.active[dockedArea] !== panelId) {
+                setState((current) => ({...current, active: {...current.active, [dockedArea]: panelId}}));
+            }
+            return;
+        }
+
         setState((current) => {
             const placement = current.placements[panelId];
+            const size = floatingSizeFor(current, panelId);
 
             if (placement?.kind === "dock") {
                 const next = detach(current, panelId);
@@ -143,16 +201,16 @@ export function useWorkspace() {
             }
 
             // No remembered dock: open floating so placement stays the
-            // operator's decision.
-            const box =
-                placement?.kind === "floating"
-                    ? {x: placement.x, y: placement.y, width: placement.width, height: placement.height}
-                    : cascadeSlot(current);
+            // operator's decision. Position comes from where it last closed
+            // (or a cascade slot for a panel that's never been placed at
+            // all); size always comes from `floatingSizes`, which tracks the
+            // panel regardless of whether *this* instance was ever closed.
+            const origin = placement?.kind === "floating" ? {x: placement.x, y: placement.y} : cascadeSlot(current);
             const next = detach(current, panelId);
 
-            return remember({...next, floating: [...next.floating, {panelId, ...box}]}, panelId);
+            return remember({...next, floating: [...next.floating, {panelId, ...origin, ...size}]}, panelId);
         });
-    }, []);
+    }, [state, flash]);
 
     const activate = useCallback((area: DockArea, panelId: string) => {
         setState((current) => ({...current, active: {...current.active, [area]: panelId}}));
@@ -193,5 +251,5 @@ export function useWorkspace() {
         [state.docks, state.floating],
     );
 
-    return {state, actions, visible, openIds};
+    return {state, actions, visible, openIds, flashSignal};
 }

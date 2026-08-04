@@ -34,7 +34,7 @@ interface WorkspaceProps {
 }
 
 export default function Workspace({workspace, vehiclePosition, vehicleKind, airspace}: WorkspaceProps) {
-    const {state, actions, visible} = workspace;
+    const {state, actions, visible, flashSignal} = workspace;
     const shellRef = useRef<HTMLDivElement>(null);
     const armedRef = useRef<Armed | null>(null);
 
@@ -106,14 +106,19 @@ export default function Workspace({workspace, vehiclePosition, vehicleKind, airs
             return;
         }
 
+        // Tearing a panel off a dock creates (or re-creates) its floating
+        // window, so it should already be the size the operator last left
+        // that panel's floating window at, for the whole gesture — not just
+        // once it lands.
+        const size = state.floatingSizes[panelId] ?? FLOATING_SIZE;
         armedRef.current = {
             panelId,
             startX: event.clientX,
             startY: event.clientY,
             offsetX: GRAB_OFFSET.x,
             offsetY: GRAB_OFFSET.y,
-            width: FLOATING_SIZE.width,
-            height: FLOATING_SIZE.height,
+            width: size.width,
+            height: size.height,
         };
     };
 
@@ -153,6 +158,7 @@ export default function Workspace({workspace, vehiclePosition, vehicleKind, airs
         activeId: state.active[area],
         onTabPointerDown: (panelId: string, event: ReactPointerEvent) => armTab(area, panelId, event),
         onClose: actions.close,
+        flashSignal,
     });
 
     return (
@@ -209,6 +215,7 @@ export default function Workspace({workspace, vehiclePosition, vehicleKind, airs
                             onTitlePointerDown={(event) => armFloating(win, event)}
                             onClose={() => actions.close(win.panelId)}
                             onResize={(box) => actions.float(win.panelId, box)}
+                            flashToken={flashSignal?.panelId === win.panelId ? flashSignal.token : null}
                         />
                     ))}
 

@@ -33,6 +33,20 @@ export const PANEL_DEFINITIONS: PanelDefinition[] = [
         openByDefault: true,
     },
     {
+        id: "manual",
+        title: "Manual",
+        component: "manual",
+        // `@container`-driven layout (see ManualPanel.tsx): stacks vertically
+        // in a narrow side dock, lays out in a row once there's room, so
+        // every dock is a workable target.
+        dockLeft: true,
+        dockRight: true,
+        dockBottom: true,
+        floatable: true,
+        defaultDock: "bottom",
+        openByDefault: false,
+    },
+    {
         id: "console",
         title: "Console",
         component: "console",

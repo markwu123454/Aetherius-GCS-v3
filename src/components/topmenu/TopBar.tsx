@@ -13,8 +13,6 @@ import {useConnection} from "@/lib/vehicle/useConnection.ts";
 import {SettingsApi} from "@/lib/settings/useSettings.ts";
 import {useNavigation} from "@/lib/navigation/useNavigation.tsx";
 import {PAGE_TITLES, PageId} from "@/lib/navigation/navigation.ts";
-import {AIRSPACE_CLASSES} from "@/lib/airspace/classes.ts";
-import type {AirspaceState} from "@/lib/airspace/useAirspace.ts";
 import type {MissionApi} from "@/lib/mission/useMission.ts";
 
 interface TopBarProps {
@@ -25,12 +23,11 @@ interface TopBarProps {
      * open, so its back control and title can live in this one strip
      * instead of a second bar underneath it. */
     page: PageId | null;
-    airspace: AirspaceState;
     mission: MissionApi;
     onResetWorkspace: () => void;
 }
 
-export default function TopBar({vehicle, settings, openIds, page, airspace, mission, onResetWorkspace}: TopBarProps) {
+export default function TopBar({vehicle, settings, openIds, page, mission, onResetWorkspace}: TopBarProps) {
     const now = useNow();
 
     // The backend owns the link state machine; this only reflects it.
@@ -149,21 +146,6 @@ export default function TopBar({vehicle, settings, openIds, page, airspace, miss
                                 ? navigation.closePanel(panel.id)
                                 : navigation.openPanel(panel.id),
                     })),
-                    ...AIRSPACE_CLASSES.map((definition, index) => ({
-                        label: airspace.unavailable.has(definition.id)
-                            // Class E is generated locally rather than
-                            // committed, so on a fresh clone the file is simply
-                            // absent. Say so, instead of offering a toggle that
-                            // silently does nothing.
-                            ? `${definition.label} — not built`
-                            : airspace.pending.has(definition.id)
-                                ? `${definition.label} — loading…`
-                                : definition.label,
-                        checked: airspace.classes[definition.id].visible,
-                        disabled: airspace.unavailable.has(definition.id),
-                        separatorBefore: index === 0,
-                        action: () => airspace.toggle(definition.id),
-                    })),
                     {label: "Reset Workspace", separatorBefore: true, action: onResetWorkspace},
                 ],
             },
@@ -175,7 +157,7 @@ export default function TopBar({vehicle, settings, openIds, page, airspace, miss
                 ],
             },
         ],
-        [openIds, navigation, airspace, mission, onResetWorkspace],
+        [openIds, navigation, mission, onResetWorkspace],
     );
 
     const compact = menuExpanded;
@@ -237,7 +219,7 @@ export default function TopBar({vehicle, settings, openIds, page, airspace, miss
                     staleFor={staleFor}
                     unknown={unknown}
                     severe={severe}
-                    onClick={() => navigation.openPanel("console")}
+                    onClick={() => navigation.openPanel("prearm")}
                 />
                 <StatusChip
                     label="Batt"

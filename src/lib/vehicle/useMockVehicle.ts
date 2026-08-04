@@ -21,7 +21,7 @@ function initial(): VehicleState {
         climbRate: 0,
         vehicleKind: "multirotor",
         prearmPass: false,
-        prearmReasons: INITIAL_REASONS.map((text) => ({text, missedCycles: 0})),
+        prearmReasons: INITIAL_REASONS.map((text) => ({text})),
         disabledChecks: ["Board voltage"],
         battery: {voltage: 16.4, current: 2.1, consumed: 320, percent: 82},
         gps: {fix: "3d", satellites: 17, hdop: 0.8},

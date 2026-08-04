@@ -188,13 +188,14 @@ interface CommandAckEvent {
  * re-sends the *entire* current set of failing reasons as one burst, back to
  * back, then goes quiet until the next cycle. Reconciliation is keyed off the
  * backend's own re-trigger, not a debounce guess: every `PreArm:` line is
- * buffered, and the buffer is reconciled into the store exactly when the next
- * `MAV_CMD_RUN_PREARM_CHECKS` ack arrives — which reliably marks "the previous
- * cycle's burst is complete, a new one is starting." A reason missing from
- * that reconciliation gets one grace cycle (see `PrearmReason.missedCycles`)
- * before being dropped, rather than vanishing the instant it isn't repeated —
- * ArduPilot has no way to say "resolved," so a single missed report is
- * ambiguous between that and a dropped packet.
+ * buffered, and the buffer replaces the store's contents wholesale exactly
+ * when the next `MAV_CMD_RUN_PREARM_CHECKS` ack arrives — which reliably
+ * marks "the previous cycle's burst is complete, a new one is starting." A
+ * reason missing from that reconciliation is dropped immediately rather than
+ * held over a grace cycle — a prior version tried that to hedge against a
+ * single dropped STATUSTEXT, but a resolved check sitting in the list for one
+ * extra cycle read as more confusing than the rare flicker this protects
+ * against.
  */
 const prearmReasonsStore = createStore<PrearmReason[]>([]);
 
@@ -206,15 +207,7 @@ const lastPrearmUpdateStore = createStore<number | null>(null);
 let pendingReasonTexts: string[] = [];
 
 function reconcilePendingReasons(): void {
-    const seen = new Set(pendingReasonTexts);
-    prearmReasonsStore.update((current) => {
-        const confirmed: PrearmReason[] = [...seen].map((text) => ({text, missedCycles: 0}));
-        const graced = current
-            .filter((reason) => !seen.has(reason.text))
-            .map((reason) => ({...reason, missedCycles: reason.missedCycles + 1}))
-            .filter((reason) => reason.missedCycles <= 1);
-        return [...confirmed, ...graced];
-    });
+    prearmReasonsStore.set([...new Set(pendingReasonTexts)].map((text) => ({text})));
     pendingReasonTexts = [];
 }
 

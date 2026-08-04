@@ -33,3 +33,19 @@ export function sendVehicleCommand(command: VehicleCommand): Promise<void> {
     requireBackend();
     return invoke<void>("send_vehicle_command", {command});
 }
+
+/**
+ * Raw MAVLink `RC_CHANNELS_OVERRIDE`, sent fire-and-forget — there's no ack
+ * for this message the way `COMMAND_LONG` has one, so this doesn't go
+ * through `sendVehicleCommand`. `channels` is always all 8 slots, 1-indexed
+ * by position: `65535` ("ignore this field" — MAVLink's own sentinel, same
+ * numeric value as `RC_CHANNEL_UNUSED`) for any channel this call isn't
+ * touching, a raw microsecond PWM value for the ones it is. `0` is MAVLink's
+ * own "release this channel back to the RC radio" — never sent by the
+ * keyboard stick today, since it only ever holds a channel, but a real value
+ * to send if a "give control back" action gets added later.
+ */
+export function sendRcOverride(channels: number[]): Promise<void> {
+    requireBackend();
+    return invoke<void>("send_rc_override", {channels});
+}

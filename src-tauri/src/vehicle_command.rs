@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use tauri::{AppHandle, Manager};
 
-use mavlink::dialects::ardupilotmega::{MavCmd, MavModeFlag, MavResult};
+use mavlink::dialects::ardupilotmega::{MavCmd, MavMessage, MavModeFlag, MavResult, RC_CHANNELS_OVERRIDE_DATA};
 
 use crate::commands::{self, CommandError};
 use crate::link::LinkState;
@@ -184,4 +184,53 @@ fn timeout_for(command: &VehicleCommand) -> std::time::Duration {
         VehicleCommand::StartGyroCalibration => std::time::Duration::from_secs(8),
         _ => std::time::Duration::from_secs(3),
     }
+}
+
+/// Fire-and-forget `RC_CHANNELS_OVERRIDE` — the keyboard-stick joystick's one
+/// path to the vehicle. It does NOT go through `commands::send_sync`/
+/// `send_async`: those exist to send a `COMMAND_LONG` and wait for its
+/// `COMMAND_ACK`, but `RC_CHANNELS_OVERRIDE` has no ack at all — MAVLink
+/// gives no way to confirm one arrived. The frontend's own sense of whether
+/// this is working comes from watching `RC_CHANNELS` telemetry echo the
+/// override back, not from this call succeeding.
+///
+/// `channels` is always exactly 8 entries, one per RC channel 1-8 in order.
+/// `65535` (`u16::MAX`) leaves that channel exactly as it is — the sentinel
+/// MAVLink defines as "ignore this field" for this specific message. `0`
+/// releases that channel back to the RC radio. Any other value is a raw
+/// microsecond PWM value to command. The frontend never sends `0` today —
+/// it only ever holds a channel — but the message supports it for whenever
+/// a "give control back" action gets added.
+#[tauri::command]
+pub fn send_rc_override(app: AppHandle, channels: [u16; 8]) -> Result<(), String> {
+    let link = app.state::<LinkState>();
+
+    let target = link
+        .target
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .ok_or_else(|| "no vehicle has been heard from yet".to_string())?;
+
+    let connection = link
+        .connection
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+        .ok_or_else(|| "not connected".to_string())?;
+
+    let data = RC_CHANNELS_OVERRIDE_DATA {
+        chan1_raw: channels[0],
+        chan2_raw: channels[1],
+        chan3_raw: channels[2],
+        chan4_raw: channels[3],
+        chan5_raw: channels[4],
+        chan6_raw: channels[5],
+        chan7_raw: channels[6],
+        chan8_raw: channels[7],
+        target_system: target.0,
+        target_component: target.1,
+    };
+
+    let _ = connection.send_default(&MavMessage::RC_CHANNELS_OVERRIDE(data));
+    Ok(())
 }
