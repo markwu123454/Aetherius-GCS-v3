@@ -29,13 +29,6 @@ export const BODY_AXES = [
     {id: "left",   dir: [-1,  0,  0] as const, color: "#6b7280", label: "Left"},
 ] as const;
 
-// Pre-compute marker positions (just outside the sphere surface) at module
-// load — these never change, so no reason to recompute in component code.
-const MARKER_POSITIONS = BODY_AXES.map(
-    ({dir}) =>
-        [dir[0] * SPHERE_RADIUS * 1.18, dir[1] * SPHERE_RADIUS * 1.18, dir[2] * SPHERE_RADIUS * 1.18] as const,
-);
-
 // Pre-build the static face position buffer once — 80 faces × 3 verts × 3 coords.
 const FACE_POSITIONS = (() => {
     const buf = new Float32Array(COMPASS_CAL_SECTION_COUNT * 9);
