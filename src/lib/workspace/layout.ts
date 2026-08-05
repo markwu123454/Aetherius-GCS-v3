@@ -48,6 +48,25 @@ export interface WorkspaceState {
 
 export const DEFAULT_SIZES: Record<DockArea, number> = {left: 320, right: 320, bottom: 260};
 export const MIN_SIZES: Record<DockArea, number> = {left: 180, right: 180, bottom: 120};
+/**
+ * Ceiling on each dock's own resizable dimension (left/right width, bottom
+ * height) — keeps a drag from eating most of the window. Left/right's cap is
+ * deliberately picked below `MIN_BOTTOM_WIDTH` below: a side dock maxed out
+ * still can't threaten bottom's own width floor, so the two never fight each
+ * other under normal window sizes, only in the degenerate narrow-window case
+ * `resizeDock` already has to fall back to `MIN_SIZES` for anyway.
+ */
+export const MAX_SIZES: Record<DockArea, number> = {left: 480, right: 480, bottom: 520};
+/**
+ * Floor on how much width the bottom dock keeps, enforced by capping left/
+ * right's own resize (`useWorkspace.resizeDock`) rather than bottom's —
+ * bottom's width is never dragged directly, it's just whatever's left of the
+ * shell between left and right. Set at the same 48rem/768px threshold as
+ * `ManualPanel`/`TelemetryPanel`'s own `@3xl` container breakpoint, so a
+ * bottom dock always has genuine room for their side-by-side layout rather
+ * than being technically wide enough on paper but visually cramped.
+ */
+export const MIN_BOTTOM_WIDTH = 768;
 export const FLOATING_SIZE = {width: 380, height: 300};
 export const MIN_FLOATING_SIZE = {width: 220, height: 140};
 
@@ -154,7 +173,7 @@ function reconcile(raw: unknown): WorkspaceState {
         const savedSize = saved.sizes?.[area];
         sizes[area] =
             typeof savedSize === "number" && Number.isFinite(savedSize)
-                ? Math.max(MIN_SIZES[area], savedSize)
+                ? Math.min(MAX_SIZES[area], Math.max(MIN_SIZES[area], savedSize))
                 : DEFAULT_SIZES[area];
     }
 

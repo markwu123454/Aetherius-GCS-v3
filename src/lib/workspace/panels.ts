@@ -28,7 +28,10 @@ export const PANEL_DEFINITIONS: PanelDefinition[] = [
         dockLeft: true,
         dockRight: true,
         dockBottom: true,
-        floatable: true,
+        // Layout is position-driven (see TelemetryPanel.tsx): side dock →
+        // stacked column, bottom dock → side-by-side row. Floating has no
+        // predictable aspect ratio, so it's disallowed.
+        floatable: false,
         defaultDock: "bottom",
         openByDefault: true,
     },
@@ -36,12 +39,27 @@ export const PANEL_DEFINITIONS: PanelDefinition[] = [
         id: "manual",
         title: "Manual",
         component: "manual",
-        // `@container`-driven layout (see ManualPanel.tsx): stacks vertically
-        // in a narrow side dock, lays out in a row once there's room, so
-        // every dock is a workable target.
         dockLeft: true,
         dockRight: true,
         dockBottom: true,
+        // Same reasoning as telemetry — position-driven layout, no float.
+        floatable: false,
+        defaultDock: "bottom",
+        openByDefault: false,
+    },
+    {
+        id: "rc-override",
+        title: "RC Override",
+        component: "rc-override",
+        // Can't dock at all, only float: an engaged override must never
+        // become a background dock tab, since a dock only mounts its active
+        // tab (see Dock.tsx) — tabbing away would unmount it out from under
+        // a live override with no visual trace it's still latched. Floating
+        // it permanently instead means its screen position also stays put,
+        // which matters for a control the operator is driving by feel.
+        dockLeft: false,
+        dockRight: false,
+        dockBottom: false,
         floatable: true,
         defaultDock: "bottom",
         openByDefault: false,

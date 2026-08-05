@@ -24,6 +24,13 @@ interface Armed {
     offsetY: number;
     width: number;
     height: number;
+    /** Whether this panel can be left floating after a drag. Non-floatable
+     * panels are still draggable between docks but snap back to `sourceArea`
+     * if released over empty space. */
+    floatable: boolean;
+    /** The dock this panel came from — used to restore a non-floatable panel
+     * that is dropped outside any dock target. */
+    sourceArea: DockArea;
 }
 
 interface WorkspaceProps {
@@ -37,13 +44,23 @@ export default function Workspace({workspace, vehiclePosition, vehicleKind, airs
     const {state, actions, visible, flashSignal} = workspace;
     const shellRef = useRef<HTMLDivElement>(null);
     const armedRef = useRef<Armed | null>(null);
+    // Kept separately from `armedRef` so `onDrop` can read the source area
+    // after `armedRef` has already been cleared when the drag threshold fires.
+    const dragSourceRef = useRef<{area: DockArea; floatable: boolean} | null>(null);
 
     const onDrop = useCallback(
         (panelId: string, target: DockArea | null, box: Box) => {
+            const source = dragSourceRef.current;
+            dragSourceRef.current = null;
             if (target) {
                 actions.dock(panelId, target);
-            } else {
+            } else if (source?.floatable) {
                 actions.float(panelId, box);
+            } else {
+                // Non-floatable panel released over empty space — put it back
+                // where it came from rather than leaving it in a floating state
+                // it's never supposed to occupy.
+                actions.dock(panelId, source?.area ?? "bottom");
             }
         },
         [actions],
@@ -63,11 +80,14 @@ export default function Workspace({workspace, vehiclePosition, vehicleKind, airs
                 return;
             }
             armedRef.current = null;
+            dragSourceRef.current = {area: armed.sourceArea, floatable: armed.floatable};
 
             const shell = shellRef.current?.getBoundingClientRect();
-            // Float it up front: leaving the dock the instant the drag starts
-            // is the whole point of the gesture, and it means a drop only ever
-            // has to move an already-floating panel.
+            // Float immediately so there is always a floating window for the
+            // drag system to track. For non-floatable panels this state is
+            // temporary — `onDrop` re-docks them if no target is hit. The
+            // floating window is hidden during the drag itself (see the
+            // `drag?.panelId` filter below), so no ghost flickers into view.
             actions.float(armed.panelId, {
                 x: shell ? event.clientX - shell.left - armed.offsetX : 0,
                 y: shell ? event.clientY - shell.top - armed.offsetY : 0,
@@ -102,15 +122,22 @@ export default function Workspace({workspace, vehiclePosition, vehicleKind, airs
 
     const armTab = (area: DockArea, panelId: string, event: ReactPointerEvent) => {
         actions.activate(area, panelId);
-        if (!panelById(panelId)?.floatable) {
+        const panel = panelById(panelId);
+        if (!panel) {
             return;
         }
 
-        // Tearing a panel off a dock creates (or re-creates) its floating
-        // window, so it should already be the size the operator last left
-        // that panel's floating window at, for the whole gesture — not just
-        // once it lands.
-        const size = state.floatingSizes[panelId] ?? FLOATING_SIZE;
+        // Floatable panels use their last known floating size for the drag
+        // ghost — consistent with the window that appears if they're dropped
+        // in empty space. Non-floatable panels fall back to a reasonable
+        // preview size derived from their current dock dimension; the ghost
+        // only ever shows a title bar, so the exact size doesn't matter much.
+        const size = panel.floatable
+            ? (state.floatingSizes[panelId] ?? FLOATING_SIZE)
+            : area === "bottom"
+                ? {width: FLOATING_SIZE.width, height: state.sizes.bottom}
+                : {width: state.sizes[area], height: FLOATING_SIZE.height};
+
         armedRef.current = {
             panelId,
             startX: event.clientX,
@@ -119,6 +146,8 @@ export default function Workspace({workspace, vehiclePosition, vehicleKind, airs
             offsetY: GRAB_OFFSET.y,
             width: size.width,
             height: size.height,
+            floatable: panel.floatable,
+            sourceArea: area,
         };
     };
 
@@ -133,6 +162,8 @@ export default function Workspace({workspace, vehiclePosition, vehicleKind, airs
             offsetY: bounds ? event.clientY - bounds.top : GRAB_OFFSET.y,
             width: win.width,
             height: win.height,
+            floatable: true,
+            sourceArea: "bottom", // floating panels have no dock source; field is unused
         };
     };
 
@@ -170,7 +201,9 @@ export default function Workspace({workspace, vehiclePosition, vehicleKind, airs
                     </div>
                     <Splitter
                         orientation="vertical"
-                        onResize={(delta) => actions.resizeDock("left", state.sizes.left + delta)}
+                        onResize={(delta) =>
+                            actions.resizeDock("left", state.sizes.left + delta, shellRef.current?.getBoundingClientRect().width)
+                        }
                     />
                 </>
             )}
@@ -197,7 +230,9 @@ export default function Workspace({workspace, vehiclePosition, vehicleKind, airs
                 <>
                     <Splitter
                         orientation="vertical"
-                        onResize={(delta) => actions.resizeDock("right", state.sizes.right - delta)}
+                        onResize={(delta) =>
+                            actions.resizeDock("right", state.sizes.right - delta, shellRef.current?.getBoundingClientRect().width)
+                        }
                     />
                     <div style={{width: state.sizes.right}} className="shrink-0">
                         <Dock {...dockProps("right")}/>

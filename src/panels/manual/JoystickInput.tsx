@@ -1,5 +1,6 @@
 import {type KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState} from "react";
 import StickBall from "./StickBall.tsx";
+import FitBox from "./FitBox.tsx";
 import {useRcChannels} from "@/lib/calibration/useRcChannels.ts";
 import {useLiveParams} from "@/lib/params/useLiveParams.ts";
 import {RC_CHANNEL_UNUSED} from "@/lib/calibration/rcChannels.ts";
@@ -14,6 +15,17 @@ import {
     resolveStick,
     reversedParamIsBool,
 } from "@/lib/calibration/stickMapping.ts";
+
+/** Natural size this settles into: `p-2` padding + 1px border on every side,
+ * the status label, the two `STICK_SIZE`-square balls with their own
+ * captions, and the bottom hint line — same `text-label`/`text-micro`
+ * 1rem-line-height and `gap-*` accounting as `JoystickDisplay`'s `RATIO`.
+ * Only used to compute `RATIO`; every piece actually renders at whatever
+ * size `FitBox` resolves, via flex sizing, not this constant. */
+const STICK_SIZE = 112;
+const LABEL_LINE = 16;
+const PADDING_AND_BORDER = 2 * (8 + 1);
+const RATIO = (STICK_SIZE * 2 + 16 + PADDING_AND_BORDER) / (LABEL_LINE + 8 + STICK_SIZE + 4 + LABEL_LINE + 8 + LABEL_LINE + PADDING_AND_BORDER);
 
 interface KeyMapping {
     axis: "x" | "y";
@@ -220,6 +232,19 @@ function useManualControl(focused: boolean, mirrored: MirroredSticks, calibratio
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [focused]);
 
+    // The blur effect above only runs `release` when `focused` transitions
+    // to `false` — it does nothing if the component instead disappears while
+    // still focused (torn out of a dock tab that unmounts its inactive
+    // panels, or its floating window closed mid-override). This is that
+    // case's own release, run once from unmount regardless of which render's
+    // closure fires it: `release` reads everything through refs, so it sees
+    // live values at cleanup time rather than whatever was current when this
+    // effect was set up.
+    useEffect(() => {
+        return () => release(leftRef.current);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     useEffect(() => {
         if (!focused) {
             return;
@@ -372,8 +397,9 @@ export default function JoystickInput() {
     const sending = focused && fullyEngageable(calibrations);
 
     return (
-        <div
+        <FitBox
             ref={containerRef}
+            ratio={RATIO}
             tabIndex={0}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
@@ -384,24 +410,24 @@ export default function JoystickInput() {
                 {focused
                     ? sending
                         ? "Sending — Esc or click away to release"
-                        : "Armed — not connected, not sending"
+                        : "RC overriding — not connected, not sending"
                     : "Click to enable RC override"}
             </span>
-            <div className="flex gap-4">
-                <div className="flex flex-col items-center gap-1">
-                    <div className="h-28 w-28">
+            <div className="flex min-h-0 flex-1 gap-4">
+                <div className="flex min-h-0 min-w-0 flex-col items-center gap-1">
+                    <div className="aspect-square w-auto min-h-0 flex-1">
                         <StickBall x={left.x} y={left.y}/>
                     </div>
                     <span className="text-micro text-text-helper">W A S D</span>
                 </div>
-                <div className="flex flex-col items-center gap-1">
-                    <div className="h-28 w-28">
+                <div className="flex min-h-0 min-w-0 flex-col items-center gap-1">
+                    <div className="aspect-square w-auto min-h-0 flex-1">
                         <StickBall x={right.x} y={right.y}/>
                     </div>
                     <span className="text-micro text-text-helper">Arrow keys</span>
                 </div>
             </div>
             <span className="text-micro text-text-helper">R resets roll/pitch/yaw</span>
-        </div>
+        </FitBox>
     );
 }

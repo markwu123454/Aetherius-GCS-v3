@@ -92,7 +92,7 @@ export default function FloatingPanel({win, onTitlePointerDown, onClose, onResiz
             </div>
 
             <div className="min-h-0 flex-1 overflow-auto">
-                <PanelBody panel={panel}/>
+                <PanelBody panel={panel} area="floating"/>
             </div>
 
             {HANDLES.map(({edge, className}) => (

@@ -7,6 +7,8 @@ import {
     FLOATING_SIZE,
     FloatingSize,
     FloatingWindow,
+    MAX_SIZES,
+    MIN_BOTTOM_WIDTH,
     MIN_SIZES,
     Placement,
     WorkspaceState,
@@ -79,7 +81,7 @@ export interface WorkspaceActions {
     close: (panelId: string) => void;
     open: (panelId: string) => void;
     activate: (area: DockArea, panelId: string) => void;
-    resizeDock: (area: DockArea, size: number) => void;
+    resizeDock: (area: DockArea, size: number, shellWidth?: number) => void;
     /** Discards docking, sizing, and placement history and returns to the
      * registry's own defaults — the only way back for a layout dragged into
      * an unrecoverable state. Floating windows already don't survive a
@@ -216,11 +218,27 @@ export function useWorkspace() {
         setState((current) => ({...current, active: {...current.active, [area]: panelId}}));
     }, []);
 
-    const resizeDock = useCallback((area: DockArea, size: number) => {
-        setState((current) => ({
-            ...current,
-            sizes: {...current.sizes, [area]: Math.max(MIN_SIZES[area], Math.round(size))},
-        }));
+    const resizeDock = useCallback((area: DockArea, size: number, shellWidth?: number) => {
+        setState((current) => {
+            const floor = MIN_SIZES[area];
+            let ceiling = MAX_SIZES[area];
+
+            // Bottom's width is never dragged directly — it's whatever's left
+            // of the shell between left and right — so left/right's own cap
+            // only holds up to the point it would eat into bottom's floor.
+            // Whichever bound the drag reaches first wins; if both docks are
+            // already maxed and the window is too narrow to honor both plus
+            // `MIN_BOTTOM_WIDTH`, the `Math.max(floor, ceiling)` below lets
+            // this dock's own floor win instead of collapsing below it.
+            if (area !== "bottom" && shellWidth !== undefined && current.docks.bottom.length > 0) {
+                const other: DockArea = area === "left" ? "right" : "left";
+                const otherWidth = current.docks[other].length > 0 ? current.sizes[other] : 0;
+                ceiling = Math.min(ceiling, shellWidth - otherWidth - MIN_BOTTOM_WIDTH);
+            }
+
+            const clamped = Math.round(Math.min(Math.max(floor, ceiling), Math.max(floor, size)));
+            return {...current, sizes: {...current.sizes, [area]: clamped}};
+        });
     }, []);
 
     const resetToDefault = useCallback(() => {

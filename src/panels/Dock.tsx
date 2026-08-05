@@ -71,7 +71,7 @@ export default function Dock({area, panelIds, activeId, onTabPointerDown, onClos
         <div className="flex h-full w-full min-w-0 flex-col bg-background">
             {!tabsOnBottom && strip}
             <div className="relative min-h-0 flex-1 overflow-hidden">
-                <div className="absolute inset-0 overflow-auto">{active && <PanelBody panel={active}/>}</div>
+                <div className="absolute inset-0 overflow-auto">{active && <PanelBody panel={active} area={area}/>}</div>
                 {/* Keyed by token, not just presence, so re-flashing the same
                     panel before the previous flash finished still restarts the
                     animation instead of no-op'ing on an unchanged className. */}

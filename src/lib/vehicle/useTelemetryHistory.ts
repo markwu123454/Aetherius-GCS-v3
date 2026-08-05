@@ -4,8 +4,14 @@ import {getVehicleSnapshot} from "./useVehicle.ts";
 
 export interface TelemetryHistoryPoint {
     voltage: number;
+    /** Alongside `voltage` rather than derived from it — `batteryTone`'s
+     * thresholds are percent-based, and percent isn't a fixed function of
+     * voltage alone (it also depends on cell count/chemistry), so per-point
+     * tone needs the percent that was actually live at that sample. */
+    percent: number;
     vibe: number;
     lossPercent: number;
+    rssi: number;
 }
 
 const CAPTURE_INTERVAL_MS = 200;
@@ -52,8 +58,10 @@ window.setInterval(() => {
     const current = getVehicleSnapshot();
     captureBuffer.push({
         voltage: current.battery.voltage,
+        percent: current.battery.percent,
         vibe: current.ekf.vibe,
         lossPercent: current.link.lossPercent,
+        rssi: current.link.rssi,
     });
 }, CAPTURE_INTERVAL_MS);
 
@@ -63,8 +71,10 @@ window.setInterval(() => {
     }
     const point: TelemetryHistoryPoint = {
         voltage: average(captureBuffer, "voltage"),
+        percent: average(captureBuffer, "percent"),
         vibe: peak(captureBuffer, "vibe"),
         lossPercent: average(captureBuffer, "lossPercent"),
+        rssi: average(captureBuffer, "rssi"),
     };
     captureBuffer = [];
     historyStore.update((prev) => [...prev, point].slice(-WINDOW_LENGTH));

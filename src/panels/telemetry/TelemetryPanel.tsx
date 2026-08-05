@@ -5,6 +5,7 @@ import {useNow} from "@/lib/vehicle/useMockVehicle.ts";
 import {useTelemetryHistory} from "@/lib/vehicle/useTelemetryHistory.ts";
 import {distanceMeters} from "@/lib/vehicle/vehicle.ts";
 import {Tone, TONE_TEXT} from "@/components/topmenu/StatusChip.tsx";
+import {PanelArea} from "@/panels/panelComponents.tsx";
 import Sparkline from "@/components/Sparkline.tsx";
 
 // Passive readouts only — mode/arm state, battery, position, link/vibe
@@ -45,6 +46,13 @@ function vibeTone(vibe: number): Tone {
     return "ok";
 }
 
+/** Extracted from what was an inline `lossPercent > 5` check so per-point
+ * sparkline coloring (see `Sparkline`'s `tones`) can reuse the exact same
+ * rule the current-reading badges use, rather than a second copy of it. */
+function lossTone(lossPercent: number): Tone {
+    return lossPercent > 5 ? "warn" : "ok";
+}
+
 interface BadgeProps {
     label: string;
     value: string;
@@ -73,7 +81,7 @@ interface BatteryGaugeProps {
 function BatteryGauge({percent, voltage, current, consumed, tone, unknown}: BatteryGaugeProps) {
     const clamped = Math.max(0, Math.min(100, percent));
     return (
-        <div className="col-span-2 flex flex-col gap-1 border border-border-subtle bg-layer-01 px-2 py-1.5">
+        <div className="flex flex-col gap-1 border border-border-subtle bg-layer-01 px-2 py-1.5">
             <div className="flex items-center justify-between">
                 <span className="text-micro text-text-helper uppercase">Battery</span>
                 <span className={`font-mono text-label tabular-nums ${TONE_TEXT[tone]}`}>
@@ -114,7 +122,7 @@ function ModeArmedBadge({mode, armed, armedFor, prearmPass, unknown, stale, stal
     return (
         <div
             className={[
-                "col-span-2 flex flex-wrap items-center gap-2 border px-2 py-1.5",
+                "flex flex-wrap items-center gap-2 border px-2 py-1.5",
                 armed ? "border-state-danger bg-state-danger/10" : "border-border-subtle bg-layer-01",
             ].join(" ")}
         >
@@ -142,18 +150,22 @@ function ModeArmedBadge({mode, armed, armedFor, prearmPass, unknown, stale, stal
 
 interface SparkRowProps {
     label: string;
+    /** Colors the label and the current-value readout — the line itself is
+     * colored per-sample instead, via `tones` (see `Sparkline`). */
     tone: Tone;
     values: number[];
+    /** Parallel to `values`. */
+    tones: Tone[];
     min: number;
     max: number;
     display: string;
 }
 
-function SparkRow({label, tone, values, min, max, display}: SparkRowProps) {
+function SparkRow({label, tone, values, tones, min, max, display}: SparkRowProps) {
     return (
-        <div className="flex items-center gap-2">
+        <div className="flex min-h-0 flex-1 items-center gap-2">
             <span className="w-14 shrink-0 text-micro text-text-helper uppercase">{label}</span>
-            <Sparkline values={values} min={min} max={max} className={`h-6 w-full min-w-0 flex-1 ${TONE_TEXT[tone]}`}/>
+            <Sparkline values={values} tones={tones} min={min} max={max} className="h-full w-full min-w-0 min-h-0 flex-1"/>
             <span className={`w-14 shrink-0 text-right font-mono text-micro tabular-nums ${TONE_TEXT[tone]}`}>
                 {display}
             </span>
@@ -161,7 +173,18 @@ function SparkRow({label, tone, values, min, max, display}: SparkRowProps) {
     );
 }
 
-export default function TelemetryPanel() {
+/**
+ * Layout is position-driven: bottom dock → badges and sparklines side by
+ * side (row), side dock → stacked (column). The dock size caps in layout.ts
+ * make this reliable — a side dock can't grow wide enough to need a row
+ * layout, so `area` is a faithful proxy for available space.
+ *
+ * Row mode: badges flow column-major (top-to-bottom first, new column when
+ * height runs out), sized to content width (`w-fit`) so the sparkline column
+ * takes whatever's left. Column mode: badges flow row-major (left-to-right,
+ * wrapping), filling the full panel width with `auto-fill` columns.
+ */
+export default function TelemetryPanel({area}: {area: PanelArea}) {
     const vehicle = useVehicle();
     const connection = useConnection();
     const now = useNow();
@@ -170,8 +193,6 @@ export default function TelemetryPanel() {
 
     const packetAge = vehicle.updatedAt === 0 ? null : now - vehicle.updatedAt;
     const stale = isLinkFailing(connection.status);
-    // Distinct from `stale`: this is "never heard from", which reads as a set
-    // of unmistakable dashes rather than a struck-through zero.
     const unknown = isLinkIdle(connection.status) || vehicle.updatedAt === 0;
     const staleFor = stale && packetAge !== null ? Math.round(packetAge / 1000) : null;
     const armedFor = armedSince === null ? null : Math.floor((now - armedSince) / 1000);
@@ -180,12 +201,26 @@ export default function TelemetryPanel() {
         vehicle.position && vehicle.home ? distanceMeters(vehicle.position, vehicle.home) : null;
 
     const battTone = batteryTone(vehicle.battery.percent);
-    const lTone: Tone = vehicle.link.lossPercent > 5 ? "warn" : "ok";
+    const lTone: Tone = lossTone(vehicle.link.lossPercent);
     const vTone = vibeTone(vehicle.ekf.vibe);
 
+    const row = area === "bottom";
+
     return (
-        <div className="flex h-full min-h-0 w-full items-stretch gap-3 overflow-x-auto bg-background p-3">
-            <div className="grid w-64 shrink-0 grid-cols-2 content-start gap-2">
+        <div className={`flex h-full min-h-0 w-full ${row ? "flex-row" : "flex-col"} items-stretch gap-3 overflow-auto bg-background p-3`}>
+            <div className={row
+                // Column-major: fills rows top-to-bottom, wraps to a new column
+                // once height runs out. `w-fit` lets the grid size to its own
+                // content so the sparkline column takes whatever space remains;
+                // `shrink` lets flexbox compress it when space is tight before
+                // the sparkline's own `min-w-48` floor kicks in.
+                ? "grid w-fit shrink overflow-x-auto grid-flow-col auto-cols-[minmax(9rem,auto)] grid-rows-[repeat(auto-fill,minmax(3.5rem,1fr))] gap-2"
+                // Row-major: fills columns left-to-right, wrapping when the
+                // panel width runs out. `shrink-0` so it doesn't collapse;
+                // `content-start` so rows pack to the top rather than
+                // stretching to fill the panel height.
+                : "grid shrink-0 content-start grid-flow-row grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-2"
+            }>
                 <ModeArmedBadge
                     mode={vehicle.mode}
                     armed={vehicle.armed}
@@ -224,11 +259,18 @@ export default function TelemetryPanel() {
                 <Badge label="Home" value={homeDistance === null ? "—" : `${Math.round(homeDistance)}m`}/>
             </div>
 
-            <div className="flex min-w-0 flex-1 flex-col justify-center gap-2">
+            {/* Each SparkRow is `flex-1` so the four rows share the column's
+                full height rather than sitting at a fixed size with blank space
+                around them. `min-w-48` in row mode is the floor the badge
+                grid's `shrink` compresses against — sparkline holds its width
+                first, badges give way. Not needed in column mode where this
+                column already gets the full panel width. */}
+            <div className={`flex min-h-0 flex-1 flex-col gap-2 ${row ? "min-w-48" : "min-w-0"}`}>
                 <SparkRow
                     label="Volt"
                     tone={battTone}
                     values={history.map((p) => p.voltage)}
+                    tones={history.map((p) => batteryTone(p.percent))}
                     min={13}
                     max={17.5}
                     display={unknown ? "—" : `${vehicle.battery.voltage.toFixed(1)}V`}
@@ -237,6 +279,7 @@ export default function TelemetryPanel() {
                     label="Vibe"
                     tone={vTone}
                     values={history.map((p) => p.vibe)}
+                    tones={history.map((p) => vibeTone(p.vibe))}
                     min={0}
                     max={40}
                     display={unknown ? "—" : Math.round(vehicle.ekf.vibe).toString()}
@@ -245,9 +288,19 @@ export default function TelemetryPanel() {
                     label="Loss"
                     tone={lTone}
                     values={history.map((p) => p.lossPercent)}
+                    tones={history.map((p) => lossTone(p.lossPercent))}
                     min={0}
                     max={10}
                     display={unknown ? "—" : `${vehicle.link.lossPercent.toFixed(1)}%`}
+                />
+                <SparkRow
+                    label="Rssi"
+                    tone={lTone}
+                    values={history.map((p) => p.rssi)}
+                    tones={history.map((p) => lossTone(p.lossPercent))}
+                    min={0}
+                    max={254}
+                    display={unknown ? "—" : Math.round(vehicle.link.rssi).toString()}
                 />
             </div>
         </div>
