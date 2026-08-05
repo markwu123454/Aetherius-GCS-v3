@@ -64,6 +64,21 @@ pub struct VehicleSnapshot {
     pub roll_rate_dps: Option<f32>,
     pub pitch_rate_dps: Option<f32>,
     pub yaw_rate_dps: Option<f32>,
+    /// WIND: estimated wind direction (degrees, the direction the wind is coming
+    /// FROM) and horizontal speed (m/s). ArduPilot-specific message.
+    pub wind_dir: Option<f32>,
+    pub wind_speed: Option<f32>,
+    /// NAV_CONTROLLER_OUTPUT: distance to the active waypoint (meters) and
+    /// lateral cross-track deviation from the intended track (meters, signed).
+    pub wp_dist: Option<u16>,
+    pub xtrack_error: Option<f32>,
+    /// POWER_STATUS: FC board 5V rail (volts) and servo rail (volts). A Vcc
+    /// sag below ~4.8V is a sign the BEC is struggling; below ~4.5V the FC
+    /// itself may brownout.
+    pub board_voltage: Option<f32>,
+    pub servo_voltage: Option<f32>,
+    /// MISSION_CURRENT: sequence number of the currently active mission item.
+    pub current_wp: Option<u16>,
 }
 
 /// Fold one message into the snapshot. Only the messages the status strip
@@ -104,6 +119,21 @@ pub fn apply(snapshot: &mut VehicleSnapshot, message: &MavMessage) {
             snapshot.roll_rate_dps = Some(data.rollspeed.to_degrees());
             snapshot.pitch_rate_dps = Some(data.pitchspeed.to_degrees());
             snapshot.yaw_rate_dps = Some(data.yawspeed.to_degrees());
+        }
+        MavMessage::WIND(data) => {
+            snapshot.wind_dir = Some(data.direction);
+            snapshot.wind_speed = Some(data.speed);
+        }
+        MavMessage::NAV_CONTROLLER_OUTPUT(data) => {
+            snapshot.wp_dist = Some(data.wp_dist);
+            snapshot.xtrack_error = Some(data.xtrack_error);
+        }
+        MavMessage::POWER_STATUS(data) => {
+            snapshot.board_voltage = Some(data.Vcc as f32 / 1000.0);
+            snapshot.servo_voltage = Some(data.Vservo as f32 / 1000.0);
+        }
+        MavMessage::MISSION_CURRENT(data) => {
+            snapshot.current_wp = Some(data.seq);
         }
         MavMessage::SYS_STATUS(data) => {
             snapshot.battery_voltage = Some(data.voltage_battery as f32 / 1000.0);

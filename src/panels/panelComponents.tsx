@@ -5,6 +5,7 @@ import TelemetryPanel from "./telemetry/TelemetryPanel.tsx";
 import PrearmPanel from "./prearm/PrearmPanel.tsx";
 import ManualPanel from "./manual/ManualPanel.tsx";
 import RcOverridePanel from "./manual/RcOverridePanel.tsx";
+import MissionPanel from "./mission/MissionPanel.tsx";
 
 /** Where a panel is currently rendered — the three dock slots or a floating
  * window. Panels that care about layout (TelemetryPanel, ManualPanel) use
@@ -29,6 +30,7 @@ const PANEL_COMPONENTS: Record<string, PanelComponent> = {
     prearm: PrearmPanel,
     manual: ManualPanel,
     "rc-override": RcOverridePanel,
+    mission: MissionPanel,
 };
 
 export function PanelBody({panel, area}: {panel: PanelDefinition; area: PanelArea}) {

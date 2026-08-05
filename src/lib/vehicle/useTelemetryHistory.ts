@@ -2,6 +2,12 @@ import {useSyncExternalStore} from "react";
 import {createStore} from "@/lib/store.ts";
 import {getVehicleSnapshot} from "./useVehicle.ts";
 
+const sparklinesStore = createStore<boolean>(true);
+export function setSparklinesEnabled(val: boolean): void { sparklinesStore.set(val); }
+export function useTelemetrySparklines(): boolean {
+    return useSyncExternalStore(sparklinesStore.subscribe, sparklinesStore.getSnapshot);
+}
+
 export interface TelemetryHistoryPoint {
     voltage: number;
     /** Alongside `voltage` rather than derived from it — `batteryTone`'s

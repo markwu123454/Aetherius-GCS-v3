@@ -40,12 +40,11 @@ const LINK_LEVEL: Record<ConnectionStatus, "danger" | "warn" | "info"> = {
     disconnected: "info",
     connecting: "info",
     connected: "info",
-    // Recoverable on its own — the socket is healthy and nothing is arriving.
     losing: "warn",
-    // Only the app can restore this one, so it is not the same as `losing`.
     lost: "danger",
     disconnecting: "info",
     error: "danger",
+    rebooting: "warn",
 };
 
 const LINK_TEXT: Record<ConnectionStatus, string> = {
@@ -56,6 +55,7 @@ const LINK_TEXT: Record<ConnectionStatus, string> = {
     lost: "Link lost — transport failed, reconnect required",
     disconnecting: "Link disconnecting…",
     error: "Link could not be established",
+    rebooting: "Vehicle rebooting — reconnecting…",
 };
 
 /**

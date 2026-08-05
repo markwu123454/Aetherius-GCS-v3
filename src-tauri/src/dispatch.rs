@@ -50,6 +50,10 @@ pub fn route(app: &AppHandle, snapshot: &mut VehicleSnapshot, message: &MavMessa
         | MavMessage::BATTERY_STATUS(_)
         | MavMessage::ATTITUDE(_)
         | MavMessage::VFR_HUD(_)
+        | MavMessage::WIND(_)
+        | MavMessage::NAV_CONTROLLER_OUTPUT(_)
+        | MavMessage::POWER_STATUS(_)
+        | MavMessage::MISSION_CURRENT(_)
         => {
             telemetry::apply(snapshot, message);
             true

@@ -20,6 +20,8 @@ pub enum VehicleCommand {
     ReturnToLaunch,
     Land,
     StartMission,
+    PauseMission,
+    ResumeMission,
     Reboot,
     RebootToBootloader,
     StartRadioCalibration,
@@ -72,6 +74,14 @@ fn to_mav_command(command: &VehicleCommand) -> (MavCmd, [f32; 7]) {
         VehicleCommand::StartMission => (
             MavCmd::MAV_CMD_MISSION_START,
             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        ),
+        VehicleCommand::PauseMission => (
+            MavCmd::MAV_CMD_DO_PAUSE_CONTINUE,
+            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        ),
+        VehicleCommand::ResumeMission => (
+            MavCmd::MAV_CMD_DO_PAUSE_CONTINUE,
+            [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         ),
         VehicleCommand::Reboot => (
             MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
@@ -167,7 +177,26 @@ pub async fn send_vehicle_command(app: AppHandle, command: VehicleCommand) -> Re
     let (mav_cmd, params) = to_mav_command(&command);
 
     match commands::send_sync(&app, mav_cmd, params, target, timeout_for(&command)).await {
-        Ok(MavResult::MAV_RESULT_ACCEPTED) => Ok(()),
+        Ok(MavResult::MAV_RESULT_ACCEPTED) => {
+            // ArduPilot 4.x does not push MAG_CAL_PROGRESS or MAG_CAL_REPORT
+            // automatically — request both so the frontend receives coverage
+            // updates (191) and detects completion (192).
+            if matches!(command, VehicleCommand::StartCompassCalibration) {
+                let _ = commands::send_async(
+                    &app,
+                    MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
+                    [191.0, 200_000.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    target,
+                );
+                let _ = commands::send_async(
+                    &app,
+                    MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
+                    [192.0, 1_000_000.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    target,
+                );
+            }
+            Ok(())
+        }
         Ok(other) => Err(format!("vehicle rejected the command: {other:?}")),
         Err(error) => Err(describe(error)),
     }

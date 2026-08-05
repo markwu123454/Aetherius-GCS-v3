@@ -88,6 +88,17 @@ export const PANEL_DEFINITIONS: PanelDefinition[] = [
         defaultDock: "right",
         openByDefault: false,
     },
+    {
+        id: "mission",
+        title: "Mission",
+        component: "mission",
+        dockLeft: true,
+        dockRight: true,
+        dockBottom: false,
+        floatable: true,
+        defaultDock: "right",
+        openByDefault: false,
+    },
 ];
 
 export function panelById(id: string): PanelDefinition | undefined {

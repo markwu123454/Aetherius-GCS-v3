@@ -1,7 +1,7 @@
 import {useState} from "react";
 import type {ReactNode} from "react";
 import {Code} from "@carbon/icons-react";
-import {sendVehicleCommand} from "@/lib/vehicle/commands.ts";
+import {useConnection} from "@/lib/vehicle/useConnection.ts";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {useParamSheet} from "@/lib/params/useParamSheet.ts";
 import {ParamDef} from "@/lib/params/paramSheet.ts";
@@ -94,6 +94,7 @@ function Tile({label, selected, disabled, onClick, children}: TileProps) {
  * never leaves a stale type from a previous class in place.
  */
 export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
+    const connection = useConnection();
     const sheetState = useParamSheet("ArduCopter");
 
     const classLiveEntry = live.get("FRAME_CLASS");
@@ -288,7 +289,7 @@ export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
                 Both only take effect after a reboot — once you've set the ones you need,{" "}
                 <button
                     type="button"
-                    onClick={() => void sendVehicleCommand({type: "reboot"})}
+                    onClick={() => void connection.reboot()}
                     className="text-state-info underline"
                 >
                     reboot the vehicle

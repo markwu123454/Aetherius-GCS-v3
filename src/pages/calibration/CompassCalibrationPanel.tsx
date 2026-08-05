@@ -1,6 +1,6 @@
-import {useMemo} from "react";
+import {useEffect, useMemo, useRef} from "react";
 import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
-import {sendVehicleCommand} from "@/lib/vehicle/commands.ts";
+import {useConnection} from "@/lib/vehicle/useConnection.ts";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {useCompassCalibration} from "@/lib/calibration/useCompassCalibration.ts";
 import {COMPASS_CAL_SECTION_COUNT} from "@/lib/calibration/compassCalGrid.ts";
@@ -69,6 +69,14 @@ function paramValue(live: Map<string, LiveParamEntry>, name: string): number | u
     return live.get(name)?.value;
 }
 
+/** Specific failure reason from `MAG_CAL_STATUS`. ArduPilot's values:
+ * 5 = generic failure, 6 = bad orientation, 7 = bad radius (interference). */
+function failureReason(calStatus: number): string {
+    if (calStatus === 6) return "Bad orientation — check compass mounting";
+    if (calStatus === 7) return "Magnetic interference — try a different location";
+    return "Failed";
+}
+
 /** `COMPASS_EXTERNAL{suffix}` for the given 0-based `MAG_CAL_PROGRESS`
  * compass id — read live so the fitness thresholds match this compass's
  * actual mounting rather than assuming. Defaults to external (the tighter
@@ -93,6 +101,7 @@ function isExternal(live: Map<string, LiveParamEntry>, compassId: number): boole
  */
 export default function CompassCalibrationPanel({live}: CompassCalibrationPanelProps) {
     const vehicle = useVehicle();
+    const connection = useConnection();
     const calibration = useCompassCalibration();
 
     const rotationDeg = {
@@ -100,6 +109,47 @@ export default function CompassCalibrationPanel({live}: CompassCalibrationPanelP
         pitch: vehicle.attitude?.pitch ?? 0,
         yaw: vehicle.attitude?.yaw ?? 0,
     };
+
+    // Always-fresh refs so the stall interval never holds stale closures
+    const attitudeRef = useRef(rotationDeg);
+    attitudeRef.current = rotationDeg;
+    const stallCancelRef = useRef(calibration.stallCancel);
+    stallCancelRef.current = calibration.stallCancel;
+
+    // Reset the stall clock whenever progress actually advances
+    const lastProgressTimeRef = useRef(Date.now());
+    useEffect(() => {
+        if (calibration.calibrating) lastProgressTimeRef.current = Date.now();
+    }, [calibration.progress, calibration.calibrating]);
+
+    // Cancel if progress stops advancing for 5 s while the vehicle is rotating
+    useEffect(() => {
+        if (!calibration.calibrating) return;
+        lastProgressTimeRef.current = Date.now();
+
+        let prevRoll = attitudeRef.current.roll;
+        let prevPitch = attitudeRef.current.pitch;
+        let prevSample = Date.now();
+
+        const id = setInterval(() => {
+            const now = Date.now();
+            const dt = (now - prevSample) / 1000;
+            if (dt < 0.1) return; // guard against spurious fast ticks
+
+            const {roll, pitch} = attitudeRef.current;
+            const rollRate = Math.abs(roll - prevRoll) / dt;
+            const pitchRate = Math.abs(pitch - prevPitch) / dt;
+            prevRoll = roll;
+            prevPitch = pitch;
+            prevSample = now;
+
+            const stalled = now - lastProgressTimeRef.current > 5_000;
+            const rotating = rollRate > 5 || pitchRate > 5; // > 5 °/s
+            if (stalled && rotating) stallCancelRef.current();
+        }, 500);
+
+        return () => clearInterval(id);
+    }, [calibration.calibrating]);
 
     // Union across every compass currently calibrating — "how much of the
     // sphere has at least one compass sampled," the simplest single signal
@@ -160,7 +210,7 @@ export default function CompassCalibrationPanel({live}: CompassCalibrationPanelP
                                         )}
                                         {report && (
                                             <span className={`text-label ${TONE_TEXT[report.success ? "ok" : "danger"]}`}>
-                                                {report.success ? "Passed" : "Failed"}
+                                                {report.success ? "Passed" : failureReason(report.calStatus)}
                                             </span>
                                         )}
                                     </div>
@@ -181,7 +231,7 @@ export default function CompassCalibrationPanel({live}: CompassCalibrationPanelP
                         {allSucceeded && (
                             <button
                                 type="button"
-                                onClick={() => void sendVehicleCommand({type: "reboot"})}
+                                onClick={() => void connection.reboot()}
                                 className="h-control-sm w-fit bg-blue-60 px-3 text-label text-text-on-color hover:enabled:bg-blue-50"
                             >
                                 Reboot Vehicle

@@ -19,6 +19,8 @@ use std::{
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use tauri_plugin_store::StoreExt;
+
 use crate::dispatch;
 use crate::telemetry::VehicleSnapshot;
 use crate::commands;
@@ -26,7 +28,6 @@ use crate::params;
 
 const LOSING_AFTER: Duration = Duration::from_millis(2_500);
 const SCAN_PROBE_TIMEOUT: Duration = Duration::from_millis(250);
-const PREARM_CHECK_INTERVAL: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +37,7 @@ pub enum LinkStatus {
     Connected,
     Losing,
     Lost,
+    Rebooting,
     Disconnecting,
     Error,
 }
@@ -61,21 +63,12 @@ fn to_mavlink_address(endpoint: &str) -> String {
 /// messages that actually need to feel smooth are sped up — battery, GPS
 /// status and the rest stay at their own default rate, since asking for
 /// those at 20 Hz would just be discarded bandwidth.
-fn request_data_streams(app: &AppHandle, target_system: u8, target_component: u8) {
-    // Microseconds between messages — 20 Hz, matching read_loop's own emit
-    // throttle below; no point asking the vehicle for faster than that will
-    // ever actually be forwarded.
-    const INTERVAL_US: f32 = 50_000.0;
-
-    // Raw MAVLink message IDs, from common.xml — stable across dialects, so
-    // these don't depend on whatever symbolic constants this crate version
-    // does or doesn't export: ATTITUDE, GLOBAL_POSITION_INT, VFR_HUD,
-    // RC_CHANNELS.
+fn request_data_streams(app: &AppHandle, target_system: u8, target_component: u8, interval_us: f32) {
     for message_id in [30.0, 33.0, 74.0, 65.0] {
         let _ = commands::send_async(
             app,
             MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
-            [message_id, INTERVAL_US, 0.0, 0.0, 0.0, 0.0, 0.0],
+            [message_id, interval_us, 0.0, 0.0, 0.0, 0.0, 0.0],
             (target_system, target_component),
         );
     }
@@ -105,6 +98,7 @@ fn read_loop(
     app: AppHandle,
     connection: Arc<dyn MavConnection<MavMessage> + Send + Sync>,
     generation: u64,
+    telem_interval_us: f32,
 ) {
     let mut last_emit = Instant::now();
     let mut last_heartbeat: Option<Instant> = None;
@@ -129,7 +123,7 @@ fn read_loop(
                         Some((header.system_id, header.component_id));
 
                     if first_heartbeat {
-                        request_data_streams(&app, header.system_id, header.component_id);
+                        request_data_streams(&app, header.system_id, header.component_id, telem_interval_us);
                     }
                 }
 
@@ -201,9 +195,9 @@ fn watchdog_loop(app: AppHandle, generation: u64) {
 /// Skipped while armed — ArduPilot's own docs say it returns
 /// MAV_RESULT_TEMPORARILY_REJECTED in that case, so sending it then would just
 /// be noise in the console.
-fn prearm_check_loop(app: AppHandle, generation: u64) {
+fn prearm_check_loop(app: AppHandle, generation: u64, interval: Duration) {
     loop {
-        std::thread::sleep(PREARM_CHECK_INTERVAL);
+        std::thread::sleep(interval);
 
         let state = app.state::<LinkState>();
         if state.generation.load(Ordering::SeqCst) != generation {
@@ -431,14 +425,36 @@ pub fn connect_link(endpoint: String, app: AppHandle, state: State<LinkState>) -
 
     *state.connection.lock().unwrap_or_else(|e| e.into_inner()) = Some(connection.clone());
 
+    let store = app.store("settings.json").ok();
+    let settings = store
+        .as_ref()
+        .and_then(|s| s.get("settings"));
+
+    let prearm_interval_secs = settings
+        .as_ref()
+        .and_then(|s| s.get("prearmCheckInterval"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(3)
+        .max(1);
+
+    let telem_rate_hz = settings
+        .as_ref()
+        .and_then(|s| s.get("telemRateHz"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(20)
+        .clamp(1, 20) as u32;
+
+    let telem_interval_us = 1_000_000.0 / telem_rate_hz as f32;
+    let prearm_interval = Duration::from_secs(prearm_interval_secs);
+
     let handle = app.clone();
-    std::thread::spawn(move || read_loop(handle, connection, generation));
+    std::thread::spawn(move || read_loop(handle, connection, generation, telem_interval_us));
 
     let watchdog_handle = app.clone();
     std::thread::spawn(move || watchdog_loop(watchdog_handle, generation));
 
     let prearm_handle = app.clone();
-    std::thread::spawn(move || prearm_check_loop(prearm_handle, generation));
+    std::thread::spawn(move || prearm_check_loop(prearm_handle, generation, prearm_interval));
 
     Ok(())
 }
@@ -580,4 +596,99 @@ mod tests {
         .collect();
         assert_eq!(names, [r#""pixhawk""#, r#""sikRadio""#, r#""rtkGps""#, r#""openPilot""#]);
     }
+}
+
+fn reboot_reconnect_loop(app: AppHandle, endpoint: String, generation: u64) {
+    let deadline = Instant::now() + Duration::from_secs(20);
+
+    loop {
+        std::thread::sleep(Duration::from_secs(2));
+
+        let state = app.state::<LinkState>();
+
+        // A connect_link or disconnect_link call superseded us.
+        if state.generation.load(Ordering::SeqCst) != generation {
+            return;
+        }
+
+        if Instant::now() >= deadline {
+            if state.generation.load(Ordering::SeqCst) == generation {
+                set_status(&app, LinkStatus::Lost);
+            }
+            return;
+        }
+
+        let address = to_mavlink_address(&endpoint);
+        let connection = match mavlink::connect::<MavMessage>(&address) {
+            Ok(c) => Arc::new(c) as Arc<dyn MavConnection<MavMessage> + Send + Sync>,
+            Err(_) => continue,
+        };
+
+        // Another caller may have raced us during the blocking connect above.
+        if state.generation.load(Ordering::SeqCst) != generation {
+            return;
+        }
+
+        let new_generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        state.last_heartbeat_ms.store(0, Ordering::SeqCst);
+        *state.connection.lock().unwrap_or_else(|e| e.into_inner()) = Some(connection.clone());
+
+        let store = app.store("settings.json").ok();
+        let settings = store.as_ref().and_then(|s| s.get("settings"));
+
+        let prearm_interval_secs = settings
+            .as_ref()
+            .and_then(|s| s.get("prearmCheckInterval"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(3)
+            .max(1);
+
+        let telem_rate_hz = settings
+            .as_ref()
+            .and_then(|s| s.get("telemRateHz"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(20)
+            .clamp(1, 20) as u32;
+
+        let telem_interval_us = 1_000_000.0 / telem_rate_hz as f32;
+        let prearm_interval = Duration::from_secs(prearm_interval_secs);
+
+        set_status(&app, LinkStatus::Connecting);
+
+        let handle = app.clone();
+        std::thread::spawn(move || read_loop(handle, connection, new_generation, telem_interval_us));
+
+        let watchdog_handle = app.clone();
+        std::thread::spawn(move || watchdog_loop(watchdog_handle, new_generation));
+
+        let prearm_handle = app.clone();
+        std::thread::spawn(move || prearm_check_loop(prearm_handle, new_generation, prearm_interval));
+
+        return;
+    }
+}
+
+#[tauri::command]
+pub fn reboot_link(endpoint: String, app: AppHandle, state: State<LinkState>) -> Result<(), String> {
+    let target = state
+        .target
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .ok_or_else(|| "no vehicle has been heard from yet".to_string())?;
+
+    // Fire-and-forget — the vehicle will reboot before it can ack,
+    // so there is nothing useful to wait for.
+    let _ = commands::send_async(&app, MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], target);
+
+    let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
+    *state.connection.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *state.target.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    state.last_heartbeat_ms.store(0, Ordering::SeqCst);
+    params::clear(&app);
+    set_status(&app, LinkStatus::Rebooting);
+
+    let handle = app.clone();
+    std::thread::spawn(move || reboot_reconnect_loop(handle, endpoint, generation));
+
+    Ok(())
 }

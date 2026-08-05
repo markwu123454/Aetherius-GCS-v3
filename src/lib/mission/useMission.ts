@@ -1,7 +1,11 @@
 import {useCallback, useState} from "react";
-import {DEFAULT_WAYPOINT_ALTITUDE_M, Waypoint} from "./mission.ts";
+import {listen} from "@tauri-apps/api/event";
+import {DEFAULT_WAYPOINT_ALTITUDE_M, Waypoint, WaypointAction} from "./mission.ts";
 import {uploadMission} from "./missionCommands.ts";
 import {sendVehicleCommand} from "@/lib/vehicle/commands.ts";
+import {createStore} from "@/lib/store.ts";
+import {useSyncExternalStore} from "react";
+import type {ConnectionStatus} from "@/lib/vehicle/connection.ts";
 
 export interface MissionApi {
     waypoints: Waypoint[];
@@ -9,6 +13,9 @@ export interface MissionApi {
     removeWaypoint: (id: number) => void;
     moveWaypoint: (id: number, lat: number, lon: number) => void;
     setAltitude: (id: number, altitude: number) => void;
+    setSpeed: (id: number, speed: number | null) => void;
+    setAction: (id: number, action: WaypointAction) => void;
+    loadWaypoints: (saved: Omit<Waypoint, "id">[]) => void;
     clear: () => void;
     upload: () => Promise<void>;
     uploading: boolean;
@@ -27,6 +34,32 @@ function message(error: unknown): string {
 // dependency for ids that only need to be unique within one session.
 let nextId = 1;
 
+/** Updated on successful upload so the MissionPanel can show WP progress
+ * without prop-threading the draft through the panel registration chain. */
+const uploadedCountStore = createStore<number>(0);
+
+export function useUploadedMissionCount(): number {
+    return useSyncExternalStore(uploadedCountStore.subscribe, uploadedCountStore.getSnapshot);
+}
+
+/** The actual uploaded waypoints — set alongside uploadedCountStore on a
+ * successful upload so MapView can render the route without prop-threading. */
+const uploadedWaypointsStore = createStore<Waypoint[]>([]);
+
+export function useUploadedWaypoints(): Waypoint[] {
+    return useSyncExternalStore(uploadedWaypointsStore.subscribe, uploadedWaypointsStore.getSnapshot);
+}
+
+// Uploaded mission state belongs to the connection — reset it when the link
+// drops so a reconnect to a different vehicle doesn't show stale WP data.
+listen<ConnectionStatus>("link-status", (event) => {
+    const status = event.payload;
+    if (status !== "connected" && status !== "connecting" && status !== "losing") {
+        uploadedCountStore.set(0);
+        uploadedWaypointsStore.set([]);
+    }
+}).catch(() => {});
+
 /**
  * The mission draft itself: no backend persistence, no Load/Save — closing
  * the page (or an accidental back-button press) discards it, which is
@@ -43,7 +76,10 @@ export function useMission(): MissionApi {
     const [startError, setStartError] = useState<string | null>(null);
 
     const addWaypoint = useCallback((lat: number, lon: number) => {
-        setWaypoints((prev) => [...prev, {id: nextId++, lat, lon, altitude: DEFAULT_WAYPOINT_ALTITUDE_M}]);
+        setWaypoints((prev) => [
+            ...prev,
+            {id: nextId++, lat, lon, altitude: DEFAULT_WAYPOINT_ALTITUDE_M, speed: null, action: "waypoint"},
+        ]);
     }, []);
 
     const removeWaypoint = useCallback((id: number) => {
@@ -58,6 +94,18 @@ export function useMission(): MissionApi {
         setWaypoints((prev) => prev.map((waypoint) => (waypoint.id === id ? {...waypoint, altitude} : waypoint)));
     }, []);
 
+    const setSpeed = useCallback((id: number, speed: number | null) => {
+        setWaypoints((prev) => prev.map((waypoint) => (waypoint.id === id ? {...waypoint, speed} : waypoint)));
+    }, []);
+
+    const setAction = useCallback((id: number, action: WaypointAction) => {
+        setWaypoints((prev) => prev.map((waypoint) => (waypoint.id === id ? {...waypoint, action} : waypoint)));
+    }, []);
+
+    const loadWaypoints = useCallback((saved: Omit<Waypoint, "id">[]) => {
+        setWaypoints(saved.map((wp) => ({...wp, id: nextId++})));
+    }, []);
+
     const clear = useCallback(() => setWaypoints([]), []);
 
     const upload = useCallback(async () => {
@@ -65,6 +113,8 @@ export function useMission(): MissionApi {
         setUploadError(null);
         try {
             await uploadMission(waypoints);
+            uploadedCountStore.set(waypoints.length);
+            uploadedWaypointsStore.set([...waypoints]);
         } catch (error) {
             setUploadError(message(error));
             throw error;
@@ -92,6 +142,9 @@ export function useMission(): MissionApi {
         removeWaypoint,
         moveWaypoint,
         setAltitude,
+        setSpeed,
+        setAction,
+        loadWaypoints,
         clear,
         upload,
         uploading,

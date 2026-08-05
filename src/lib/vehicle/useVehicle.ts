@@ -11,6 +11,7 @@ import {
     VehiclePosition,
     VehicleState,
 } from "./vehicle.ts";
+import {ConnectionStatus} from "./connection.ts";
 import {modeLabel} from "./modes.ts";
 
 /**
@@ -55,6 +56,13 @@ interface Snapshot {
     climbRate?: number | null;
     homeLat?: number | null;
     homeLon?: number | null;
+    windDir?: number | null;
+    windSpeed?: number | null;
+    wpDist?: number | null;
+    xtrackError?: number | null;
+    boardVoltage?: number | null;
+    servoVoltage?: number | null;
+    currentWp?: number | null;
 }
 
 /** MAVLink GPS_FIX_TYPE. 0 (no GPS) and 1 (no fix) are both "no fix" to a pilot. */
@@ -80,6 +88,10 @@ export const NO_VEHICLE: VehicleState = {
     gps: {fix: "none", satellites: 0, hdop: 0},
     link: {rssi: 0, lossPercent: 0},
     ekf: {ok: false, vibe: 0},
+    wind: null,
+    nav: null,
+    power: null,
+    currentWp: null,
     updatedAt: 0,
 };
 
@@ -161,6 +173,16 @@ function fromSnapshot(snapshot: Snapshot): VehicleState {
         // `alertLevel` to `warn` — defaulting to "unhealthy" would falsely
         // flag every vehicle until EKF_STATUS_REPORT support lands.
         ekf: {ok: snapshot.ekfOk ?? true, vibe: snapshot.vibe ?? 0},
+        wind: snapshot.windDir != null && snapshot.windSpeed != null
+            ? {dir: snapshot.windDir, speed: snapshot.windSpeed}
+            : null,
+        nav: snapshot.wpDist != null && snapshot.xtrackError != null
+            ? {wpDist: snapshot.wpDist, xtrackError: snapshot.xtrackError}
+            : null,
+        currentWp: snapshot.currentWp ?? null,
+        power: snapshot.boardVoltage != null
+            ? {boardVoltage: snapshot.boardVoltage, servoVoltage: snapshot.servoVoltage ?? 0}
+            : null,
         // The backend reports heartbeat age, so the wall-clock time it arrived
         // is derived here and the staleness rules keep working unchanged.
         updatedAt: sinceHeartbeat === null ? 0 : Date.now() - sinceHeartbeat,
@@ -271,6 +293,21 @@ listen<Snapshot>("vehicle", (message) => {
 }).catch(() => {
     // No Tauri backend (a plain browser tab) — the store just never updates.
 });
+
+// Reset all vehicle state when the link leaves the connected/connecting/losing
+// cluster — the same condition useLiveParams uses to clear its param cache.
+// Telemetry from a previous vehicle must not linger as if it were current.
+listen<ConnectionStatus>("link-status", (event) => {
+    const status = event.payload;
+    if (status !== "connected" && status !== "connecting" && status !== "losing") {
+        vehicleStore.set(NO_VEHICLE);
+        prearmReasonsStore.set([]);
+        lastPrearmUpdateStore.set(null);
+        armedSinceStore.set(null);
+        wasArmed = false;
+        pendingReasonTexts = [];
+    }
+}).catch(() => {});
 
 export function useVehicle(): VehicleState {
     const state = useSyncExternalStore(vehicleStore.subscribe, vehicleStore.getSnapshot);

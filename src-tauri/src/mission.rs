@@ -43,6 +43,18 @@ pub struct MissionState {
     tx: Mutex<Option<mpsc::UnboundedSender<MissionEvent>>>,
 }
 
+/// Action type for each waypoint, matching the TypeScript `WaypointAction` union.
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum WaypointAction {
+    #[default]
+    Waypoint,
+    Takeoff,
+    Loiter,
+    ReturnToLaunch,
+    Land,
+}
+
 /// The frontend's waypoint shape (`src/mission/mission.ts`). `id` is
 /// frontend-only (React keys) and simply isn't declared here — serde ignores
 /// fields a struct doesn't ask for, so the extra key in the JSON is harmless.
@@ -52,6 +64,12 @@ pub struct Waypoint {
     pub lat: f64,
     pub lon: f64,
     pub altitude: f32,
+    /// Per-waypoint speed override (m/s). Stored in the mission draft but not
+    /// yet uploaded — DO_CHANGE_SPEED interleaving is planned for a later pass.
+    #[serde(default)]
+    pub speed: Option<f32>,
+    #[serde(default)]
+    pub action: WaypointAction,
 }
 
 pub fn on_request_int(app: &AppHandle, data: &MISSION_REQUEST_INT_DATA) {
@@ -129,10 +147,17 @@ fn build_upload_items(
     }
 
     for (index, waypoint) in waypoints.iter().enumerate() {
+        let command = match waypoint.action {
+            WaypointAction::Waypoint => MavCmd::MAV_CMD_NAV_WAYPOINT,
+            WaypointAction::Takeoff => MavCmd::MAV_CMD_NAV_TAKEOFF,
+            WaypointAction::Loiter => MavCmd::MAV_CMD_NAV_LOITER_UNLIM,
+            WaypointAction::ReturnToLaunch => MavCmd::MAV_CMD_NAV_RETURN_TO_LAUNCH,
+            WaypointAction::Land => MavCmd::MAV_CMD_NAV_LAND,
+        };
         items.push(MISSION_ITEM_INT_DATA {
             seq: (index + extra) as u16,
             frame: MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT,
-            command: MavCmd::MAV_CMD_NAV_WAYPOINT,
+            command,
             current: 0,
             autocontinue: 1,
             x: (waypoint.lat * 1e7) as i32,

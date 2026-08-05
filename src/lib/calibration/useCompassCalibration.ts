@@ -17,6 +17,10 @@ export interface CompassCalReport {
     /** RMS milligauss residual from ArduPilot's ellipsoid fit — lower is
      * better. The one calibration in this app with a real quality number. */
     fitness: number;
+    /** Raw `MAG_CAL_STATUS` value from ArduPilot: 4=success, 5=failed,
+     * 6=bad_orientation, 7=bad_radius. Kept raw so the UI can show the
+     * specific reason without this layer having to enumerate them. */
+    calStatus: number;
 }
 
 interface MagCalProgressEvent {
@@ -78,10 +82,11 @@ export function useCompassCalibration() {
         setReports(new Map());
         reportsRef.current = new Map();
         calMaskRef.current = null;
+        setCalibrating(true);
         try {
             await sendVehicleCommand({type: "startCompassCalibration"});
-            setCalibrating(true);
         } catch (err) {
+            setCalibrating(false);
             setError(message(err));
         }
     }, []);
@@ -91,9 +96,17 @@ export function useCompassCalibration() {
         sendVehicleCommand({type: "cancelCompassCalibration"}).catch((err) => setError(message(err)));
     }, []);
 
+    /** Cancel and surface a specific "stalled" message — called by the panel
+     * when progress stops advancing while the vehicle is still rotating. */
+    const stallCancel = useCallback(() => {
+        setCalibrating(false);
+        setError("Progress stalled — rotate to cover the remaining sections and try again.");
+        sendVehicleCommand({type: "cancelCompassCalibration"}).catch(() => {});
+    }, []);
+
     useTauriEvent<MagCalProgressEvent>("mag-cal-progress", (payload) => {
         if (!calibrating) {
-            return; // stale event from a calibration this session no longer owns
+            return;
         }
         calMaskRef.current = payload.calMask;
         const coveredMask = Array.from({length: COMPASS_CAL_SECTION_COUNT}, (_, i) =>
@@ -111,7 +124,7 @@ export function useCompassCalibration() {
             return;
         }
         const next = new Map(reportsRef.current);
-        next.set(payload.compassId, {success: payload.calStatus === MAG_CAL_SUCCESS, fitness: payload.fitness});
+        next.set(payload.compassId, {success: payload.calStatus === MAG_CAL_SUCCESS, fitness: payload.fitness, calStatus: payload.calStatus});
         reportsRef.current = next;
         setReports(next);
 
@@ -121,5 +134,5 @@ export function useCompassCalibration() {
         }
     });
 
-    return {calibrating, progress, reports, error, start, cancel};
+    return {calibrating, progress, reports, error, start, cancel, stallCancel};
 }

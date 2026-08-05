@@ -2,7 +2,7 @@ import {useCallback, useRef} from "react";
 import type {PointerEvent as ReactPointerEvent} from "react";
 import {useFrame, useThree} from "@react-three/fiber";
 
-const CAMERA_DISTANCE = 6;
+const DEFAULT_CAMERA_DISTANCE = 6;
 const CAMERA_HEIGHT = 2.2;
 /** Radians of orbit per pixel dragged, tuned so a comfortable drag across the
  * viewport's width is roughly a half turn rather than a twitchy full spin. */
@@ -11,11 +11,13 @@ const DRAG_SENSITIVITY = 0.012;
 /** Orbits the camera around the origin at a fixed radius/elevation, purely
  * from `viewYaw` — there's no `OrbitControls` here because a viewport's yaw
  * is plain lifted state, shareable across multiple `<Canvas>` instances
- * rather than owned by one scene's own camera. */
-export function CameraRig({viewYaw}: {viewYaw: number}) {
+ * rather than owned by one scene's own camera. `distance` defaults to 6,
+ * which fits the compass coverage sphere; orientation-only viewports (accel)
+ * pass a smaller value so the plane model fills the frame. */
+export function CameraRig({viewYaw, distance = DEFAULT_CAMERA_DISTANCE}: {viewYaw: number; distance?: number}) {
     const {camera} = useThree();
     useFrame(() => {
-        camera.position.set(CAMERA_DISTANCE * Math.sin(viewYaw), CAMERA_HEIGHT, CAMERA_DISTANCE * Math.cos(viewYaw));
+        camera.position.set(distance * Math.sin(viewYaw), CAMERA_HEIGHT, distance * Math.cos(viewYaw));
         camera.lookAt(0, 0, 0);
     });
     return null;

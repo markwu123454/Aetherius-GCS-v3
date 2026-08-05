@@ -81,6 +81,16 @@ const TRIANGLES: [number, number, number][] = [
 
 export const COMPASS_CAL_SECTION_COUNT = 80;
 
+/** Actual triangle vertices for each of the 80 sub-triangle faces (on the
+ * unit sphere). Used by `CoverageSphere` to render filled faces rather than
+ * dots, so the geodesic subdivision is visually obvious. */
+export interface CompassCalFace {
+    index: number;
+    v0: Vec3;
+    v1: Vec3;
+    v2: Vec3;
+}
+
 /** All 80 sections, index order matching `completion_mask`'s bit order. */
 export const COMPASS_CAL_SECTIONS: CompassCalSection[] = TRIANGLES.flatMap(([ia, ib, ic], triangleIndex) => {
     const a = VERTICES[ia];
@@ -100,6 +110,23 @@ export const COMPASS_CAL_SECTIONS: CompassCalSection[] = TRIANGLES.flatMap(([ia,
     ];
 
     return subDirections.map((direction, j) => ({index: triangleIndex * 4 + j, direction}));
+});
+
+/** The three corner vertices (on the unit sphere) for each of the 80 faces,
+ * same index order as `COMPASS_CAL_SECTIONS`. */
+export const COMPASS_CAL_FACES: CompassCalFace[] = TRIANGLES.flatMap(([ia, ib, ic], triangleIndex) => {
+    const a = VERTICES[ia];
+    const b = VERTICES[ib];
+    const c = VERTICES[ic];
+    const midAB = midpoint(a, b);
+    const midBC = midpoint(b, c);
+    const midCA = midpoint(c, a);
+    return [
+        {index: triangleIndex * 4 + 0, v0: a,     v1: midAB, v2: midCA},
+        {index: triangleIndex * 4 + 1, v0: midAB, v1: b,     v2: midBC},
+        {index: triangleIndex * 4 + 2, v0: midCA, v1: midBC, v2: c    },
+        {index: triangleIndex * 4 + 3, v0: midAB, v1: midBC, v2: midCA},
+    ];
 });
 
 /** Reads bit `section` (0-79) out of `MAG_CAL_PROGRESS`'s 10-byte

@@ -49,16 +49,16 @@ interface PlaneModelProps {
 export function bodyRotationEuler(rotationDeg: PlaneRotationDeg): THREE.Euler {
     return new THREE.Euler(
         THREE.MathUtils.degToRad(rotationDeg.pitch),
-        THREE.MathUtils.degToRad(rotationDeg.yaw ?? 0),
+        THREE.MathUtils.degToRad(-(rotationDeg.yaw ?? 0)),   // negated
         THREE.MathUtils.degToRad(-rotationDeg.roll),
-        "XZY",
+        "ZXY",                                               // was "XZY"
     );
 }
 
 /**
  * "Low Poly Plane" by scailman (https://sketchfab.com/scailman), licensed
  * CC-BY-4.0 — see `public/models/low_poly_plane/license.txt`. Attribution is
- * also shown in the calibration panel itself per the license's own request.
+ * shown in the About page per the license's own request.
  */
 export default function PlaneModel({rotationDeg}: PlaneModelProps) {
     const gltf = useLoader(GLTFLoader, MODEL_URL);

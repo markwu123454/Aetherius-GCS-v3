@@ -28,14 +28,14 @@ export default function OrientationViewport({label, rotationDeg, viewYaw, onView
         <div className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="text-micro text-text-helper uppercase">{label}</span>
             <div
-                className="relative h-[180px] w-full touch-none border border-border-subtle bg-layer-01 [cursor:grab] active:[cursor:grabbing]"
+                className="relative h-[420px] w-full touch-none border border-border-subtle bg-layer-01 [cursor:grab] active:[cursor:grabbing]"
                 {...drag}
             >
                 <Canvas dpr={[1, 2]} gl={{antialias: true}}>
                     <ambientLight intensity={0.7} />
                     <directionalLight position={[3, 5, 2]} intensity={1.2} />
                     <directionalLight position={[-3, -2, -4]} intensity={0.3} />
-                    <CameraRig viewYaw={viewYaw} />
+                    <CameraRig viewYaw={viewYaw} distance={2.5} />
                     <Suspense fallback={null}>
                         <PlaneModel rotationDeg={rotationDeg} />
                     </Suspense>

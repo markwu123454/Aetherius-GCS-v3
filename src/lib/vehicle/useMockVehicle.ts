@@ -27,6 +27,10 @@ function initial(): VehicleState {
         gps: {fix: "3d", satellites: 17, hdop: 0.8},
         link: {rssi: 148, lossPercent: 0.4},
         ekf: {ok: true, vibe: 12},
+        wind: {dir: 275, speed: 4.2},
+        nav: null,
+        currentWp: null,
+        power: {boardVoltage: 5.03, servoVoltage: 4.98},
         updatedAt: now,
     };
 }

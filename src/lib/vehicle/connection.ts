@@ -25,7 +25,9 @@ export type ConnectionStatus =
     | "lost"
     | "disconnecting"
     /** The link could never be established, as opposed to having dropped. */
-    | "error";
+    | "error"
+    /** Reboot command sent; backend is polling for the vehicle to come back. */
+    | "rebooting";
 
 /**
  * These strings are produced by the Rust `LinkStatus` enum, which owns the
@@ -78,6 +80,8 @@ export function linkSeverity(status: ConnectionStatus, silentFor: number | null)
             return "danger";
         case "losing":
             return silentFor !== null && silentFor > SILENCE_ESCALATES_AFTER ? "danger" : "warn";
+        case "rebooting":
+            return "warn";
         default:
             return "none";
     }
@@ -85,7 +89,7 @@ export function linkSeverity(status: ConnectionStatus, silentFor: number | null)
 
 /** States where nothing has been heard yet, so there is no age to report. */
 export function isLinkIdle(status: ConnectionStatus): boolean {
-    return status === "disconnected" || status === "connecting" || status === "error";
+    return status === "disconnected" || status === "connecting" || status === "error" || status === "rebooting";
 }
 
 /**

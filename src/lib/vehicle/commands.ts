@@ -14,6 +14,8 @@ export type VehicleCommand =
     | {type: "returnToLaunch"}
     | {type: "land"}
     | {type: "startMission"}
+    | {type: "pauseMission"}
+    | {type: "resumeMission"}
     | {type: "reboot"}
     | {type: "rebootToBootloader"}
     | {type: "startAccelCalibration"}

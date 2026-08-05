@@ -35,6 +35,8 @@
     { "vendor_id": 1155, "product_id": 22336, "class": "Pixhawk", "name": "ArduPilot ChibiOS" },
     { "vendor_id": 4617, "product_id": 22336, "class": "Pixhawk", "name": "ArduPilot ChibiOS" },
     { "vendor_id": 4617, "product_id": 22337, "class": "Pixhawk", "name": "ArduPilot ChibiOS" },
+    { "vendor_id": 12642, "product_id": 83, "class": "Pixhawk", "name": "Pixhawk 6C" },
+    { "vendor_id": 12642, "product_id": 84, "class": "Pixhawk", "name": "Pixhawk 6C Mini" },
     { "vendor_id": 12642, "product_id": 0, "class": "Pixhawk", "name": "Holybro", "_comment": "product_id 0 is a vendor-only wildcard — matches any product from this vendor" },
     { "vendor_id": 11694, "product_id": 0, "class": "Pixhawk", "name": "CubePilot" },
     { "vendor_id": 2702, "product_id": 110, "class": "Pixhawk", "name": "JFB JFB110" },

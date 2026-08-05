@@ -32,6 +32,7 @@ pub fn run() {
             link::disconnect_link,
             link::scan_links,
             link::link_status,
+            link::reboot_link,
             vehicle_command::send_vehicle_command,
             vehicle_command::send_rc_override,
             params::refresh_params,

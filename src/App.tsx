@@ -20,6 +20,7 @@ import {useMission} from "@/lib/mission/useMission.ts";
 import {useSettings} from "@/lib/settings/useSettings.ts";
 import {useApplyDisplayMode} from "@/lib/settings/useApplyDisplayMode.ts";
 import {useApplyConsoleSettings} from "@/lib/settings/useApplyConsoleSettings.ts";
+import {useApplyTelemetrySettings} from "@/lib/settings/useApplyTelemetrySettings.ts";
 import {useUpdateCheck} from "@/lib/update/useUpdateCheck.ts";
 import {NavigationApi, NavigationProvider} from "@/lib/navigation/useNavigation.tsx";
 import {PageId} from "@/lib/navigation/navigation.ts";
@@ -53,6 +54,7 @@ function App() {
     // Same reasoning: the console store lives outside React and needs the
     // preference pushed to it, not just read once at mount.
     useApplyConsoleSettings(settings.consoleCollapseThreshold);
+    useApplyTelemetrySettings(settings.telemetrySparklines);
     // Owned here rather than inside `AboutPage` so a launch-time check and a
     // manual "Check for Updates" click share one `Update` resource instead of
     // each holding its own.

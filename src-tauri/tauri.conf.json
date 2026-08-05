@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "aetherius-gcs-v3",
+  "productName": "Aetherius GCS",
   "version": "0.1.0",
   "identifier": "com.markw.aetherius-gcs-v3",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "aetherius-gcs-v3",
+        "title": "Aetherius GCS",
         "width": 800,
         "height": 600,
         "dragDropEnabled": false

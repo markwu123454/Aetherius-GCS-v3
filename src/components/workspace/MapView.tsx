@@ -1,11 +1,16 @@
 import {useEffect, useRef, useState} from "react";
 import {createRoot, type Root} from "react-dom/client";
-import {Marker} from "maplibre-gl";
+import {GeoJSONSource, Marker} from "maplibre-gl";
 import {AirportLocation, Drone, LocationCurrent} from "@carbon/icons-react";
 import {VehicleKind, VehiclePosition} from "@/lib/vehicle/vehicle.ts";
 import {AIRSPACE_CLASSES, airspaceColor} from "@/lib/airspace/airspace.ts";
 import type {AirspaceState} from "@/lib/airspace/useAirspace.ts";
 import {useBaseMap} from "@/lib/map/useBaseMap.ts";
+import {useVehicleTrack} from "@/lib/map/useVehicleTrack.ts";
+import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
+import {useSettings} from "@/lib/settings/useSettings.ts";
+import {useUploadedWaypoints} from "@/lib/mission/useMission.ts";
+import {resolveToken} from "@/lib/airspace/airspace.ts";
 
 /** Camera zoom the first fix settles at — close enough to be useful, not so
  * close that a GPS jump before the fix settles reads as a wild camera swing. */
@@ -49,10 +54,29 @@ function lerpLngLat(a: [number, number], b: [number, number], t: number): [numbe
     return [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
 }
 
-/** `Drone` has no "front" in its artwork — four rotors in a symmetric X — so
- * there is no offset to correct for; it rotates along with heading anyway. */
-function VehicleMarkerIcon({kind}: {kind: VehicleKind | null}) {
-    return kind === "multirotor" ? <Drone size={28}/> : <LocationCurrent size={28}/>;
+/**
+ * The icon with optional attitude tilt: scaleX compresses left-right (roll),
+ * scaleY compresses front-back (pitch). Applied in the icon's own pre-rotation
+ * frame so MapLibre's heading rotation keeps the axes aligned with the drone's
+ * body. For planes the 45° artwork offset makes this slightly impure, but the
+ * effect still reads as tilt.
+ */
+function VehicleMarkerIcon({kind, roll, pitch}: {kind: VehicleKind | null; roll: number; pitch: number}) {
+    const icon = kind === "multirotor" ? <Drone size={28}/> : <LocationCurrent size={28}/>;
+    return (
+        <div style={{
+            width: 28, height: 28, position: "relative",
+            transformStyle: "preserve-3d",
+            transform: `perspective(80px) rotateX(${-pitch}deg) rotateY(${roll}deg)`,
+            transformOrigin: "center",
+        }}>
+            {/* Back face offset into the page — becomes visible as thickness when tilted. */}
+            <div style={{position: "absolute", inset: 0, transform: "translateZ(-3px)", opacity: 0.45}}>
+                {icon}
+            </div>
+            <div style={{position: "absolute", inset: 0}}>{icon}</div>
+        </div>
+    );
 }
 
 function markerRotation(heading: number, kind: VehicleKind | null): number {
@@ -67,9 +91,17 @@ interface MapViewProps {
 
 export default function MapView({position, vehicleKind, airspace}: MapViewProps) {
     const {containerRef, mapRef, styleReady} = useBaseMap();
+    const track = useVehicleTrack();
+    const {markerTilt} = useSettings();
+    const vehicle = useVehicle();
+    const uploadedWaypoints = useUploadedWaypoints();
+    const tiltActive = markerTilt && vehicleKind === "multirotor";
+    const roll  = tiltActive ? (vehicle.attitude?.roll  ?? 0) : 0;
+    const pitch = tiltActive ? (vehicle.attitude?.pitch ?? 0) : 0;
     const markerRef = useRef<Marker | null>(null);
     const iconRootRef = useRef<Root | null>(null);
     const hasCenteredRef = useRef(false);
+    const missionMarkersRef = useRef<Marker[]>([]);
     const [following, setFollowing] = useState(false);
 
     // The tick loop's own source of truth for whether to keep calling
@@ -147,8 +179,51 @@ export default function MapView({position, vehicleKind, airspace}: MapViewProps)
             iconRootRef.current = null;
             markerRef.current?.remove();
             markerRef.current = null;
+            for (const m of missionMarkersRef.current) m.remove();
+            missionMarkersRef.current = [];
         };
     }, []);
+
+    // Keep the icon scale current when attitude or the tilt setting changes,
+    // independently of position updates.
+    useEffect(() => {
+        iconRootRef.current?.render(<VehicleMarkerIcon kind={vehicleKind} roll={roll} pitch={pitch}/>);
+    }, [vehicleKind, roll, pitch]);
+
+    // Track layers — added before airspace so they render beneath it. Gray for
+    // disarmed movement, blue for armed flight. Both source/layer pairs are
+    // created once here; data is kept current by the effect below.
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map || !styleReady) return;
+
+        const empty = {type: "Feature" as const, properties: {} as Record<string, never>, geometry: {type: "MultiLineString" as const, coordinates: [] as [number, number][][]}};
+
+        map.addSource("track-disarmed", {type: "geojson", data: empty});
+        map.addLayer({
+            id: "track-disarmed",
+            type: "line",
+            source: "track-disarmed",
+            layout: {"line-join": "round", "line-cap": "round"},
+            paint: {"line-color": "#8d8d8d", "line-width": 1.5, "line-opacity": 0.7},
+        });
+
+        map.addSource("track-armed", {type: "geojson", data: empty});
+        map.addLayer({
+            id: "track-armed",
+            type: "line",
+            source: "track-armed",
+            layout: {"line-join": "round", "line-cap": "round"},
+            paint: {"line-color": "#4589ff", "line-width": 2, "line-opacity": 0.85},
+        });
+    }, [styleReady, mapRef]);
+
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map || !styleReady) return;
+        (map.getSource("track-disarmed") as GeoJSONSource)?.setData(track.disarmed as never);
+        (map.getSource("track-armed") as GeoJSONSource)?.setData(track.armed as never);
+    }, [styleReady, track, mapRef]);
 
     // Airspace layers. Each class gets a source plus a fill and an outline, all
     // added once and then shown or hidden — tearing them down on every toggle
@@ -211,6 +286,87 @@ export default function MapView({position, vehicleKind, airspace}: MapViewProps)
         }
     }, [styleReady, airspace.loaded, airspace.classes]);
 
+    // Mission route: dashed orange line connecting uploaded waypoints in order.
+    // Source and layer are created once; data is refreshed on every new upload.
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map || !styleReady) return;
+        if (!map.getSource("mission-route")) {
+            map.addSource("mission-route", {
+                type: "geojson",
+                data: {type: "Feature", properties: {}, geometry: {type: "LineString", coordinates: []}},
+            });
+            map.addLayer({
+                id: "mission-route",
+                type: "line",
+                source: "mission-route",
+                layout: {"line-join": "round", "line-cap": "round"},
+                paint: {
+                    "line-color": resolveToken("--color-orange-40"),
+                    "line-width": 2,
+                    "line-opacity": 0.85,
+                    "line-dasharray": [4, 3],
+                },
+            });
+        }
+    }, [styleReady, mapRef]);
+
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map || !styleReady) return;
+        (map.getSource("mission-route") as GeoJSONSource | undefined)?.setData({
+            type: "Feature",
+            properties: {},
+            geometry: {
+                type: "LineString",
+                coordinates: uploadedWaypoints.map((wp) => [wp.lon, wp.lat]),
+            },
+        });
+    }, [styleReady, mapRef, uploadedWaypoints]);
+
+    // Mission waypoint markers: numbered circles, non-interactive, active WP
+    // highlighted. Reconciled from scratch whenever the uploaded list or active
+    // seq changes — the list is short enough that a full rebuild is simpler than
+    // a diff, and WP transitions during a mission are infrequent.
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map || !styleReady) return;
+
+        for (const m of missionMarkersRef.current) m.remove();
+        missionMarkersRef.current = [];
+
+        const wpExtra = (vehicle.vehicleKind === "plane" || vehicle.vehicleKind === "multirotor") ? 2 : 1;
+        const activeWpIdx = vehicle.currentWp !== null ? vehicle.currentWp - wpExtra : -1;
+
+        for (let i = 0; i < uploadedWaypoints.length; i++) {
+            const wp = uploadedWaypoints[i];
+            const isActive = i === activeWpIdx;
+
+            const el = document.createElement("div");
+            el.style.width = "18px";
+            el.style.height = "18px";
+            el.style.borderRadius = "50%";
+            el.style.background = isActive
+                ? resolveToken("--color-green-40")
+                : resolveToken("--color-orange-40");
+            el.style.border = "2px solid rgba(255,255,255,0.9)";
+            el.style.boxShadow = "0 1px 2px rgba(0,0,0,0.55)";
+            el.style.display = "flex";
+            el.style.alignItems = "center";
+            el.style.justifyContent = "center";
+            el.style.color = "white";
+            el.style.fontSize = "9px";
+            el.style.fontWeight = "bold";
+            el.style.fontFamily = "monospace";
+            el.style.pointerEvents = "none";
+            el.textContent = String(i + 1);
+
+            missionMarkersRef.current.push(
+                new Marker({element: el}).setLngLat([wp.lon, wp.lat]).addTo(map),
+            );
+        }
+    }, [styleReady, mapRef, uploadedWaypoints, vehicle.currentWp, vehicle.vehicleKind]);
+
     // Records each new fix and (re)creates the marker — the actual on-screen
     // position is the tick loop's job, below. Kept separate so a fix arriving
     // doesn't have to fight a still-running interpolation toward the previous
@@ -237,7 +393,7 @@ export default function MapView({position, vehicleKind, airspace}: MapViewProps)
             markerRef.current = new Marker({element, rotationAlignment: "map"}).setLngLat(lngLat).addTo(map);
         }
 
-        iconRootRef.current?.render(<VehicleMarkerIcon kind={vehicleKind}/>);
+        iconRootRef.current?.render(<VehicleMarkerIcon kind={vehicleKind} roll={roll} pitch={pitch}/>);
 
         if (!hasCenteredRef.current) {
             // First fix ever: worth an animated flight in from the world view,

@@ -53,6 +53,77 @@ function paramValue(live: Map<string, LiveParamEntry>, name: string): number | u
     return live.get(name)?.value;
 }
 
+// ArduPilot firmware defaults for every RC channel, straight out of QGC's
+// APMRadioComponent::setupComplete() comment.
+const RC_MIN_DEFAULT = 1100;
+const RC_MAX_DEFAULT = 1900;
+const RC_TRIM_DEFAULT = 1500;
+const RCMAP_PARAMS = ["RCMAP_ROLL", "RCMAP_PITCH", "RCMAP_THROTTLE", "RCMAP_YAW"] as const;
+
+/**
+ * Mirrors `APMRadioComponent::setupComplete()` from QGroundControl:
+ *
+ * 1. All four attitude axes must be mapped to a channel (RCMAP_* > 0).
+ * 2. At least one of those channels must have had its MIN/MAX/TRIM changed
+ *    away from ArduPilot's factory defaults (1100 / 1900 / 1500). If every
+ *    mapped channel is still at the factory values the radio has never been
+ *    calibrated.
+ *
+ * In practice RCMAP_* always ships >0 on ArduPilot (Roll=1 Pitch=2
+ * Throttle=3 Yaw=4), so the real test is almost always just whether any
+ * RC{n}_MIN/MAX/TRIM differs from the defaults.
+ */
+function radioStatus(live: Map<string, LiveParamEntry>): CalibrationStatus {
+    const channels: number[] = [];
+    for (const param of RCMAP_PARAMS) {
+        const value = paramValue(live, param);
+        if (value === undefined) return "unknown";
+        if (value <= 0) return "incomplete";
+        channels.push(Math.round(value));
+    }
+    for (const channel of channels) {
+        const min = paramValue(live, `RC${channel}_MIN`);
+        const max = paramValue(live, `RC${channel}_MAX`);
+        const trim = paramValue(live, `RC${channel}_TRIM`);
+        if (min === undefined || max === undefined || trim === undefined) return "unknown";
+        if (min !== RC_MIN_DEFAULT || max !== RC_MAX_DEFAULT || trim !== RC_TRIM_DEFAULT) {
+            return "complete";
+        }
+    }
+    return "incomplete";
+}
+
+/**
+ * Level horizon writes AHRS_TRIM_X and AHRS_TRIM_Y (roll and pitch offsets in
+ * radians). Both default to 0.0 — which is also a valid result when the board
+ * happens to be perfectly level — so zero-trims can't be distinguished from
+ * "never calibrated". Any non-zero value is unambiguous: the procedure ran.
+ */
+function levelHorizonStatus(live: Map<string, LiveParamEntry>): CalibrationStatus {
+    const trimX = paramValue(live, "AHRS_TRIM_X");
+    const trimY = paramValue(live, "AHRS_TRIM_Y");
+    if (trimX === undefined || trimY === undefined) return "unknown";
+    return trimX !== 0 || trimY !== 0 ? "complete" : "unknown";
+}
+
+/**
+ * Motor interference compensation: COMPASS_MOTCT selects the mode
+ * (0 = disabled, 1 = throttle-based, 2 = current-based).
+ * Disabled → genuinely optional, most setups with an external compass skip it.
+ * Enabled → check COMPASS_MOT_X/Y/Z for a non-zero compensation vector;
+ * all-zero means the procedure hasn't been run yet.
+ */
+function compassMotStatus(live: Map<string, LiveParamEntry>): CalibrationStatus {
+    const motct = paramValue(live, "COMPASS_MOTCT");
+    if (motct === undefined) return "unknown";
+    if (motct === 0) return "not-needed";
+    const x = paramValue(live, "COMPASS_MOT_X");
+    const y = paramValue(live, "COMPASS_MOT_Y");
+    const z = paramValue(live, "COMPASS_MOT_Z");
+    if (x === undefined || y === undefined || z === undefined) return "unknown";
+    return x !== 0 || y !== 0 || z !== 0 ? "complete" : "incomplete";
+}
+
 /**
  * One compass instance (1-3), the same rule QGroundControl uses
  * (`APMSensorsComponent::compassSetupNeeded`): a `DEV_ID` of 0 means the
@@ -104,10 +175,26 @@ function buildItems(vehicleKind: VehicleKind | null, live: Map<string, LiveParam
             id: "gyro",
             label: "Gyroscope",
             description: "Corrects gyro bias so the vehicle doesn't drift when it should be still.",
-            status: "unknown",
+            // Always green: ArduPilot re-runs gyro calibration automatically on
+            // every boot, so a valid calibration is always present. Manual
+            // calibration is only needed if the vehicle was disturbed at power-up.
+            status: "complete",
             note: "Recalibrates automatically on every boot — run manually only if the vehicle was disturbed while powering up.",
         },
     );
+
+    const lvlStatus = levelHorizonStatus(live);
+    items.push({
+        id: "levelHorizon",
+        label: "Level Horizon",
+        description: "Trims the flight controller so it reads zero roll and pitch while the vehicle is at rest in its level flight position.",
+        status: lvlStatus,
+        // Zero AHRS_TRIM_X/Y is valid for a perfectly-level board, so we can't
+        // tell "never run" from "run and result was zero" — be honest about it.
+        note: lvlStatus === "unknown"
+            ? "Cannot be auto-detected — a zero trim is also the correct result for a perfectly-level board. Run this if the vehicle drifts or tilts when it should be flying level."
+            : undefined,
+    });
 
     for (const instance of [1, 2, 3] as const) {
         const {fitted, status} = compassStatus(live, instance);
@@ -123,13 +210,30 @@ function buildItems(vehicleKind: VehicleKind | null, live: Map<string, LiveParam
         });
     }
 
-    items.push({
-        id: "radio",
-        label: "Radio",
-        description: "Records each RC channel's min/max/trim so stick input maps correctly.",
-        status: "unknown",
-        note: NOT_AUTO_DETECTED,
-    });
+    items.push(
+        {
+            id: "pressure",
+            label: "Pressure",
+            description: "Calibrates the barometer's ground-level reference. ArduPilot does this automatically on every boot.",
+            // Same story as gyro: auto-calibrates on boot, manual trigger rarely needed.
+            status: "not-needed",
+            note: "Run manually if the altitude estimate is significantly wrong immediately after boot.",
+        },
+        {
+            id: "radio",
+            label: "Radio",
+            description: "Records each RC channel's min/max/trim so stick input maps correctly.",
+            status: radioStatus(live),
+        },
+        {
+            id: "compassMot",
+            label: "Motor Interference",
+            description:
+                "Measures and compensates for magnetic interference produced by the motors at different throttle levels. " +
+                "Optional — most useful for vehicles with an internal compass near the power wiring.",
+            status: compassMotStatus(live),
+        },
+    );
 
     if (vehicleKind === "plane") {
         const arspdType = paramValue(live, "ARSPD_TYPE");

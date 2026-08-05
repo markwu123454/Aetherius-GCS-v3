@@ -19,15 +19,37 @@ export interface Settings {
      * they stop appending as separate lines and start folding into one with a
      * running `×N` count. */
     consoleCollapseThreshold: number;
+    /** Compress the map marker icon along the vehicle's pitch and roll axes to
+     * suggest attitude at a glance. Purely cosmetic. */
+    markerTilt: boolean;
+    /** Show trailing sparklines on telemetry rows that support them. */
+    telemetrySparklines: boolean;
+    /** How often (seconds) the backend re-sends MAV_CMD_RUN_PREARM_CHECKS while
+     * disarmed. Takes effect on next connection. */
+    prearmCheckInterval: number;
+    /** Rate (Hz) at which the vehicle is asked to send attitude, position,
+     * VFR_HUD, and RC channels. Capped at 20 Hz — the backend's own emit
+     * throttle. Takes effect on next connection. */
+    telemRateHz: number;
 }
 
 /** Below this, there's nothing left to collapse — the first occurrence of a
  * line is always shown on its own regardless of the setting. */
 export const MIN_CONSOLE_COLLAPSE_THRESHOLD = 2;
 
+export const MIN_PREARM_CHECK_INTERVAL = 1;
+export const MAX_PREARM_CHECK_INTERVAL = 60;
+export const MIN_TELEM_RATE_HZ = 1;
+/** Must not exceed the backend's own 20 Hz emit throttle. */
+export const MAX_TELEM_RATE_HZ = 20;
+
 export const DEFAULT_SETTINGS: Settings = {
     confirmDisconnectWhenArmed: true,
     displayMode: "windowed",
     airspace: DEFAULT_AIRSPACE_SETTINGS,
     consoleCollapseThreshold: MIN_CONSOLE_COLLAPSE_THRESHOLD,
+    markerTilt: false,
+    telemetrySparklines: true,
+    prearmCheckInterval: 3,
+    telemRateHz: 20,
 };

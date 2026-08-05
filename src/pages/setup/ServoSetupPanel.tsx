@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useState} from "react";
-import {sendVehicleCommand} from "@/lib/vehicle/commands.ts";
+import {useConnection} from "@/lib/vehicle/useConnection.ts";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {useParamSheet} from "@/lib/params/useParamSheet.ts";
 import {ParamDef, ParamOption, VehicleFirmware} from "@/lib/params/paramSheet.ts";
@@ -258,6 +258,7 @@ function ServoRow({channel, live, onSet, functionOptions, range, onFunctionChang
  * "Set" button, unlike `ParametersPage`'s general-purpose control.
  */
 export default function ServoSetupPanel({live, onSet, firmware}: ServoSetupPanelProps) {
+    const connection = useConnection();
     const sheetState = useParamSheet(firmware);
     const [rebootNeeded, setRebootNeeded] = useState(false);
 
@@ -284,7 +285,7 @@ export default function ServoSetupPanel({live, onSet, firmware}: ServoSetupPanel
                     <span className="text-state-warn">A function change only takes effect after a reboot.</span>
                     <button
                         type="button"
-                        onClick={() => void sendVehicleCommand({type: "reboot"})}
+                        onClick={() => void connection.reboot()}
                         className="text-state-info underline"
                     >
                         Reboot the vehicle

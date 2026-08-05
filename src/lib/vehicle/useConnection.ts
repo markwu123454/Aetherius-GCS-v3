@@ -24,6 +24,10 @@ export interface Connection {
      * since typed into the address field. */
     connect: (address?: string) => Promise<void>;
     disconnect: () => Promise<void>;
+    /** Sends a reboot command and hands reconnect management to the backend.
+     *  Status transitions to "rebooting" immediately; the backend polls until
+     *  the vehicle comes back (→ "connecting" → "connected") or times out (→ "lost"). */
+    reboot: () => Promise<void>;
 }
 
 function message(error: unknown): string {
@@ -125,6 +129,19 @@ export function useConnection(): Connection {
         }
     }, []);
 
+    const reboot = useCallback(async () => {
+        if (!endpoint) {
+            return;
+        }
+        setError(null);
+        setStatus("rebooting");
+        try {
+            await invoke("reboot_link", {endpoint});
+        } catch (cause) {
+            setError(message(cause));
+        }
+    }, [endpoint]);
+
     return {
         draft,
         setDraft,
@@ -137,5 +154,6 @@ export function useConnection(): Connection {
         error,
         connect,
         disconnect,
+        reboot,
     };
 }

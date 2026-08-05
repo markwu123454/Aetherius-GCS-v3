@@ -1,6 +1,6 @@
 import {useState} from "react";
 import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
-import {sendVehicleCommand} from "@/lib/vehicle/commands.ts";
+import {useConnection} from "@/lib/vehicle/useConnection.ts";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {useAccelCalibration} from "@/lib/calibration/useAccelCalibration.ts";
 import {ACCEL_CAL_STEPS} from "@/lib/calibration/accelCalSteps.ts";
@@ -37,6 +37,7 @@ const LEVEL_ROTATION = {roll: 0, pitch: 0};
  */
 export default function AccelCalibrationPanel({live}: AccelCalibrationPanelProps) {
     const vehicle = useVehicle();
+    const connection = useConnection();
     const calibration = useAccelCalibration();
     const [viewYaw, setViewYaw] = useState(0);
 
@@ -156,7 +157,7 @@ export default function AccelCalibrationPanel({live}: AccelCalibrationPanelProps
                         There's no way to cancel this once started — finish all six positions, or{" "}
                         <button
                             type="button"
-                            onClick={() => void sendVehicleCommand({type: "reboot"})}
+                            onClick={() => void connection.reboot()}
                             className="text-state-info underline"
                         >
                             reboot the vehicle
@@ -166,26 +167,6 @@ export default function AccelCalibrationPanel({live}: AccelCalibrationPanelProps
                 </div>
             )}
 
-            <p className="text-micro text-text-helper">
-                3D model:{" "}
-                <a
-                    href="https://sketchfab.com/3d-models/low-poly-plane-76230052903540e9aeb46b7db35329e4"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline"
-                >
-                    "Low Poly Plane"
-                </a>{" "}
-                by{" "}
-                <a href="https://sketchfab.com/scailman" target="_blank" rel="noreferrer" className="underline">
-                    scailman
-                </a>
-                , licensed{" "}
-                <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer" className="underline">
-                    CC BY 4.0
-                </a>
-                .
-            </p>
         </div>
     );
 }

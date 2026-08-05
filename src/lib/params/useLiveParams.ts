@@ -62,10 +62,27 @@ listen<ParamBatch>("param-values", (message) => {
  * display one, so this clears outright on disconnect rather than
  * freezing-and-graying the way telemetry does.
  */
+// True once refresh() has been called for the current connection. Reset when
+// the link leaves the "connected/losing" cluster so the next connection
+// triggers a fresh dump. Prevents losing→connected oscillations (which happen
+// whenever heartbeats are delayed during a slow param dump) from firing
+// repeated PARAM_REQUEST_LIST resets that keep the dump from completing.
+let haveParams = false;
+
 listen<ConnectionStatus>("link-status", (event) => {
-    if (event.payload === "connected") {
-        refresh();
-    } else {
+    const status = event.payload;
+    if (status === "connected") {
+        if (!haveParams) {
+            haveParams = true;
+            refresh();
+        }
+        // losing → connected while a dump is in progress: socket is still open,
+        // accumulated values are still valid — do nothing.
+    } else if (status !== "connecting" && status !== "losing") {
+        // disconnecting, rebooting, disconnected, lost, error — the current
+        // connection (and its in-progress dump) is done; clear so the next
+        // connect starts fresh.
+        haveParams = false;
         paramsStore.set({values: new Map(), total: null});
     }
 }).catch(() => {

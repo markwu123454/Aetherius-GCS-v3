@@ -86,6 +86,18 @@ export interface VehicleState {
     gps: {fix: FixType; satellites: number; hdop: number};
     link: {rssi: number; lossPercent: number};
     ekf: {ok: boolean; vibe: number};
+    /** WIND message: direction the wind is coming FROM (degrees) and horizontal
+     * speed (m/s). `null` until the first WIND message arrives. */
+    wind: {dir: number; speed: number} | null;
+    /** NAV_CONTROLLER_OUTPUT: distance to the active waypoint (meters) and
+     * signed lateral cross-track error (meters). `null` until first message. */
+    nav: {wpDist: number; xtrackError: number} | null;
+    /** MISSION_CURRENT: sequence number of the active mission item. `null` until
+     * the first MISSION_CURRENT message arrives (typically once AUTO mode starts). */
+    currentWp: number | null;
+    /** POWER_STATUS: FC 5V board rail and servo rail, both in volts. `null`
+     * until the first POWER_STATUS message arrives. */
+    power: {boardVoltage: number; servoVoltage: number} | null;
     /** Last packet of any kind, used to decide whether readings are stale. */
     updatedAt: number;
 }

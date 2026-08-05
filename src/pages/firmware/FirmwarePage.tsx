@@ -1,56 +1,171 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
+import {CheckmarkFilled, CircleFilled, InProgress, RadioButton, Checkmark, Warning} from "@carbon/icons-react";
 import {useConnection} from "@/lib/vehicle/useConnection.ts";
 import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
 import {scanLinks, ScannedLink} from "@/lib/vehicle/connection.ts";
 import {sendVehicleCommand} from "@/lib/vehicle/commands.ts";
-import Modal from "@/components/Modal.tsx";
 import {
     ApjSummary,
     FirmwareOption,
-    frameLabel,
-    ManifestVehicleType,
     matchesBoard,
     prepareFirmware,
 } from "@/lib/firmware/firmwareFlash.ts";
 import {retryFirmwareManifest, useFirmwareManifest} from "@/lib/firmware/useFirmwareManifest.ts";
 import {useFirmwareFlash} from "@/lib/firmware/useFirmwareFlash.ts";
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type UserVehicleType = "plane" | "multirotor" | "helicopter";
 type PrepareState =
     | {status: "idle"}
     | {status: "preparing"}
     | {status: "ready"; summary: ApjSummary}
     | {status: "error"; message: string};
+type StepStatus = "pending" | "active" | "done" | "error";
 
-const STAGE_LABEL: Record<string, string> = {
-    waitingForBootloader: "Waiting for the board to enter bootloader mode…",
-    identify: "Identifying the board…",
-    erase: "Erasing flash…",
-    program: "Writing firmware…",
-    verify: "Verifying…",
-    reboot: "Rebooting the board…",
-    done: "Done.",
-    error: "Failed.",
-};
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-/** How long to keep looking for the board after a successful flash before
- * leaving it to the operator, and how often to look. USB re-enumeration
- * after the bootloader's REBOOT is typically a couple of seconds. */
+const VEHICLE_OPTS: {type: UserVehicleType; label: string; sub: string}[] = [
+    {type: "plane", label: "ArduPlane", sub: "Fixed wing"},
+    {type: "multirotor", label: "ArduCopter", sub: "Multirotor"},
+    {type: "helicopter", label: "ArduCopter", sub: "Helicopter"},
+];
+
+const VERSION_ORDER = ["stable", "beta", "dev"];
 const RECONNECT_TIMEOUT_MS = 20_000;
 const RECONNECT_POLL_MS = 1_000;
 
-function message(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+const FLASH_STAGES: {stage: string; label: string}[] = [
+    {stage: "waitingForBootloader", label: "Enter bootloader"},
+    {stage: "identify", label: "Identify board"},
+    {stage: "erase", label: "Erase flash"},
+    {stage: "program", label: "Write firmware"},
+    {stage: "verify", label: "Verify"},
+    {stage: "reboot", label: "Reboot board"},
+];
+const FLASH_STAGE_ORDER = [
+    "waitingForBootloader", "identify", "erase", "program", "verify", "reboot", "done", "error",
+];
+
+// ── Pure helpers ──────────────────────────────────────────────────────────────
+
+function manifestTypeOf(v: UserVehicleType | null): "Copter" | "Plane" {
+    return v === "plane" ? "Plane" : "Copter";
 }
 
-/** `connection.endpoint` is `serial:PORT:BAUD` for a serial link — anything
- * else (`tcp:`/`udp:` for SITL or a telemetry radio bridge) isn't a port
- * flashing could ever open directly. */
+function mavTypeOf(v: UserVehicleType): string {
+    if (v === "plane") return "FIXED_WING";
+    if (v === "helicopter") return "HELICOPTER";
+    return "Copter";
+}
+
+function sortVersionTypes(types: string[]): string[] {
+    return [...types].sort((a, b) => {
+        const ai = VERSION_ORDER.indexOf(a.toLowerCase());
+        const bi = VERSION_ORDER.indexOf(b.toLowerCase());
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+}
+
+function versionLabel(v: string): string {
+    const m: Record<string, string> = {stable: "Stable", beta: "Beta", dev: "Dev"};
+    return m[v.toLowerCase()] ?? v;
+}
+
 function serialPortOf(endpoint: string | null): string | null {
     if (!endpoint?.startsWith("serial:")) return null;
     return endpoint.split(":")[1] ?? null;
 }
 
-function FirmwareRow({
+function errMsg(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+// ── UI components ─────────────────────────────────────────────────────────────
+
+function StepDot({status}: {status: StepStatus}) {
+    const base = "flex h-5 w-5 shrink-0 items-center justify-center";
+    switch (status) {
+        case "done":
+            return <span className={`${base} bg-blue-60 text-text-on-color`}><Checkmark size={12} /></span>;
+        case "active":
+            return <span className={`${base} bg-blue-60 text-text-on-color`}><CircleFilled size={10} /></span>;
+        case "error":
+            return <span className={`${base} bg-red-60 text-text-on-color`}><Warning size={12} /></span>;
+        default:
+            return <span className={`${base} border border-border-subtle`} />;
+    }
+}
+
+function Step({
+    title,
+    status,
+    doneSummary,
+    children,
+    alwaysChildren,
+}: {
+    title: string;
+    status: StepStatus;
+    doneSummary?: string;
+    children?: React.ReactNode;
+    /** Rendered below children even when the step is pending. */
+    alwaysChildren?: React.ReactNode;
+}) {
+    const isPending = status === "pending";
+    return (
+        <div className="border-b border-border-subtle py-6">
+            <div className="flex items-start gap-3">
+                <StepDot status={status} />
+                <div className="min-w-0 flex-1">
+                    <div className="mb-3 flex items-baseline gap-2">
+                        <span
+                            className={`text-label font-semibold ${isPending ? "text-text-disabled" : "text-text-primary"}`}
+                        >
+                            {title}
+                        </span>
+                        {status === "done" && doneSummary && (
+                            <span className="text-micro text-text-helper">{doneSummary}</span>
+                        )}
+                    </div>
+                    {!isPending && children}
+                    {alwaysChildren}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function FlashItem({
+    label,
+    done,
+    active,
+    children,
+}: {
+    label: string;
+    done: boolean;
+    active: boolean;
+    children?: React.ReactNode;
+}) {
+    return (
+        <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+                {done ? (
+                    <CheckmarkFilled size={16} className="shrink-0 text-state-ok" />
+                ) : active ? (
+                    <InProgress size={16} className="shrink-0 text-text-primary" />
+                ) : (
+                    <RadioButton size={16} className="shrink-0 text-text-disabled" />
+                )}
+                <span className={`text-label ${done || active ? "text-text-primary" : "text-text-disabled"}`}>
+                    {label}
+                </span>
+            </div>
+            {active && children && <div className="ml-6">{children}</div>}
+        </div>
+    );
+}
+
+function BoardRow({
     option,
     active,
     onSelect,
@@ -70,72 +185,74 @@ function FirmwareRow({
             ].join(" ")}
         >
             <span className="text-label text-text-primary">{option.platform}</span>
-            {/* The frame class is not decoration: every Copter board
-                publishes a multirotor and a traditional-helicopter build
-                sharing a platform, a version, and a board_id. Without this
-                line the two rows are byte-identical on screen and the
-                board_id check downstream can't tell them apart either. */}
             <span className="text-micro text-text-helper">
-                {option.version} · {option.versionType} · {frameLabel(option.mavType)}
+                {option.version} · {option.versionType}
                 {option.brandName ? ` · ${option.brandName}` : ""}
             </span>
         </button>
     );
 }
 
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 /**
- * ArduCopter/ArduPlane firmware flashing — this app's equivalent of
- * QGroundControl's Firmware setup page (and, going back further, PX4's
- * airframe-preset picker: ArduPilot has no such preset system, so this is
- * just "pick a board+version from ArduPilot's own catalog, write it").
+ * Checklist-based firmware flashing flow.
  *
- * Deliberately not gated on `useConnection().status === "connected"` like
- * every other page in this app — a board that needs flashing usually has no
- * firmware to connect to yet. A currently-connected vehicle is only used as
- * a convenience (pre-filling vehicle type and offering to reboot it into
- * bootloader mode automatically); the whole flow works with nothing
- * connected at all, same as ArduPilot's own `uploader.py`.
+ * Simple mode: connect → pick vehicle type → pick version → download → flash.
+ * Board is auto-detected from USB scan; version list is narrowed to what's
+ * actually available for that board + vehicle type combination.
+ *
+ * Advanced mode: raw port picker, full board catalog, force flag.
  */
 export default function FirmwarePage() {
     const connection = useConnection();
     const vehicle = useVehicle();
     const flash = useFirmwareFlash();
 
-    const [vehicleType, setVehicleType] = useState<ManifestVehicleType>(
-        vehicle.vehicleKind === "plane" ? "Plane" : "Copter",
-    );
-    const manifest = useFirmwareManifest(vehicleType);
-    const [query, setQuery] = useState("");
-    const [selected, setSelected] = useState<FirmwareOption | null>(null);
-    const [prepareState, setPrepareState] = useState<PrepareState>({status: "idle"});
-    // Downloads are a few MB and can finish out of order, so a click on
-    // board A resolving after a click on board B must not leave A's summary
-    // sitting under B's heading. (`flash_start` independently refuses to
-    // write an image whose URL isn't the one being confirmed — this keeps
-    // the screen honest, that keeps the board safe.)
-    const prepareToken = useRef(0);
-    const [confirming, setConfirming] = useState(false);
+    const [advanced, setAdvanced] = useState(false);
 
+    // Step: vehicle type — pre-fill from active MAVLink connection
+    const [vehicleType, setVehicleType] = useState<UserVehicleType | null>(() => {
+        if (vehicle.vehicleKind === "plane") return "plane";
+        if (vehicle.vehicleKind === "multirotor") return "multirotor";
+        return null;
+    });
+
+    // Both manifests are pre-fetched at module load; hooks can't be conditional.
+    const copterManifest = useFirmwareManifest("Copter");
+    const planeManifest = useFirmwareManifest("Plane");
+    const manifest = vehicleType === "plane" ? planeManifest : copterManifest;
+
+    const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
+
+    // Prepare / download state
+    const [prepareState, setPrepareState] = useState<PrepareState>({status: "idle"});
+    const prepareToken = useRef(0);
+    const [preparedOption, setPreparedOption] = useState<FirmwareOption | null>(null);
+
+    // Port scan
     const [ports, setPorts] = useState<ScannedLink[]>([]);
     const [selectedPort, setSelectedPort] = useState<string | null>(null);
+
+    // Advanced extras
+    const [advancedBoard, setAdvancedBoard] = useState<FirmwareOption | null>(null);
+    const [boardQuery, setBoardQuery] = useState("");
+    const [showAllVersions, setShowAllVersions] = useState(false);
     const [force, setForce] = useState(false);
+
+    // Inline flash confirmation
+    const [confirmingFlash, setConfirmingFlash] = useState(false);
+
     const [rebooting, setRebooting] = useState(false);
     const [reconnecting, setReconnecting] = useState(false);
-    const [showAllBoards, setShowAllBoards] = useState(false);
+
+    // ── Board scan ────────────────────────────────────────────────────────────
 
     const refreshPorts = useCallback(async () => {
         try {
             const all = await scanLinks();
-            // Radios, RTK GPS units, etc. show up in the same USB scan the
-            // connect dropdown uses — none of them speak the bootloader
-            // protocol, so they're left out here rather than offered as a
-            // flashable target that would just time out.
             const flashable = all.filter((link) => link.class === "pixhawk");
             setPorts(flashable);
-            // Auto-select when there's no ambiguity. A board exposing
-            // several CDC interfaces (a Pixhawk 6C shows up as two COM
-            // ports) counts as several entries, so this only fires when
-            // there is exactly one — otherwise the operator picks.
             setSelectedPort((current) => {
                 if (current && flashable.some((link) => link.portName === current)) return current;
                 return flashable.length === 1 ? (flashable[0].portName ?? null) : null;
@@ -145,102 +262,120 @@ export default function FirmwarePage() {
         }
     }, []);
 
-    /// The USB identity of whatever board is plugged in, used to narrow the
-    /// firmware list to builds that are actually for it.
-    const detectedBoard = useMemo(() => {
-        const withIds = ports.find((link) => link.vid !== undefined && link.pid !== undefined);
-        return withIds ? {vid: withIds.vid!, pid: withIds.pid!, label: withIds.label} : null;
-    }, [ports]);
-
     useEffect(() => {
         void refreshPorts();
     }, [refreshPorts]);
 
-    // A fresh vehicle type invalidates whatever was picked/prepared for the
-    // old one — a Plane .apj is never a valid answer while browsing Copter.
-    // Bumping the token discards an in-flight download for the old type too,
-    // which would otherwise land and present itself as ready.
+    const detectedBoard = useMemo(() => {
+        const withIds = ports.find((link) => link.vid !== undefined && link.pid !== undefined);
+        return withIds
+            ? {vid: withIds.vid!, pid: withIds.pid!, label: withIds.label, portName: withIds.portName}
+            : null;
+    }, [ports]);
+
+    // ── Firmware options ──────────────────────────────────────────────────────
+
+    // Options matching the selected vehicle type + frame (mav type).
+    const typeFilteredOptions = useMemo(() => {
+        if (!vehicleType || manifest.status !== "ready") return [];
+        const mav = mavTypeOf(vehicleType);
+        return manifest.options.filter((o) => o.mavType === mav);
+    }, [manifest, vehicleType]);
+
+    // In simple mode: narrowed to detected board.
+    // In advanced mode: narrowed to the board the user explicitly picked.
+    const candidateOptions = useMemo(() => {
+        if (advanced) {
+            if (!advancedBoard) return typeFilteredOptions;
+            return typeFilteredOptions.filter(
+                (o) =>
+                    o.platform === advancedBoard.platform ||
+                    (advancedBoard.usbid.length > 0 && o.usbid.some((id) => advancedBoard.usbid.includes(id))),
+            );
+        }
+        if (detectedBoard) {
+            const matched = typeFilteredOptions.filter((o) =>
+                matchesBoard(o, detectedBoard.vid, detectedBoard.pid),
+            );
+            if (matched.length > 0) return matched;
+        }
+        return typeFilteredOptions;
+    }, [typeFilteredOptions, advanced, advancedBoard, detectedBoard]);
+
+    const availableVersions = useMemo(() => {
+        const types = [...new Set(candidateOptions.map((o) => o.versionType.toLowerCase()))];
+        return sortVersionTypes(types);
+    }, [candidateOptions]);
+
+    // Auto-select "stable" (or the first available) when the version list changes.
+    useEffect(() => {
+        if (availableVersions.length === 0) return;
+        if (selectedVersion && availableVersions.includes(selectedVersion.toLowerCase())) return;
+        setSelectedVersion(availableVersions.find((v) => v === "stable") ?? availableVersions[0] ?? null);
+    }, [availableVersions]);
+
+    // The single option that matches all selections.
+    const targetOption = useMemo(() => {
+        if (!selectedVersion) return null;
+        return (
+            candidateOptions.find((o) => o.versionType.toLowerCase() === selectedVersion) ?? null
+        );
+    }, [candidateOptions, selectedVersion]);
+
+    // Reset download when the target changes.
     useEffect(() => {
         prepareToken.current += 1;
-        setSelected(null);
         setPrepareState({status: "idle"});
+        setPreparedOption(null);
+        setConfirmingFlash(false);
+    }, [targetOption?.url]);
+
+    // Reset version + board when vehicle type changes.
+    useEffect(() => {
+        setAdvancedBoard(null);
+        setSelectedVersion(null);
     }, [vehicleType]);
 
-    // Narrowed to the plugged-in board when one is detected — the whole list
-    // is ~300 boards per vehicle type, and picking the wrong one is the
-    // mistake with the worst consequences. `showAllBoards` is the escape
-    // hatch for a board this can't identify, or for flashing one that isn't
-    // currently attached.
-    const boardMatches = useMemo(() => {
-        const options = manifest.status === "ready" ? manifest.options : [];
-        if (!detectedBoard) return null;
-        const matches = options.filter((option) => matchesBoard(option, detectedBoard.vid, detectedBoard.pid));
-        return matches.length > 0 ? matches : null;
-    }, [manifest, detectedBoard]);
+    // ── Download ──────────────────────────────────────────────────────────────
 
-    const filtered = useMemo(() => {
-        const all = manifest.status === "ready" ? manifest.options : [];
-        const options = boardMatches && !showAllBoards ? boardMatches : all;
-        const q = query.trim().toLowerCase();
-        if (!q) return options;
-        return options.filter(
-            (option) =>
-                option.platform.toLowerCase().includes(q) || (option.brandName ?? "").toLowerCase().includes(q),
-        );
-    }, [manifest, query, boardMatches, showAllBoards]);
-
-    const handleSelect = async (option: FirmwareOption) => {
+    const handleDownload = async () => {
+        if (!targetOption) return;
         const token = ++prepareToken.current;
-        setSelected(option);
         setPrepareState({status: "preparing"});
         try {
-            const summary = await prepareFirmware(option.url);
+            const summary = await prepareFirmware(targetOption.url);
             if (prepareToken.current !== token) return;
             setPrepareState({status: "ready", summary});
+            setPreparedOption(targetOption);
         } catch (error) {
             if (prepareToken.current !== token) return;
-            setPrepareState({status: "error", message: message(error)});
+            setPrepareState({status: "error", message: errMsg(error)});
         }
     };
 
+    // ── Reboot to bootloader ──────────────────────────────────────────────────
+
     const connectedPort = serialPortOf(connection.endpoint);
 
-    // ArduPilot's own docs advertise no way to cancel a reboot once sent —
-    // same reasoning `AccelCalibrationPanel` documents for its own
-    // uncancellable reboot. This just waits a fixed grace period for the
-    // USB re-enumeration to settle before re-scanning, rather than polling.
     const handleRebootToBootloader = async () => {
         setRebooting(true);
         try {
-            await sendVehicleCommand({type: "rebootToBootloader"}).catch(() => {
-                // The board may reboot before an ack ever arrives — a
-                // timeout here doesn't mean the command didn't land.
-            });
+            await sendVehicleCommand({type: "rebootToBootloader"}).catch(() => {});
             await connection.disconnect();
             await new Promise((resolve) => setTimeout(resolve, 1500));
             await refreshPorts();
-            if (connectedPort) {
-                setSelectedPort(connectedPort);
-            }
+            if (connectedPort) setSelectedPort(connectedPort);
         } finally {
             setRebooting(false);
         }
     };
 
-    // `connection` is a fresh object every render, so the reconnect effect
-    // below reads `connect` through a ref rather than depending on it —
-    // otherwise it would re-fire on every render and start a second
-    // reconnect over the top of the first.
+    // ── Reconnect after flash ─────────────────────────────────────────────────
+
     const connectRef = useRef(connection.connect);
     connectRef.current = connection.connect;
     const handledFlashDone = useRef(false);
 
-    // `upload` ends by telling the bootloader to REBOOT, so the board comes
-    // straight up on the firmware just written — but as a *new* USB device,
-    // which takes a few seconds to enumerate and may land on a different
-    // port than the one flashed. Polled rather than slept-on: enumeration
-    // time varies with the machine, and a fixed wait is either wrong or
-    // needlessly slow.
     useEffect(() => {
         if (flash.stage !== "done") {
             handledFlashDone.current = false;
@@ -262,11 +397,7 @@ export default function FirmwarePage() {
                     const board = all.find((link) => link.class === "pixhawk");
                     if (board) {
                         setPorts(all.filter((link) => link.class === "pixhawk"));
-                        await connectRef.current(board.address).catch(() => {
-                            // Firmware is written either way — a failed
-                            // reconnect is the operator's to retry, not a
-                            // reason to report the flash as failed.
-                        });
+                        await connectRef.current(board.address).catch(() => {});
                         return;
                     }
                 }
@@ -274,278 +405,648 @@ export default function FirmwarePage() {
                 if (!cancelled) setReconnecting(false);
             }
         })();
-
         return () => {
             cancelled = true;
         };
     }, [flash.stage]);
 
-    const canFlash = prepareState.status === "ready" && selectedPort !== null && !flash.flashing;
+    // ── Derived step states ───────────────────────────────────────────────────
+
+    const mavlinkConnected = connection.status === "connected" && connectedPort !== null;
+    // Step 1: a port is selected, or the vehicle is reachable via MAVLink and
+    // can be rebooted into bootloader from step 5.
+    const boardReady = selectedPort !== null || mavlinkConnected;
+    const vehicleReady = vehicleType !== null;
+    const boardPickReady = !advanced || advancedBoard !== null;
+    const versionReady = selectedVersion !== null && targetOption !== null;
+    const downloadReady = prepareState.status === "ready" && preparedOption !== null;
+    const flashing = flash.flashing;
+    const flashDone = flash.stage === "done";
+    const flashError = flash.stage === "error";
+    const flashStarted = flash.stage !== "idle";
+
+    function flashItemStatus(stage: string): {done: boolean; active: boolean} {
+        const si = FLASH_STAGE_ORDER.indexOf(stage);
+        const ci = FLASH_STAGE_ORDER.indexOf(flash.stage);
+        if (!flashStarted || flashError) return {done: false, active: false};
+        return {done: ci > si, active: ci === si && flash.stage !== "done"};
+    }
+
+    // ── Advanced board list ───────────────────────────────────────────────────
+
+    const advancedBoardOptions = useMemo(() => {
+        if (!vehicleType || manifest.status !== "ready") return [];
+        const mav = mavTypeOf(vehicleType);
+        let opts = manifest.options.filter((o) => o.mavType === mav);
+        if (!showAllVersions) {
+            opts = opts.filter((o) => o.versionType.toLowerCase() === "stable");
+        }
+        const q = boardQuery.trim().toLowerCase();
+        if (q) {
+            opts = opts.filter(
+                (o) =>
+                    o.platform.toLowerCase().includes(q) ||
+                    (o.brandName ?? "").toLowerCase().includes(q),
+            );
+        }
+        return opts;
+    }, [manifest, vehicleType, boardQuery, showAllVersions]);
+
+    // ── Render ────────────────────────────────────────────────────────────────
 
     return (
-        <div className="flex h-full w-full">
-            <div className="flex w-80 shrink-0 flex-col border-r border-border-subtle bg-layer-01">
-                <div className="flex shrink-0 items-center gap-1 border-b border-border-subtle p-2 text-micro">
-                    {(["Copter", "Plane"] as const).map((kind) => (
-                        <button
-                            key={kind}
-                            type="button"
-                            aria-pressed={vehicleType === kind}
-                            onClick={() => setVehicleType(kind)}
-                            className={[
-                                "border px-2 py-1",
-                                vehicleType === kind
-                                    ? "border-border-strong text-text-primary"
-                                    : "border-transparent text-text-helper hover:text-text-primary",
-                            ].join(" ")}
-                        >
-                            {kind}
-                        </button>
-                    ))}
+        <div className="flex h-full flex-col">
+            {/* Header */}
+            <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-6 py-4">
+                <div>
+                    <h2 className="text-heading text-text-primary">Firmware</h2>
+                    <p className="text-micro text-text-helper">
+                        Install official ArduPilot firmware on a flight controller.
+                    </p>
                 </div>
-                <div className="shrink-0 border-b border-border-subtle p-2">
+                <label className="flex cursor-pointer items-center gap-2 text-label text-text-secondary select-none">
                     <input
-                        type="text"
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                        placeholder="Filter boards…"
-                        className="h-control-sm w-full border border-border-subtle bg-background px-2 text-body text-text-primary placeholder:text-text-helper focus-visible:outline-none"
+                        type="checkbox"
+                        checked={advanced}
+                        onChange={(e) => {
+                            setAdvanced(e.target.checked);
+                            setAdvancedBoard(null);
+                        }}
+                        className="h-4 w-4"
                     />
-                </div>
-                {boardMatches && (
-                    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-2 py-1.5">
-                        <span className="text-micro text-text-helper">
-                            {showAllBoards
-                                ? `All boards — ${detectedBoard?.label} detected`
-                                : `Showing builds for ${detectedBoard?.label}`}
-                        </span>
-                        <button
-                            type="button"
-                            onClick={() => setShowAllBoards((value) => !value)}
-                            className="shrink-0 text-micro text-state-info underline"
-                        >
-                            {showAllBoards ? "Only mine" : "Show all"}
-                        </button>
-                    </div>
-                )}
-                <div className="min-h-0 flex-1 overflow-auto">
-                    {manifest.status === "loading" && (
-                        <p className="p-3 text-label text-text-helper">Loading ArduPilot's firmware catalog…</p>
-                    )}
-                    {manifest.status === "error" && (
-                        <p className="p-3 text-label text-state-danger">
-                            {manifest.message}{" "}
-                            <button
-                                type="button"
-                                onClick={() => retryFirmwareManifest(vehicleType)}
-                                className="text-state-info underline"
-                            >
-                                Retry
-                            </button>
-                        </p>
-                    )}
-                    {manifest.status === "ready" &&
-                        filtered.map((option) => (
-                            <FirmwareRow
-                                key={`${option.platform}:${option.versionType}:${option.url}`}
-                                option={option}
-                                active={selected?.url === option.url}
-                                onSelect={() => void handleSelect(option)}
-                            />
-                        ))}
-                    {manifest.status === "ready" && filtered.length === 0 && (
-                        <p className="p-3 text-label text-text-helper">No boards match "{query}".</p>
-                    )}
-                </div>
+                    Advanced
+                </label>
             </div>
 
+            {/* Checklist */}
             <div className="min-h-0 flex-1 overflow-auto p-6">
-                <div className="flex max-w-lg flex-col gap-6">
-                    <div>
-                        <h2 className="text-heading text-text-primary">Firmware</h2>
-                        <p className="text-body text-text-secondary">
-                            Writes an official ArduPilot build to a board sitting in bootloader mode. Reference:{" "}
-                            <a
-                                href="https://ardupilot.org/copter/docs/common-loading-firmware-onto-pixhawk.html"
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-state-info underline"
-                            >
-                                ArduPilot's Loading Firmware docs
-                            </a>
-                            .
+                <div>
+
+                    {/* ── Step 1: Connect board ── */}
+                    <Step
+                        title="Connect board"
+                        status={boardReady ? "done" : "active"}
+                        doneSummary={
+                            selectedPort
+                                ? `${detectedBoard?.label ?? "Board"} · ${selectedPort}`
+                                : mavlinkConnected
+                                ? `MAVLink · ${connectedPort}`
+                                : undefined
+                        }
+                    >
+                        <p className="mb-3 text-micro text-text-helper">
+                            Plug your flight controller in via USB. If it's already connected and running
+                            firmware, you can proceed — the last step will reboot it into flashing mode
+                            automatically so you don't have to unplug it.
                         </p>
-                    </div>
-
-                    {!selected && <p className="text-label text-text-helper">Pick a board from the list to begin.</p>}
-
-                    {selected && (
-                        <div className="flex flex-col gap-2 border-t border-border-subtle-base pt-4">
-                            <span className="text-label text-text-secondary">
-                                {selected.platform} — {selected.version} ({selected.versionType})
-                            </span>
-                            {prepareState.status === "preparing" && (
-                                <p className="text-label text-text-helper">Downloading…</p>
-                            )}
-                            {prepareState.status === "error" && (
-                                <p className="text-label text-state-danger">{prepareState.message}</p>
-                            )}
-                            {prepareState.status === "ready" && (
-                                <p className="text-label text-state-ok">
-                                    Ready — board_id {prepareState.summary.boardId}, rev{" "}
-                                    {prepareState.summary.boardRevision}, {(prepareState.summary.imageSize / 1024).toFixed(0)} KB
-                                </p>
-                            )}
-                        </div>
-                    )}
-
-                    <div className="flex flex-col gap-2 border-t border-border-subtle-base pt-4">
-                        <div className="flex items-center justify-between">
-                            <span className="text-label text-text-helper">Port</span>
-                            <button
-                                type="button"
-                                onClick={() => void refreshPorts()}
-                                className="text-micro text-state-info underline"
-                            >
-                                Refresh
-                            </button>
-                        </div>
-                        <select
-                            value={selectedPort ?? ""}
-                            onChange={(event) => setSelectedPort(event.target.value || null)}
-                            className="h-control-sm w-full border border-border-subtle bg-background px-2 text-body text-text-primary focus-visible:outline-none"
-                        >
-                            <option value="" disabled>
-                                {ports.length === 0 ? "— no boards found —" : "— select a port —"}
-                            </option>
-                            {ports.map((port) => (
-                                <option key={port.address} value={port.portName ?? ""}>
-                                    {port.label} ({port.portName})
-                                </option>
-                            ))}
-                        </select>
-
-                        {connection.status === "connected" && connectedPort && (
-                            <div className="flex flex-col gap-1">
+                        {advanced ? (
+                            <div className="flex flex-col gap-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-micro text-text-helper">
+                                        Port
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => void refreshPorts()}
+                                        className="text-micro text-state-info underline"
+                                    >
+                                        Refresh
+                                    </button>
+                                </div>
+                                <select
+                                    value={selectedPort ?? ""}
+                                    onChange={(e) => setSelectedPort(e.target.value || null)}
+                                    className="h-control-sm w-full border border-border-subtle bg-background px-2 text-body text-text-primary focus-visible:outline-none"
+                                >
+                                    <option value="" disabled>
+                                        {ports.length === 0 ? "— no boards found —" : "— select a port —"}
+                                    </option>
+                                    {ports.map((port) => (
+                                        <option key={port.address} value={port.portName ?? ""}>
+                                            {port.label} ({port.portName})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        ) : detectedBoard ? (
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <span className="text-label text-text-primary">
+                                        {detectedBoard.label}
+                                    </span>
+                                    {selectedPort && (
+                                        <span className="ml-2 text-micro text-text-helper">
+                                            on {selectedPort}
+                                        </span>
+                                    )}
+                                </div>
                                 <button
                                     type="button"
-                                    disabled={rebooting}
-                                    onClick={() => void handleRebootToBootloader()}
-                                    className="h-control-sm w-fit border border-border-subtle px-3 text-label text-text-primary hover:enabled:bg-layer-hover-01 disabled:text-text-disabled"
+                                    onClick={() => void refreshPorts()}
+                                    className="text-micro text-state-info underline"
                                 >
-                                    {rebooting ? "Rebooting…" : `Reboot connected vehicle (${connectedPort}) into bootloader`}
+                                    Refresh
                                 </button>
-                                <p className="text-micro text-text-helper">
-                                    Disconnects the current link and reboots the vehicle straight into its bootloader,
-                                    so you don't have to unplug it by hand.
+                            </div>
+                        ) : ports.length > 1 ? (
+                            <div className="flex flex-col gap-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-micro text-text-helper">
+                                        Multiple boards found — select one
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => void refreshPorts()}
+                                        className="text-micro text-state-info underline"
+                                    >
+                                        Refresh
+                                    </button>
+                                </div>
+                                <select
+                                    value={selectedPort ?? ""}
+                                    onChange={(e) => setSelectedPort(e.target.value || null)}
+                                    className="h-control-sm w-full border border-border-subtle bg-background px-2 text-body text-text-primary focus-visible:outline-none"
+                                >
+                                    <option value="" disabled>
+                                        — select a port —
+                                    </option>
+                                    {ports.map((port) => (
+                                        <option key={port.address} value={port.portName ?? ""}>
+                                            {port.label} ({port.portName})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        ) : mavlinkConnected ? (
+                            <div className="flex items-center justify-between">
+                                <p className="text-label text-text-secondary">
+                                    Vehicle connected via MAVLink on{" "}
+                                    <span className="font-mono text-text-primary">{connectedPort}</span>
+                                    . Use "Reboot to bootloader" in the last step — no unplug needed.
                                 </p>
+                                <button
+                                    type="button"
+                                    onClick={() => void refreshPorts()}
+                                    className="ml-4 shrink-0 text-micro text-state-info underline"
+                                >
+                                    Refresh
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-between">
+                                <p className="text-label text-text-helper">
+                                    Plug in your flight controller. It should appear here automatically.
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={() => void refreshPorts()}
+                                    className="ml-4 shrink-0 text-micro text-state-info underline"
+                                >
+                                    Refresh
+                                </button>
                             </div>
                         )}
-                        {!(connection.status === "connected" && connectedPort) && (
-                            <p className="text-micro text-text-helper">
-                                Not connected to a vehicle — plug the board in now (or reset it) and its bootloader
-                                should appear here within a few seconds.
-                            </p>
-                        )}
-                    </div>
+                    </Step>
 
-                    <div className="flex flex-col gap-1 border-t border-border-subtle-base pt-4">
-                        <label className="flex items-center gap-2 text-label text-state-warn">
-                            <input type="checkbox" checked={force} onChange={(event) => setForce(event.target.checked)}/>
-                            Force — flash even if the board reports a different board ID
-                        </label>
-                        <p className="text-micro text-text-helper">
-                            Leave this off. It exists for boards ArduPilot's own compatible-ID list doesn't cover;
-                            using it on a genuinely different board writes firmware built for different hardware.
+                    {/* ── Step 2: Select vehicle type ── */}
+                    <Step
+                        title="Select vehicle type"
+                        status={vehicleReady ? "done" : "active"}
+                        doneSummary={vehicleType ? VEHICLE_OPTS.find((o) => o.type === vehicleType)?.sub : undefined}
+                    >
+                        <p className="mb-3 text-micro text-text-helper">
+                            Pick the type of vehicle this board will fly. ArduCopter covers both
+                            multirotors and traditional helicopters — they use separate firmware
+                            builds, so pick the right frame type.
                         </p>
-                    </div>
+                        <div className="flex flex-wrap gap-2">
+                            {VEHICLE_OPTS.map((opt) => (
+                                <button
+                                    key={opt.type}
+                                    type="button"
+                                    aria-pressed={vehicleType === opt.type}
+                                    onClick={() => setVehicleType(opt.type)}
+                                    className={[
+                                        "flex flex-col items-start border px-4 py-2",
+                                        vehicleType === opt.type
+                                            ? "border-blue-60 bg-blue-60 text-text-on-color"
+                                            : "border-border-subtle text-text-secondary hover:border-border-strong hover:text-text-primary",
+                                    ].join(" ")}
+                                >
+                                    <span className="text-label">{opt.label}</span>
+                                    <span className="text-micro text-text-helper">{opt.sub}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </Step>
 
-                    <div className="flex flex-col gap-3 border-t border-border-subtle-base pt-4">
-                        <button
-                            type="button"
-                            disabled={!canFlash}
-                            onClick={() => setConfirming(true)}
-                            className="h-control-sm w-fit bg-blue-60 px-4 text-label text-text-on-color hover:enabled:bg-blue-50 disabled:opacity-50"
+                    {/* ── Step 3 (advanced only): Select board ── */}
+                    {advanced && (
+                        <Step
+                            title="Select board"
+                            status={
+                                !vehicleReady
+                                    ? "pending"
+                                    : advancedBoard
+                                    ? "done"
+                                    : "active"
+                            }
+                            doneSummary={advancedBoard?.platform}
                         >
-                            {flash.flashing ? "Flashing…" : "Flash"}
-                        </button>
-
-                        {flash.stage !== "idle" && (
+                            <p className="mb-3 text-micro text-text-helper">
+                                Search the full firmware catalog and pick the exact board build you want
+                                to install. Use this to override the auto-detected board or to flash a
+                                board that isn't currently plugged in.
+                            </p>
                             <div className="flex flex-col gap-2">
-                                <p className={`text-label ${flash.stage === "error" ? "text-state-danger" : flash.stage === "done" ? "text-state-ok" : "text-state-info"}`}>
-                                    {STAGE_LABEL[flash.stage]}
-                                </p>
-                                {flash.stage === "program" && flash.programProgress && (
-                                    <div className="h-1.5 w-full bg-layer-02">
-                                        <div
-                                            className="h-full bg-state-info"
-                                            style={{
-                                                width: `${Math.round((flash.programProgress.done / Math.max(1, flash.programProgress.total)) * 100)}%`,
-                                            }}
-                                        />
-                                    </div>
-                                )}
-                                {flash.stage === "error" && flash.error && (
-                                    <p className="text-label text-state-danger">{flash.error}</p>
-                                )}
-                                {flash.stage === "done" && reconnecting && (
-                                    <p className="text-label text-text-helper">
-                                        Waiting for the board to come back up, then reconnecting…
+                                {detectedBoard && (
+                                    <p className="text-micro text-text-helper">
+                                        Detected: {detectedBoard.label} — pick a different board below to
+                                        override.
                                     </p>
                                 )}
+                                <input
+                                    type="text"
+                                    value={boardQuery}
+                                    onChange={(e) => setBoardQuery(e.target.value)}
+                                    placeholder="Filter boards…"
+                                    className="h-control-sm w-full border border-border-subtle bg-background px-2 text-body text-text-primary placeholder:text-text-helper focus-visible:outline-none"
+                                />
+                                <label className="flex items-center gap-2 text-micro text-text-helper select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={showAllVersions}
+                                        onChange={(e) => setShowAllVersions(e.target.checked)}
+                                        className="h-3.5 w-3.5"
+                                    />
+                                    Show all version types (including bdshot)
+                                </label>
+                                <div className="max-h-48 overflow-auto border border-border-subtle">
+                                    {manifest.status === "loading" && (
+                                        <p className="p-3 text-label text-text-helper">
+                                            Loading firmware catalog…
+                                        </p>
+                                    )}
+                                    {manifest.status === "error" && (
+                                        <p className="p-3 text-label text-state-danger">
+                                            {manifest.message}{" "}
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    retryFirmwareManifest(manifestTypeOf(vehicleType))
+                                                }
+                                                className="text-state-info underline"
+                                            >
+                                                Retry
+                                            </button>
+                                        </p>
+                                    )}
+                                    {manifest.status === "ready" &&
+                                        advancedBoardOptions.map((opt) => (
+                                            <BoardRow
+                                                key={`${opt.platform}:${opt.versionType}:${opt.url}`}
+                                                option={opt}
+                                                active={advancedBoard?.url === opt.url}
+                                                onSelect={() => {
+                                                    setAdvancedBoard(opt);
+                                                    setSelectedVersion(opt.versionType.toLowerCase());
+                                                }}
+                                            />
+                                        ))}
+                                    {manifest.status === "ready" && advancedBoardOptions.length === 0 && (
+                                        <p className="p-3 text-label text-text-helper">
+                                            No boards match.
+                                        </p>
+                                    )}
+                                </div>
                             </div>
-                        )}
-                    </div>
-                </div>
-            </div>
+                        </Step>
+                    )}
 
-            {/* A chip erase is the first thing the bootloader is told to do,
-                so by the time anything has gone wrong the board's existing
-                firmware is already gone. One click shouldn't be able to
-                start that, and the frame class gets repeated here because
-                picking the heli build for a multirotor is the mistake this
-                screen makes easiest. */}
-            {confirming && selected && prepareState.status === "ready" && selectedPort && (
-                <Modal title="Erase and write firmware?" onClose={() => setConfirming(false)}>
-                    <div className="mb-4 flex flex-col gap-2 text-label text-text-secondary">
-                        <p>
-                            Writing <span className="text-text-primary">{selected.platform}</span>{" "}
-                            <span className="text-text-primary">{selected.version}</span> (
-                            {frameLabel(selected.mavType)}, {selected.versionType}) to{" "}
-                            <span className="font-mono text-text-primary">{selectedPort}</span>.
+                    {/* ── Step 3/4: Select version ── */}
+                    <Step
+                        title="Select version"
+                        status={
+                            !vehicleReady || !boardPickReady
+                                ? "pending"
+                                : versionReady
+                                ? "done"
+                                : availableVersions.length === 0
+                                ? "active"
+                                : "active"
+                        }
+                        doneSummary={selectedVersion ? versionLabel(selectedVersion) : undefined}
+                    >
+                        <p className="mb-3 text-micro text-text-helper">
+                            Stable is tested and recommended for most builds. Beta may have minor bugs.
+                            Dev is the latest code and changes daily — only use it if you're actively
+                            testing new features.
                         </p>
-                        <p>
-                            This erases the board's current firmware before it writes. It can't be undone, and a
-                            board interrupted mid-write needs recovering over its bootloader.
-                        </p>
-                        {force && (
-                            <p className="text-state-warn">
-                                Force is on — the board ID check that would stop firmware for different hardware
-                                is disabled.
+                        {manifest.status === "loading" && (
+                            <p className="text-label text-text-helper">
+                                Loading firmware catalog…
                             </p>
                         )}
-                    </div>
-                    <div className="flex justify-end gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setConfirming(false)}
-                            className="h-control-sm bg-layer-02 px-4 text-label text-text-primary hover:bg-layer-hover-02"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setConfirming(false);
-                                void flash.start(selectedPort, selected.url, force);
-                            }}
-                            className="h-control-sm bg-red-60 px-4 text-label text-text-on-color hover:opacity-90"
-                        >
-                            Erase and write
-                        </button>
-                    </div>
-                </Modal>
-            )}
+                        {manifest.status === "error" && (
+                            <div className="flex items-center gap-2">
+                                <p className="text-label text-state-danger">{manifest.message}</p>
+                                <button
+                                    type="button"
+                                    onClick={() => retryFirmwareManifest(manifestTypeOf(vehicleType))}
+                                    className="text-micro text-state-info underline"
+                                >
+                                    Retry
+                                </button>
+                            </div>
+                        )}
+                        {manifest.status === "ready" && availableVersions.length === 0 && (
+                            <p className="text-label text-text-helper">
+                                No firmware available for this board and vehicle type.
+                            </p>
+                        )}
+                        {manifest.status === "ready" && availableVersions.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                                {availableVersions.map((v) => (
+                                    <button
+                                        key={v}
+                                        type="button"
+                                        aria-pressed={selectedVersion === v}
+                                        onClick={() => setSelectedVersion(v)}
+                                        className={[
+                                            "border px-4 py-1.5 text-label",
+                                            selectedVersion === v
+                                                ? "border-blue-60 bg-blue-60 text-text-on-color"
+                                                : "border-border-subtle text-text-secondary hover:border-border-strong hover:text-text-primary",
+                                        ].join(" ")}
+                                    >
+                                        {versionLabel(v)}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </Step>
+
+                    {/* ── Step 4/5: Download firmware ── */}
+                    <Step
+                        title="Download firmware"
+                        status={
+                            !versionReady
+                                ? "pending"
+                                : prepareState.status === "error"
+                                ? "error"
+                                : downloadReady
+                                ? "done"
+                                : "active"
+                        }
+                        doneSummary={
+                            downloadReady && prepareState.status === "ready"
+                                ? `${(prepareState.summary.imageSize / 1024).toFixed(0)} KB`
+                                : undefined
+                        }
+                    >
+                        <p className="mb-3 text-micro text-text-helper">
+                            Fetches the firmware file from ArduPilot's servers to this computer.
+                            Nothing is written to the board yet — you can review the build details
+                            before committing to the flash.
+                        </p>
+                        {targetOption && (
+                            <div className="flex flex-col gap-3">
+                                <div className="text-label text-text-secondary">
+                                    <span className="text-text-primary">{targetOption.platform}</span>
+                                    {" — "}
+                                    {targetOption.version}
+                                    {targetOption.brandName ? ` (${targetOption.brandName})` : ""}
+                                </div>
+
+                                {prepareState.status === "idle" && (
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleDownload()}
+                                        className="h-control-sm w-fit bg-blue-60 px-4 text-label text-text-on-color hover:bg-blue-50"
+                                    >
+                                        Download
+                                    </button>
+                                )}
+
+                                {prepareState.status === "preparing" && (
+                                    <div className="flex flex-col gap-2">
+                                        <div className="h-1 w-full overflow-hidden bg-layer-02">
+                                            <div
+                                                className="h-full animate-pulse bg-state-info"
+                                                style={{width: "60%"}}
+                                            />
+                                        </div>
+                                        <p className="text-micro text-text-helper">Downloading…</p>
+                                    </div>
+                                )}
+
+                                {prepareState.status === "ready" && (
+                                    <div className="flex items-center gap-3">
+                                        <span className="flex items-center gap-1 text-label text-state-ok"><CheckmarkFilled size={14} /> Ready</span>
+                                        <span className="text-micro text-text-helper">
+                                            board_id {prepareState.summary.boardId} ·{" "}
+                                            {(prepareState.summary.imageSize / 1024).toFixed(0)} KB
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => void handleDownload()}
+                                            className="text-micro text-state-info underline"
+                                        >
+                                            Re-download
+                                        </button>
+                                    </div>
+                                )}
+
+                                {prepareState.status === "error" && (
+                                    <div className="flex flex-col gap-2">
+                                        <p className="text-label text-state-danger">
+                                            {prepareState.message}
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => void handleDownload()}
+                                            className="h-control-sm w-fit border border-border-subtle px-3 text-label text-text-primary hover:bg-layer-hover-01"
+                                        >
+                                            Retry
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </Step>
+
+                    {/* ── Step 5/6: Reboot & flash ── */}
+                    <Step
+                        title="Reboot & flash"
+                        status={
+                            !downloadReady
+                                ? "pending"
+                                : flashError
+                                ? "error"
+                                : flashDone
+                                ? "done"
+                                : "active"
+                        }
+                        doneSummary={flashDone ? "Firmware installed" : undefined}
+                        alwaysChildren={
+                            <div className="mt-4 flex flex-col gap-2">
+                                {FLASH_STAGES.map(({stage, label}) => {
+                                    const {done, active} = flashItemStatus(stage);
+                                    return (
+                                        <FlashItem key={stage} label={label} done={done} active={active}>
+                                            {stage === "program" && flash.programProgress && (
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="h-1.5 w-full bg-layer-02">
+                                                        <div
+                                                            className="h-full bg-state-info transition-all"
+                                                            style={{
+                                                                width: `${Math.round(
+                                                                    (flash.programProgress.done /
+                                                                        Math.max(1, flash.programProgress.total)) *
+                                                                        100,
+                                                                )}%`,
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <p className="text-micro text-text-helper">
+                                                        {Math.round(
+                                                            (flash.programProgress.done /
+                                                                Math.max(1, flash.programProgress.total)) *
+                                                                100,
+                                                        )}%
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </FlashItem>
+                                    );
+                                })}
+                                <FlashItem
+                                    label="Reconnect"
+                                    done={flashDone && !reconnecting}
+                                    active={(flash.stage === "reboot" || flashDone) && reconnecting}
+                                >
+                                    <p className="text-micro text-text-helper">
+                                        Waiting for the board to come back up…
+                                    </p>
+                                </FlashItem>
+                                {flashError && flash.error && (
+                                    <p className="mt-1 text-label text-state-danger">{flash.error}</p>
+                                )}
+                            </div>
+                        }
+                    >
+                        <div className="flex flex-col gap-4">
+                            <p className="text-micro text-text-helper">
+                                Erases the board's current firmware and writes the new build. A board
+                                interrupted mid-write will need recovering via its bootloader — don't
+                                unplug during this step.
+                            </p>
+                            {/* Reboot-to-bootloader shortcut when a MAVLink vehicle is active */}
+                            {mavlinkConnected && !flashStarted && (
+                                <div className="flex flex-col gap-1">
+                                    <button
+                                        type="button"
+                                        disabled={rebooting || !downloadReady}
+                                        onClick={() => void handleRebootToBootloader()}
+                                        className="h-control-sm w-fit border border-border-subtle px-3 text-label text-text-primary hover:enabled:bg-layer-hover-01 disabled:text-text-disabled"
+                                    >
+                                        {rebooting
+                                            ? "Rebooting…"
+                                            : `Reboot ${detectedBoard?.label ?? connectedPort} to bootloader`}
+                                    </button>
+                                    <p className="text-micro text-text-helper">
+                                        Sends a MAVLink reboot command — no need to unplug and replug.
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Force flag (advanced only) */}
+                            {advanced && (
+                                <label className="flex items-center gap-2 text-label text-state-warn select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={force}
+                                        onChange={(e) => setForce(e.target.checked)}
+                                        className="h-4 w-4"
+                                    />
+                                    Force — skip board ID check
+                                </label>
+                            )}
+
+                            {/* Flash button — two-step inline confirm */}
+                            {!flashStarted && (
+                                <div className="flex flex-col gap-2">
+                                    {!confirmingFlash ? (
+                                        <button
+                                            type="button"
+                                            disabled={!downloadReady || !selectedPort || flashing}
+                                            onClick={() => setConfirmingFlash(true)}
+                                            className="h-control-sm w-fit bg-blue-60 px-4 text-label text-text-on-color hover:enabled:bg-blue-50 disabled:opacity-50"
+                                        >
+                                            Flash
+                                        </button>
+                                    ) : (
+                                        <div className="flex flex-col gap-2">
+                                            <p className="text-label text-state-warn">
+                                                This erases the board's current firmware. Are you sure?
+                                            </p>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setConfirmingFlash(false);
+                                                        if (selectedPort && preparedOption) {
+                                                            void flash.start(
+                                                                selectedPort,
+                                                                preparedOption.url,
+                                                                force,
+                                                            );
+                                                        }
+                                                    }}
+                                                    className="h-control-sm bg-red-60 px-4 text-label text-text-on-color hover:opacity-90"
+                                                >
+                                                    Erase and write
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setConfirmingFlash(false)}
+                                                    className="h-control-sm border border-border-subtle px-3 text-label text-text-primary hover:bg-layer-hover-01"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {!downloadReady && (
+                                        <p className="text-micro text-text-helper">
+                                            Complete the steps above first.
+                                        </p>
+                                    )}
+                                    {downloadReady && !selectedPort && !mavlinkConnected && (
+                                        <p className="text-micro text-text-helper">
+                                            No bootloader port selected. Plug in the board or reboot to
+                                            bootloader first.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </Step>
+
+                    {/* ── Final step: board ready ── */}
+                    <Step
+                        title="Board ready"
+                        status={
+                            flashDone && !reconnecting
+                                ? "done"
+                                : flashDone && reconnecting
+                                ? "active"
+                                : "pending"
+                        }
+                        doneSummary="Firmware installed successfully"
+                    />
+                </div>
+            </div>
         </div>
     );
 }

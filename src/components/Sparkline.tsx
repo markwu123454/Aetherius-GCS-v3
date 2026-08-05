@@ -1,6 +1,6 @@
 import {Tone, TONE_TEXT} from "@/components/topmenu/StatusChip.tsx";
 
-interface SparklineProps {
+type SparklineProps = {
     values: number[];
     /**
      * Parallel to `values` — the tone the line should be at that sample,
@@ -15,15 +15,40 @@ interface SparklineProps {
     /** Sizing classes only — color comes from `tones` per segment, not one
      * class for the whole line. */
     className?: string;
-    /**
-     * Fixed range rather than auto-fit to the data. A voltage sparkline that
-     * rescales itself to whatever the last two minutes happened to span would
-     * make a 0.1V wobble fill the whole height — exactly as dramatic-looking
-     * as a real 2V sag. Pass the instrument's actual expected range instead.
-     */
-    min: number;
-    max: number;
-}
+} & (
+    | {
+          /**
+           * Auto-scale to the data's actual extent. The tone color carries the
+           * health signal; the y-axis shows relative change within the window.
+           *
+           * `minRange` sets a floor on the visible span so that sensor noise on
+           * an otherwise flat signal doesn't blow up to fill the full height —
+           * when the data range is smaller than `minRange`, the window is
+           * expanded symmetrically around the data midpoint so the line stays
+           * centered rather than pinned to one edge.
+           *
+           * 8% padding is always added above and below the resolved range so
+           * the line never sits flush on the SVG edge (which causes half the
+           * stroke to be clipped at min/max).
+           */
+          autoScale: true;
+          minRange?: number;
+          min?: never;
+          max?: never;
+      }
+    | {
+          /**
+           * Fixed range — the line is plotted against a known instrument
+           * scale rather than the data's own extent. Use when the absolute
+           * position within the range carries meaning (e.g. battery voltage
+           * against a 13–17.5 V scale shows headroom at a glance).
+           */
+          autoScale?: false;
+          min: number;
+          max: number;
+          minRange?: never;
+      }
+);
 
 /**
  * A bare trend line — no axes, no ticks — drawn as one short `<line>` per
@@ -62,16 +87,44 @@ interface SparklineProps {
  * JS-measurement round-trip that turned out to cause a worse problem of its
  * own.
  */
-export default function Sparkline({values, tones, className, min, max}: SparklineProps) {
-    const span = max - min || 1;
+export default function Sparkline(props: SparklineProps) {
+    const {values, tones, className} = props;
+
+    let lo: number, hi: number;
+    if (props.autoScale) {
+        if (values.length === 0) {
+            lo = 0; hi = 1;
+        } else {
+            lo = values[0]; hi = values[0];
+            for (const v of values) {
+                if (v < lo) lo = v;
+                if (v > hi) hi = v;
+            }
+            const floor = props.minRange ?? 0;
+            if (hi - lo < floor) {
+                const mid = (lo + hi) / 2;
+                lo = mid - floor / 2;
+                hi = mid + floor / 2;
+            }
+            // 8% padding so the line never sits flush on the SVG edge.
+            const pad = (hi - lo || 1) * 0.08;
+            lo -= pad;
+            hi += pad;
+        }
+    } else {
+        lo = props.min;
+        hi = props.max;
+    }
+
+    const span = hi - lo || 1;
 
     const points =
         values.length < 2
             ? []
             : values.map((value, index) => {
                   const x = (index / (values.length - 1)) * 100;
-                  const clamped = Math.min(max, Math.max(min, value));
-                  const y = 100 - ((clamped - min) / span) * 100;
+                  const clamped = Math.min(hi, Math.max(lo, value));
+                  const y = 100 - ((clamped - lo) / span) * 100;
                   return {x, y};
               });
 
