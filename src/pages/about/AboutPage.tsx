@@ -146,6 +146,52 @@ export default function AboutPage({update}: AboutPageProps) {
                     </p>
 
                     <p className="text-label text-text-helper">
+                        Vector base map:{" "}
+                        <a href="https://openfreemap.org/" target="_blank" rel="noreferrer" className="underline">
+                            OpenFreeMap
+                        </a>{" "}
+                        (Liberty style), map data{" "}
+                        <a
+                            href="https://www.openstreetmap.org/copyright"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline"
+                        >
+                            &copy; OpenStreetMap contributors
+                        </a>
+                        .
+                    </p>
+
+                    <p className="text-label text-text-helper">
+                        US regional imagery:{" "}
+                        <a
+                            href="https://www.usgs.gov/programs/national-geospatial-program/national-map"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline"
+                        >
+                            USGS, The National Map
+                        </a>{" "}
+                        (NAIP).
+                    </p>
+
+                    <p className="text-label text-text-helper">
+                        Norway regional map:{" "}
+                        <a href="https://www.kartverket.no/" target="_blank" rel="noreferrer" className="underline">
+                            &copy; Kartverket
+                        </a>
+                        .
+                    </p>
+
+                    <p className="text-label text-text-helper">
+                        Japan regional imagery:{" "}
+                        <a href="https://www.gsi.go.jp/" target="_blank" rel="noreferrer" className="underline">
+                            &copy; 国土地理院 (Geospatial Information Authority of Japan)
+                        </a>
+                        .
+                    </p>
+
+                    <p className="text-label text-text-helper">
                         3D model:{" "}
                         <a
                             href="https://sketchfab.com/3d-models/low-poly-plane-76230052903540e9aeb46b7db35329e4"

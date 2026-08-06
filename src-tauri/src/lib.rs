@@ -1,5 +1,7 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+
 mod commands;
 mod dispatch;
 mod firmware;
@@ -11,9 +13,33 @@ mod scripting;
 mod telemetry;
 mod vehicle_command;
 
+#[tauri::command]
+fn close_splash(app: tauri::AppHandle) {
+    if let Some(splash) = app.get_webview_window("splash") {
+        let _ = splash.close();
+    }
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.show();
+        let _ = main.set_focus();
+        // TODO: fullscreen on show
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            if let Some(main) = app.get_webview_window("main") {
+                let _ = main.hide();
+            }
+            WebviewWindowBuilder::new(app, "splash", WebviewUrl::App("splash.html".into()))
+                .inner_size(400.0, 260.0)
+                .resizable(false)
+                .decorations(false)
+                .center()
+                .build()?;
+            Ok(())
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_drag::init())
@@ -28,6 +54,7 @@ pub fn run() {
         .manage(logs::LogsState::default())
         .manage(firmware::flash::FlashState::default())
         .invoke_handler(tauri::generate_handler![
+            close_splash,
             link::connect_link,
             link::disconnect_link,
             link::scan_links,

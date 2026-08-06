@@ -1,5 +1,5 @@
 import {ReactElement} from "react";
-import {DisplayMode, MIN_CONSOLE_COLLAPSE_THRESHOLD, MIN_TELEM_RATE_HZ, MAX_TELEM_RATE_HZ, MIN_PREARM_CHECK_INTERVAL, MAX_PREARM_CHECK_INTERVAL} from "./settings.ts";
+import {DisplayMode, MapBaseLayer, MapRegionalLayers, MIN_CONSOLE_COLLAPSE_THRESHOLD, MIN_TELEM_RATE_HZ, MAX_TELEM_RATE_HZ, MIN_PREARM_CHECK_INTERVAL, MAX_PREARM_CHECK_INTERVAL} from "./settings.ts";
 import {SettingsApi} from "./useSettings.ts";
 import {AIRSPACE_CLASSES, type AirspaceClass, type AirspaceClassSettings} from "@/lib/airspace/classes.ts";
 import {resolveToken} from "@/lib/airspace/airspace.ts";
@@ -166,6 +166,17 @@ function AirspaceClassRow({
     );
 }
 
+const BASE_LAYER_OPTIONS: {value: MapBaseLayer; label: string; description: string}[] = [
+    {value: "esri", label: "ESRI World Imagery", description: "Global satellite imagery"},
+    {value: "openfreemap", label: "OpenFreeMap", description: "Vector street map, offline-capable"},
+];
+
+const REGIONAL_LAYER_OPTIONS: {key: keyof MapRegionalLayers; label: string; description: string}[] = [
+    {key: "japanGsi", label: "Japan — GSI Seamless Photo", description: "Aerial imagery, Japan only"},
+    {key: "statkart", label: "Norway — Kartverket Topo4", description: "Topographic map, Norway only"},
+    {key: "usgsNaip", label: "US — USGS NAIP", description: "High-res aerial, continental US only"},
+];
+
 function DisplaySettings({settings}: {settings: SettingsApi}) {
     const updateAirspace = (id: AirspaceClass, patch: Partial<AirspaceClassSettings>) =>
         settings.set("airspace", {
@@ -201,6 +212,56 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
                     />
                     Tilt map marker with vehicle attitude (multirotor only)
                 </label>
+            </section>
+
+            <section className="flex flex-col gap-2 border-t border-border-subtle pt-6">
+                <h2 className="text-heading text-text-primary">Base map</h2>
+                <div className="flex flex-col gap-1" role="radiogroup" aria-label="Base map">
+                    {BASE_LAYER_OPTIONS.map((opt) => (
+                        <label key={opt.value} className="flex items-start gap-2 text-body text-text-secondary">
+                            <input
+                                type="radio"
+                                name="map-base-layer"
+                                className="mt-0.5"
+                                checked={settings.mapBaseLayer === opt.value}
+                                onChange={() => settings.set("mapBaseLayer", opt.value)}
+                            />
+                            <span>
+                                {opt.label}
+                                <span className="ml-2 text-label text-text-helper">{opt.description}</span>
+                            </span>
+                        </label>
+                    ))}
+                </div>
+            </section>
+
+            <section className="flex flex-col gap-2 border-t border-border-subtle pt-6">
+                <h2 className="text-heading text-text-primary">Regional overlays</h2>
+                <p className="text-label text-text-helper">
+                    Higher-resolution imagery for specific regions, layered on top of the base map.
+                    Tiles outside each region return nothing and the base map shows through.
+                </p>
+                <div className="flex flex-col gap-1">
+                    {REGIONAL_LAYER_OPTIONS.map((opt) => (
+                        <label key={opt.key} className="flex items-start gap-2 text-body text-text-secondary">
+                            <input
+                                type="checkbox"
+                                className="mt-0.5"
+                                checked={settings.mapRegionalLayers[opt.key]}
+                                onChange={(event) =>
+                                    settings.set("mapRegionalLayers", {
+                                        ...settings.mapRegionalLayers,
+                                        [opt.key]: event.target.checked,
+                                    })
+                                }
+                            />
+                            <span>
+                                {opt.label}
+                                <span className="ml-2 text-label text-text-helper">{opt.description}</span>
+                            </span>
+                        </label>
+                    ))}
+                </div>
             </section>
 
             <section className="flex max-w-2xl flex-col gap-1 border-t border-border-subtle pt-6">

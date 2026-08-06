@@ -102,6 +102,12 @@ fn read_loop(
 ) {
     let mut last_emit = Instant::now();
     let mut last_heartbeat: Option<Instant> = None;
+    // Tracks the previous `prearm_pass` value so we can detect the passing →
+    // failing edge and fire an immediate check without waiting for the periodic
+    // poll loop. Initialised to `None` (unknown) so the very first `false`
+    // reading after connecting doesn't incorrectly fire a check — only a
+    // confirmed transition from `true` triggers one.
+    let mut last_prearm_pass: Option<bool> = None;
 
     loop {
         if app.state::<LinkState>().generation.load(Ordering::SeqCst) != generation {
@@ -131,6 +137,8 @@ fn read_loop(
                 dispatch::route(&app, &mut snapshot, &message);
                 snapshot.since_heartbeat_ms = last_heartbeat.map(|at| at.elapsed().as_millis() as u64);
 
+                let current_prearm_pass = snapshot.prearm_pass;
+
                 if last_emit.elapsed() >= Duration::from_millis(50) {
                     last_emit = Instant::now();
                     let payload = snapshot.clone();
@@ -141,6 +149,18 @@ fn read_loop(
                         let _ = app.emit("param-values", batch);
                     }
                 }
+
+                // Fire an immediate prearm check on every passing → failing
+                // transition, regardless of where the periodic poll timer sits.
+                // This keeps the reasons list current whenever the vehicle
+                // starts oscillating between states — the periodic loop still
+                // runs its normal keep-alive rhythm in parallel.
+                if last_prearm_pass == Some(true) && current_prearm_pass == Some(false) {
+                    if let Some(target) = *state.target.lock().unwrap_or_else(|e| e.into_inner()) {
+                        let _ = commands::send_async(&app, MavCmd::MAV_CMD_RUN_PREARM_CHECKS, [0.0; 7], target);
+                    }
+                }
+                last_prearm_pass = current_prearm_pass;
             }
             Err(MessageReadError::Parse(_)) => continue,
             Err(MessageReadError::Io(error)) => {

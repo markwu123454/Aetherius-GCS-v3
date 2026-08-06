@@ -107,10 +107,10 @@ export default function TopBar({vehicle, settings, openIds, page, mission, onRes
             {
                 label: "Vehicle",
                 items: [
-                    {label: "Parameters", action: () => navigation.openPage("parameters")},
+                    {label: "Firmware", action: () => navigation.openPage("firmware")},
                     {label: "Calibration", action: () => navigation.openPage("calibration")},
                     {label: "Setup", action: () => navigation.openPage("setup")},
-                    {label: "Firmware", action: () => navigation.openPage("firmware")},
+                    {label: "Parameters", action: () => navigation.openPage("parameters")},
                     {label: "Scripting", action: () => navigation.openPage("scripting")},
                     {label: "Logs", action: () => navigation.openPage("logs")},
                 ],

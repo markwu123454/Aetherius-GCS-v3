@@ -99,6 +99,17 @@ export const PANEL_DEFINITIONS: PanelDefinition[] = [
         defaultDock: "right",
         openByDefault: false,
     },
+    {
+        id: "servo-outputs",
+        title: "Servo Outputs",
+        component: "servo-outputs",
+        dockLeft: true,
+        dockRight: true,
+        dockBottom: true,
+        floatable: false,
+        defaultDock: "bottom",
+        openByDefault: false,
+    },
 ];
 
 export function panelById(id: string): PanelDefinition | undefined {

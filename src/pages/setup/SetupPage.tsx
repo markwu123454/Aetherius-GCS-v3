@@ -5,9 +5,10 @@ import {useLiveParams} from "@/lib/params/useLiveParams.ts";
 import {VehicleFirmware} from "@/lib/params/paramSheet.ts";
 import FrameSetupPanel from "./FrameSetupPanel.tsx";
 import ServoSetupPanel from "./ServoSetupPanel.tsx";
+import TrimSetupPanel from "./TrimSetupPanel.tsx";
 
 interface SetupItem {
-    id: "frame" | "servo";
+    id: "frame" | "servo" | "trim";
     label: string;
 }
 
@@ -48,6 +49,7 @@ export default function SetupPage() {
             list.push({id: "frame", label: "Frame"});
         }
         list.push({id: "servo", label: "Servo"});
+        list.push({id: "trim", label: "Trim"});
         return list;
     }, [vehicle.vehicleKind]);
 
@@ -85,6 +87,8 @@ export default function SetupPage() {
                     <FrameSetupPanel live={live.values} onSet={live.setParam}/>
                 ) : selectedId === "servo" ? (
                     <ServoSetupPanel live={live.values} onSet={live.setParam} firmware={firmware}/>
+                ) : selectedId === "trim" ? (
+                    <TrimSetupPanel live={live.values} onSet={live.setParam} firmware={firmware}/>
                 ) : null}
             </div>
         </div>

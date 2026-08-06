@@ -202,6 +202,22 @@ export function useWorkspace() {
                 );
             }
 
+            // Non-floatable panels must always live in a dock. If there's no
+            // remembered dock placement, fall back to the panel's default dock
+            // rather than forcing it into a mode it doesn't support.
+            if (!panel.floatable) {
+                const next = detach(current, panelId);
+                const ids = [...next.docks[panel.defaultDock], panelId];
+                return remember(
+                    {
+                        ...next,
+                        docks: {...next.docks, [panel.defaultDock]: ids},
+                        active: {...next.active, [panel.defaultDock]: panelId},
+                    },
+                    panelId,
+                );
+            }
+
             // No remembered dock: open floating so placement stays the
             // operator's decision. Position comes from where it last closed
             // (or a cascade slot for a panel that's never been placed at

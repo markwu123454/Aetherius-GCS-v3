@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use mavlink::{dialects::ardupilotmega::{COMMAND_LONG_DATA, MavCmd, MavMessage, RC_CHANNELS_DATA, STATUSTEXT_DATA, MAG_CAL_PROGRESS_DATA, MAG_CAL_REPORT_DATA,}};
+use mavlink::{dialects::ardupilotmega::{COMMAND_LONG_DATA, MavCmd, MavMessage, RC_CHANNELS_DATA, SERVO_OUTPUT_RAW_DATA, STATUSTEXT_DATA, MAG_CAL_PROGRESS_DATA, MAG_CAL_REPORT_DATA,}};
 use num_traits::ToPrimitive;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -85,6 +85,10 @@ pub fn route(app: &AppHandle, snapshot: &mut VehicleSnapshot, message: &MavMessa
         MavMessage::FILE_TRANSFER_PROTOCOL(data) => {
             scripting::on_ftp_reply(app, data);
             true
+        }
+        MavMessage::SERVO_OUTPUT_RAW(data) => {
+            on_servo_output_raw(app, data);
+            false
         }
         MavMessage::RC_CHANNELS(data) => {
             on_rc_channels(app, data);
@@ -180,6 +184,19 @@ fn emit_statustext(app: &AppHandle, severity: u8, text: &str) {
         // unreadable severity is still worth showing.
         serde_json::json!({"severity": severity, "text": text}),
     );
+}
+
+/// port=0 → outputs 1-8, port=1 → outputs 9-16, etc. Channel index in the
+/// frontend is `port * 8 + i + 1` (1-indexed).
+fn on_servo_output_raw(app: &AppHandle, data: &SERVO_OUTPUT_RAW_DATA) {
+    let channels = [
+        data.servo1_raw, data.servo2_raw, data.servo3_raw, data.servo4_raw,
+        data.servo5_raw, data.servo6_raw, data.servo7_raw, data.servo8_raw,
+    ];
+    let _ = app.emit("servo-outputs", serde_json::json!({
+        "port": data.port,
+        "channels": channels,
+    }));
 }
 
 /// `chancount` can claim more channels than this message actually carries

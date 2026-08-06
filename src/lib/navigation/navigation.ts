@@ -1,23 +1,23 @@
 /** Every full-screen page the app can navigate to, by id. */
 export type PageId =
-    | "settings"
-    | "parameters"
-    | "mission"
-    | "scripting"
+    | "firmware"
     | "calibration"
     | "setup"
-    | "firmware"
+    | "parameters"
+    | "scripting"
     | "logs"
+    | "mission"
+    | "settings"
     | "about";
 
 export const PAGE_TITLES: Record<PageId, string> = {
-    settings: "Settings",
-    parameters: "Parameters",
-    mission: "Mission",
-    scripting: "Scripting",
+    firmware: "Firmware",
     calibration: "Calibration",
     setup: "Setup",
-    firmware: "Firmware",
+    parameters: "Parameters",
+    scripting: "Scripting",
     logs: "Logs",
+    mission: "Mission",
+    settings: "Settings",
     about: "About",
 };

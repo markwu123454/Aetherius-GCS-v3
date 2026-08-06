@@ -1,4 +1,5 @@
 import {useEffect, useMemo, useState} from "react";
+import {invoke} from "@tauri-apps/api/core";
 import TopBar from "@/components/topmenu/TopBar.tsx";
 import Workspace from "@/components/workspace/Workspace.tsx";
 import UpdatePromptModal from "@/components/UpdatePromptModal.tsx";
@@ -27,6 +28,10 @@ import {PageId} from "@/lib/navigation/navigation.ts";
 import "./App.css";
 
 function App() {
+    useEffect(() => {
+        invoke("close_splash").catch(() => {});
+    }, []);
+
     // Owned here so the top bar's panel launcher and the workspace itself act
     // on the same state.
     const workspace = useWorkspace();
