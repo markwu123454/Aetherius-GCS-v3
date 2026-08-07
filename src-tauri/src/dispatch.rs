@@ -3,7 +3,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use mavlink::{dialects::ardupilotmega::{COMMAND_LONG_DATA, MavCmd, MavMessage, RC_CHANNELS_DATA, SERVO_OUTPUT_RAW_DATA, STATUSTEXT_DATA, MAG_CAL_PROGRESS_DATA, MAG_CAL_REPORT_DATA,}};
+use mavlink::dialects::ardupilotmega::{
+    COMMAND_LONG_DATA, MAG_CAL_PROGRESS_DATA, MAG_CAL_REPORT_DATA, MavCmd, MavMessage,
+    MavMissionType, RC_CHANNELS_DATA, SERVO_OUTPUT_RAW_DATA, STATUSTEXT_DATA,
+};
 use num_traits::ToPrimitive;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -71,7 +74,11 @@ pub fn route(app: &AppHandle, snapshot: &mut VehicleSnapshot, message: &MavMessa
             true
         }
         MavMessage::MISSION_REQUEST_INT(data) => {
-            mission::on_request_int(app, data);
+            if data.mission_type == MavMissionType::MAV_MISSION_TYPE_FENCE {
+                fence::on_mission_request_int(app, data);
+            } else {
+                mission::on_request_int(app, data);
+            }
             true
         }
         MavMessage::MISSION_REQUEST(data) => {
@@ -79,19 +86,27 @@ pub fn route(app: &AppHandle, snapshot: &mut VehicleSnapshot, message: &MavMessa
             true
         }
         MavMessage::MISSION_ACK(data) => {
-            mission::on_ack(app, data);
+            if data.mission_type == MavMissionType::MAV_MISSION_TYPE_FENCE {
+                fence::on_mission_ack(app, data);
+            } else {
+                mission::on_ack(app, data);
+            }
             true
         }
         MavMessage::MISSION_COUNT(data) => {
-            mission::on_count(app, data);
+            if data.mission_type == MavMissionType::MAV_MISSION_TYPE_FENCE {
+                fence::on_mission_count(app, data);
+            } else {
+                mission::on_count(app, data);
+            }
             true
         }
         MavMessage::MISSION_ITEM_INT(data) => {
-            mission::on_item_int(app, data);
-            true
-        }
-        MavMessage::FENCE_POINT(data) => {
-            fence::on_fence_point(app, data);
+            if data.mission_type == MavMissionType::MAV_MISSION_TYPE_FENCE {
+                fence::on_mission_item_int(app, data);
+            } else {
+                mission::on_item_int(app, data);
+            }
             true
         }
         MavMessage::FILE_TRANSFER_PROTOCOL(data) => {

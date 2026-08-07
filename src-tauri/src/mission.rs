@@ -5,8 +5,8 @@ use std::{
 
 use mavlink::{
     dialects::ardupilotmega::{
-        MavCmd, MavFrame, MavMessage, MavMissionResult, MISSION_ACK_DATA, MISSION_COUNT_DATA,
-        MISSION_ITEM_INT_DATA, MISSION_REQUEST_DATA, MISSION_REQUEST_INT_DATA,
+        MavCmd, MavFrame, MavMessage, MavMissionResult, MavMissionType, MISSION_ACK_DATA,
+        MISSION_COUNT_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_DATA, MISSION_REQUEST_INT_DATA,
         MISSION_REQUEST_LIST_DATA,
     },
     MavConnection,
@@ -137,6 +137,7 @@ fn build_upload_items(
         param2: 0.0,
         param3: 0.0,
         param4: 0.0,
+        mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
     });
 
     if include_takeoff {
@@ -156,6 +157,7 @@ fn build_upload_items(
                 param2: 0.0,
                 param3: 0.0,
                 param4: 0.0,
+                mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
             });
         }
     }
@@ -183,6 +185,7 @@ fn build_upload_items(
             param2: 0.0,
             param3: 0.0,
             param4: 0.0,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
         });
     }
 
@@ -250,6 +253,8 @@ pub async fn upload_mission(app: AppHandle, waypoints: Vec<Waypoint>) -> Result<
         count: items.len() as u16,
         target_system: target.0,
         target_component: target.1,
+        mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
+        opaque_id: 0,
     }));
 
     loop {
@@ -408,6 +413,7 @@ pub async fn download_mission(app: AppHandle) -> Result<DownloadedMission, Strin
     let _ = connection.send_default(&MavMessage::MISSION_REQUEST_LIST(MISSION_REQUEST_LIST_DATA {
         target_system: target.0,
         target_component: target.1,
+        mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
     }));
 
     let count = loop {
@@ -431,6 +437,7 @@ pub async fn download_mission(app: AppHandle) -> Result<DownloadedMission, Strin
             seq,
             target_system: target.0,
             target_component: target.1,
+            mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
         }));
 
         loop {
@@ -453,6 +460,8 @@ pub async fn download_mission(app: AppHandle) -> Result<DownloadedMission, Strin
         target_system: target.0,
         target_component: target.1,
         mavtype: MavMissionResult::MAV_MISSION_ACCEPTED,
+        mission_type: MavMissionType::MAV_MISSION_TYPE_MISSION,
+        opaque_id: 0,
     }));
 
     let (waypoints, skipped) = convert_downloaded_items(&items);

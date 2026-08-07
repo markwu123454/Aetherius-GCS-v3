@@ -288,7 +288,7 @@ export default function GeofencePage() {
     const handleDownload = async () => {
         setFileError(null);
         try {
-            await fence.download(live.values);
+            await fence.download();
         } catch {
             // downloadError set inside useFence
         }
@@ -297,7 +297,7 @@ export default function GeofencePage() {
     const handleUpload = async () => {
         setFileError(null);
         try {
-            await fence.upload(live.setParam);
+            await fence.upload();
         } catch {
             // uploadError set inside useFence
         }
@@ -430,7 +430,7 @@ export default function GeofencePage() {
                 <SectionHeader title="Polygon fence"/>
                 <div className="border-b border-border-subtle px-2 py-1.5 text-micro text-text-helper">
                     Click the map to add vertices. Click a vertex to remove it. Drag to move.
-                    Only one inclusion polygon supported (legacy protocol).
+                    Only one inclusion polygon supported.
                 </div>
 
                 {/* Spacer */}

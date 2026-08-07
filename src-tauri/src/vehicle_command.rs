@@ -287,6 +287,8 @@ pub fn send_rc_override(app: AppHandle, channels: [u16; 8]) -> Result<(), String
         chan8_raw: channels[7],
         target_system: target.0,
         target_component: target.1,
+        // Extension channels 9-18: 0 = ignore (per the MAVLink spec invalid value)
+        ..RC_CHANNELS_OVERRIDE_DATA::DEFAULT
     };
 
     let _ = connection.send_default(&MavMessage::RC_CHANNELS_OVERRIDE(data));

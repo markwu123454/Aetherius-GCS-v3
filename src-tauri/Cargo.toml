@@ -31,7 +31,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["sync", "time"] }
 num-traits = "0.2"
-mavlink = { version = "0.18.0", features = ["dialect-ardupilotmega"] }
+mavlink = { version = "0.18.0", features = ["dialect-ardupilotmega", "mav2-message-extensions"] }
 flate2 = "1"
 base64 = "0.22"
 reqwest = "0.12"

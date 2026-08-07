@@ -7,7 +7,7 @@ export function uploadFence(points: {lat: number; lon: number}[]): Promise<void>
     return invoke<void>("upload_fence", {points});
 }
 
-export function downloadFence(count: number): Promise<DownloadedFence> {
+export function downloadFence(): Promise<DownloadedFence> {
     requireBackend();
-    return invoke<DownloadedFence>("download_fence", {count});
+    return invoke<DownloadedFence>("download_fence");
 }
