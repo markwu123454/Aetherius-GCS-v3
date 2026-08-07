@@ -86,6 +86,37 @@ export interface ParamMatch {
     param: ParamDef;
 }
 
+interface SearchIndexEntry {
+    match: ParamMatch;
+    nameLower: string;
+    humanNameLower: string;
+}
+
+/** One flat, lowercased entry per parameter, built once per sheet and kept
+ * for the sheet's lifetime — a ~5000-parameter sheet otherwise re-runs
+ * `toLowerCase()` on every name and human name on every single keystroke in
+ * the search box, which is most of where that lag actually comes from
+ * (`.includes()` on an already-lowercased string is cheap by comparison). */
+const searchIndexCache = new WeakMap<ParamSheet, SearchIndexEntry[]>();
+
+function getSearchIndex(sheet: ParamSheet): SearchIndexEntry[] {
+    let index = searchIndexCache.get(sheet);
+    if (!index) {
+        index = [];
+        for (const group of sheet.groups) {
+            for (const param of group.params) {
+                index.push({
+                    match: {group: group.key, param},
+                    nameLower: param.name.toLowerCase(),
+                    humanNameLower: param.humanName.toLowerCase(),
+                });
+            }
+        }
+        searchIndexCache.set(sheet, index);
+    }
+    return index;
+}
+
 /** Substring match against both the code name and the human-readable name. */
 export function searchParams(sheet: ParamSheet, query: string): ParamMatch[] {
     const q = query.trim().toLowerCase();
@@ -94,11 +125,9 @@ export function searchParams(sheet: ParamSheet, query: string): ParamMatch[] {
     }
 
     const matches: ParamMatch[] = [];
-    for (const group of sheet.groups) {
-        for (const param of group.params) {
-            if (param.name.toLowerCase().includes(q) || param.humanName.toLowerCase().includes(q)) {
-                matches.push({group: group.key, param});
-            }
+    for (const entry of getSearchIndex(sheet)) {
+        if (entry.nameLower.includes(q) || entry.humanNameLower.includes(q)) {
+            matches.push(entry.match);
         }
     }
     return matches;

@@ -1,5 +1,7 @@
-import {type ReactNode, useEffect, useMemo, useState} from "react";
+import {type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState} from "react";
 import {Search} from "@carbon/icons-react";
+import {save as saveDialog, open as openDialog} from "@tauri-apps/plugin-dialog";
+import {writeTextFile, readTextFile} from "@tauri-apps/plugin-fs";
 import {useParamSheet} from "@/lib/params/useParamSheet.ts";
 import {
     ALL_GROUPS_KEY,
@@ -13,12 +15,14 @@ import {
 } from "@/lib/params/paramSheet.ts";
 import {formatParamValue, LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {useLiveParams} from "@/lib/params/useLiveParams.ts";
+import {buildParamDiff, ParamDiffRow, parseParamFile, serializeParamFile} from "@/lib/params/paramFile.ts";
 import {useConnection} from "@/lib/vehicle/useConnection.ts";
 import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
 import {VehicleKind} from "@/lib/vehicle/vehicle.ts";
 import {buildGroupTree, findAncestorIds, GroupRelation, GroupTreeNode} from "@/lib/params/groupRelations.ts";
 import {ARDUCOPTER_GROUP_RELATIONS} from "@/lib/params/groupRelations.ArduCopter.ts";
 import {ARDUPLANE_GROUP_RELATIONS} from "@/lib/params/groupRelations.ArduPlane.ts";
+import ParamLoadReview from "./ParamLoadReview.tsx";
 
 const RELATIONS_BY_VEHICLE: Record<VehicleFirmware, GroupRelation[]> = {
     ArduCopter: ARDUCOPTER_GROUP_RELATIONS,
@@ -46,7 +50,7 @@ function flagsOf(param: ParamDef): {label: string; title: string}[] {
     return flags;
 }
 
-function FlagBadges({param}: {param: ParamDef}) {
+export function FlagBadges({param}: {param: ParamDef}) {
     const flags = flagsOf(param);
     if (flags.length === 0) {
         return null;
@@ -424,69 +428,173 @@ interface ParamRowsProps {
     query: string;
 }
 
-function ParamRows({rows, showGroup, selected, onSelect, live, query}: ParamRowsProps) {
+function ParamTableRow({
+    row,
+    showGroup,
+    isActive,
+    liveEntry,
+    query,
+    onSelect,
+    rowRef,
+}: {
+    row: ParamMatch;
+    showGroup: boolean;
+    isActive: boolean;
+    liveEntry: LiveParamEntry | undefined;
+    query: string;
+    onSelect: () => void;
+    rowRef?: (el: HTMLTableRowElement | null) => void;
+}) {
     return (
-        <table className="w-full border-collapse text-label">
-            <thead className="sticky top-0 bg-layer-01 text-text-helper">
-                <tr className="text-left">
-                    <th className="border-b border-border-subtle px-3 py-2 font-normal">Name</th>
-                    {showGroup && <th className="border-b border-border-subtle px-3 py-2 font-normal">Group</th>}
-                    <th className="border-b border-border-subtle px-3 py-2 font-normal">Human name</th>
-                    <th className="border-b border-border-subtle px-3 py-2 font-normal">Value</th>
-                    <th className="border-b border-border-subtle px-3 py-2 font-normal">Units</th>
-                </tr>
-            </thead>
-            <tbody>
-                {rows.map((row) => {
-                    const isActive = selected?.param.name === row.param.name && selected?.group === row.group;
-                    const liveEntry = live.get(row.param.name);
-                    return (
-                        <tr
-                            key={`${row.group}:${row.param.name}`}
-                            role="button"
-                            tabIndex={0}
-                            aria-pressed={isActive}
-                            onClick={() => onSelect(row)}
-                            onKeyDown={(event) => {
-                                if (event.key === "Enter" || event.key === " ") {
-                                    event.preventDefault();
-                                    onSelect(row);
-                                }
-                            }}
-                            className={[
-                                "cursor-pointer border-b border-border-subtle-base",
-                                isActive ? "bg-layer-hover-01" : "hover:bg-layer-hover-01",
-                            ].join(" ")}
-                        >
-                            <td className="px-3 py-1.5">
-                                <div className="flex items-center gap-2">
-                                    <span className="font-mono text-text-primary">
-                                        <HighlightMatch text={row.param.name} query={query}/>
-                                    </span>
-                                    <FlagBadges param={row.param}/>
-                                </div>
-                            </td>
-                            {showGroup && (
-                                <td className="px-3 py-1.5 text-text-helper">{groupLabel(row.group)}</td>
-                            )}
-                            <td className="px-3 py-1.5 text-text-secondary">
-                                <HighlightMatch text={row.param.humanName} query={query}/>
-                            </td>
-                            <td
-                                className={[
-                                    "px-3 py-1.5 font-mono",
-                                    liveEntry ? "text-text-primary" : "text-text-disabled",
-                                ].join(" ")}
-                                title={liveEntry ? undefined : "Not read from the vehicle yet"}
-                            >
-                                {liveEntry ? formatParamValue(liveEntry) : "—"}
-                            </td>
-                            <td className="px-3 py-1.5 text-text-helper">{row.param.unitText ?? row.param.units ?? ""}</td>
+        <tr
+            ref={rowRef}
+            role="button"
+            tabIndex={0}
+            aria-pressed={isActive}
+            onClick={onSelect}
+            onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelect();
+                }
+            }}
+            className={[
+                "cursor-pointer border-b border-border-subtle-base",
+                isActive ? "bg-layer-hover-01" : "hover:bg-layer-hover-01",
+            ].join(" ")}
+        >
+            <td className="px-3 py-1.5">
+                <div className="flex items-center gap-2">
+                    <span className="font-mono text-text-primary">
+                        <HighlightMatch text={row.param.name} query={query}/>
+                    </span>
+                    <FlagBadges param={row.param}/>
+                </div>
+            </td>
+            {showGroup && (
+                <td className="px-3 py-1.5 text-text-helper">{groupLabel(row.group)}</td>
+            )}
+            <td className="px-3 py-1.5 text-text-secondary">
+                <HighlightMatch text={row.param.humanName} query={query}/>
+            </td>
+            <td
+                className={[
+                    "px-3 py-1.5 font-mono",
+                    liveEntry ? "text-text-primary" : "text-text-disabled",
+                ].join(" ")}
+                title={liveEntry ? undefined : "Not read from the vehicle yet"}
+            >
+                {liveEntry ? formatParamValue(liveEntry) : "—"}
+            </td>
+            <td className="px-3 py-1.5 text-text-helper">{row.param.unitText ?? row.param.units ?? ""}</td>
+        </tr>
+    );
+}
+
+/** A guess used only for the first paint, before `ParamRows` has measured a
+ * real row — replaced immediately once one exists, see the `measureRef`
+ * callback below. */
+const FALLBACK_ROW_HEIGHT = 33;
+const OVERSCAN_ROWS = 10;
+
+/**
+ * Row-windowed table body: with the full reference sheet loaded (~1500-5000
+ * parameters depending on firmware) either browsing "All" or a broad search
+ * match can put thousands of matches in `rows`. Rendering every one of them
+ * as a real `<tr>` — each running `HighlightMatch`'s character-by-character
+ * scan plus a `Map` lookup — is what actually produced the reported lag, not
+ * the substring search itself (that part got its own fix in
+ * `paramSheet.ts`'s cached lowercase index). Only the rows within the
+ * scrolled viewport (plus a small overscan) ever mount; the rest are two
+ * spacer rows sized to hold their place, so the scrollbar and scroll
+ * position behave exactly as if every row were present.
+ */
+function ParamRows({rows, showGroup, selected, onSelect, live, query}: ParamRowsProps) {
+    const scrollRef = useRef<HTMLDivElement | null>(null);
+    const [scrollTop, setScrollTop] = useState(0);
+    const [viewportHeight, setViewportHeight] = useState(0);
+    const [rowHeight, setRowHeight] = useState(FALLBACK_ROW_HEIGHT);
+    const measured = useRef(false);
+
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (!el) return;
+        const onScroll = () => setScrollTop(el.scrollTop);
+        const resizeObserver = new ResizeObserver(() => setViewportHeight(el.clientHeight));
+        el.addEventListener("scroll", onScroll, {passive: true});
+        resizeObserver.observe(el);
+        setViewportHeight(el.clientHeight);
+        return () => {
+            el.removeEventListener("scroll", onScroll);
+            resizeObserver.disconnect();
+        };
+    }, []);
+
+    // A freshly-selected group or a new search result set starts scrolled to
+    // the top — otherwise a scroll position from a much longer previous list
+    // can point past the end of a shorter one and render nothing until the
+    // operator manually scrolls back up.
+    useEffect(() => {
+        scrollRef.current?.scrollTo({top: 0});
+        setScrollTop(0);
+    }, [rows]);
+
+    const measureRef = (el: HTMLTableRowElement | null) => {
+        if (el && !measured.current) {
+            measured.current = true;
+            setRowHeight(el.getBoundingClientRect().height || FALLBACK_ROW_HEIGHT);
+        }
+    };
+
+    const total = rows.length;
+    const startIndex = Math.max(0, Math.floor(scrollTop / rowHeight) - OVERSCAN_ROWS);
+    const endIndex = Math.min(total, Math.ceil((scrollTop + viewportHeight) / rowHeight) + OVERSCAN_ROWS);
+    const visible = rows.slice(startIndex, endIndex);
+    const topSpacer = startIndex * rowHeight;
+    const bottomSpacer = (total - endIndex) * rowHeight;
+    const columnCount = showGroup ? 5 : 4;
+
+    return (
+        <div ref={scrollRef} className="h-full w-full overflow-auto">
+            <table className="w-full border-collapse text-label">
+                <thead className="sticky top-0 z-10 bg-layer-01 text-text-helper">
+                    <tr className="text-left">
+                        <th className="border-b border-border-subtle px-3 py-2 font-normal">Name</th>
+                        {showGroup && <th className="border-b border-border-subtle px-3 py-2 font-normal">Group</th>}
+                        <th className="border-b border-border-subtle px-3 py-2 font-normal">Human name</th>
+                        <th className="border-b border-border-subtle px-3 py-2 font-normal">Value</th>
+                        <th className="border-b border-border-subtle px-3 py-2 font-normal">Units</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {topSpacer > 0 && (
+                        <tr aria-hidden style={{height: topSpacer}}>
+                            <td colSpan={columnCount} />
                         </tr>
-                    );
-                })}
-            </tbody>
-        </table>
+                    )}
+                    {visible.map((row, i) => {
+                        const isActive = selected?.param.name === row.param.name && selected?.group === row.group;
+                        return (
+                            <ParamTableRow
+                                key={`${row.group}:${row.param.name}`}
+                                row={row}
+                                showGroup={showGroup}
+                                isActive={isActive}
+                                liveEntry={live.get(row.param.name)}
+                                query={query}
+                                onSelect={() => onSelect(row)}
+                                rowRef={i === 0 ? measureRef : undefined}
+                            />
+                        );
+                    })}
+                    {bottomSpacer > 0 && (
+                        <tr aria-hidden style={{height: bottomSpacer}}>
+                            <td colSpan={columnCount} />
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
     );
 }
 
@@ -814,6 +922,45 @@ export default function ParametersPage() {
     const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
     const [query, setQuery] = useState("");
     const [selected, setSelected] = useState<ParamMatch | null>(null);
+    const [fileError, setFileError] = useState<string | null>(null);
+    const [reviewing, setReviewing] = useState<{fileName: string; rows: ParamDiffRow[]} | null>(null);
+
+    const handleSave = async () => {
+        setFileError(null);
+        try {
+            const path = await saveDialog({
+                defaultPath: `${firmware ?? "params"}.param`,
+                filters: [{name: "Parameter file", extensions: ["param", "txt"]}],
+            });
+            if (!path) return; // user cancelled
+            await writeTextFile(path, serializeParamFile(live.values, firmware ?? "unknown"));
+        } catch (error) {
+            setFileError(error instanceof Error ? error.message : String(error));
+        }
+    };
+
+    const handleLoad = async () => {
+        setFileError(null);
+        try {
+            const path = await openDialog({
+                multiple: false,
+                filters: [{name: "Parameter file", extensions: ["param", "txt"]}],
+            });
+            if (!path || Array.isArray(path)) return; // user cancelled
+            const text = await readTextFile(path);
+            const entries = parseParamFile(text);
+            if (entries.length === 0) {
+                setFileError("No parameter lines found in that file.");
+                return;
+            }
+            const groups = state.status === "ready" ? state.sheet.groups : null;
+            const rows = buildParamDiff(entries, live.values, groups);
+            const fileName = path.split(/[\\/]/).pop() ?? path;
+            setReviewing({fileName, rows});
+        } catch (error) {
+            setFileError(error instanceof Error ? error.message : String(error));
+        }
+    };
 
     // A fresh sheet starts on its own vehicle-level group, and any selection
     // from the previous firmware stops being meaningful.
@@ -821,14 +968,24 @@ export default function ParametersPage() {
         setSelectedGroupKey(firmware);
         setSelected(null);
         setQuery("");
+        setReviewing(null);
     }, [firmware]);
+
+    // Deferred so keystrokes stay instant regardless of sheet size — the
+    // input itself is bound to `query`, but the expensive filter (and the
+    // few-thousand-row table it feeds) trails a render behind on a lower
+    // priority instead of blocking on every keystroke. `isSearchStale` lets
+    // the table stay visible (dimmed) rather than blanking while it catches
+    // up.
+    const deferredQuery = useDeferredValue(query);
+    const isSearchStale = query !== deferredQuery;
 
     const searchResults = useMemo(() => {
         if (state.status !== "ready") {
             return [];
         }
-        return searchParams(state.sheet, query);
-    }, [state, query]);
+        return searchParams(state.sheet, deferredQuery);
+    }, [state, deferredQuery]);
 
     const groupRows: ParamMatch[] = useMemo(() => {
         if (state.status !== "ready" || !selectedGroupKey) {
@@ -848,6 +1005,23 @@ export default function ParametersPage() {
     // The Group column only earns its place when a row's group isn't already
     // implied by the current selection.
     const showGroup = searching || selectedGroupKey === ALL_GROUPS_KEY;
+
+    // Rendered ahead of the `!connected` guard below — a link that drops
+    // mid-review shouldn't yank the diff out from under the operator, it
+    // should just leave Apply disabled (via the `connected` prop) same as
+    // any other control on this page.
+    if (reviewing) {
+        return (
+            <ParamLoadReview
+                fileName={reviewing.fileName}
+                rows={reviewing.rows}
+                connected={connected}
+                armed={vehicleTelemetry.armed}
+                onSet={live.setParam}
+                onClose={() => setReviewing(null)}
+            />
+        );
+    }
 
     if (!connected) {
         return (
@@ -916,15 +1090,36 @@ export default function ParametersPage() {
                             >
                                 Refresh
                             </button>
+                            <button
+                                type="button"
+                                onClick={() => void handleSave()}
+                                title="Save every currently-read parameter to a file"
+                                className="h-control-sm border border-border-subtle px-3 text-label text-text-primary hover:bg-layer-hover-01"
+                            >
+                                Save…
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void handleLoad()}
+                                title="Load a parameter file and review changes before applying"
+                                className="h-control-sm border border-border-subtle px-3 text-label text-text-primary hover:bg-layer-hover-01"
+                            >
+                                Load…
+                            </button>
                         </div>
-                        <div className="min-h-0 flex-1 overflow-auto">
+                        {fileError && (
+                            <div className="shrink-0 border-b border-border-subtle bg-layer-02 px-3 py-1.5 text-label text-state-danger">
+                                {fileError}
+                            </div>
+                        )}
+                        <div className={["min-h-0 flex-1 transition-opacity duration-100", isSearchStale ? "opacity-60" : ""].join(" ")}>
                             <ParamRows
                                 rows={rows}
                                 showGroup={showGroup}
                                 selected={selected}
                                 onSelect={setSelected}
                                 live={live.values}
-                                query={searching ? query : ""}
+                                query={searching ? deferredQuery : ""}
                             />
                         </div>
                     </div>

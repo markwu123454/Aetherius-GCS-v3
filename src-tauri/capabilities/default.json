@@ -11,6 +11,9 @@
     "core:window:allow-set-decorations",
     "drag:default",
     "updater:default",
-    "process:default"
+    "process:default",
+    "dialog:default",
+    "fs:allow-write-text-file",
+    "fs:allow-read-text-file"
   ]
 }
