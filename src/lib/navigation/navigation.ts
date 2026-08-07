@@ -7,6 +7,7 @@ export type PageId =
     | "scripting"
     | "logs"
     | "mission"
+    | "geofence"
     | "settings"
     | "about";
 
@@ -18,6 +19,7 @@ export const PAGE_TITLES: Record<PageId, string> = {
     scripting: "Scripting",
     logs: "Logs",
     mission: "Mission",
+    geofence: "Geofence",
     settings: "Settings",
     about: "About",
 };

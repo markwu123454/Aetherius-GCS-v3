@@ -7,7 +7,7 @@ use mavlink::{dialects::ardupilotmega::{COMMAND_LONG_DATA, MavCmd, MavMessage, R
 use num_traits::ToPrimitive;
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::{commands, logs, mission, params, scripting, telemetry, telemetry::VehicleSnapshot};
+use crate::{commands, fence, logs, mission, params, scripting, telemetry, telemetry::VehicleSnapshot};
 
 /// How long a full-length STATUSTEXT chunk waits for a continuation before
 /// being shown standalone. ArduPilot sends split chunks back-to-back with no
@@ -80,6 +80,18 @@ pub fn route(app: &AppHandle, snapshot: &mut VehicleSnapshot, message: &MavMessa
         }
         MavMessage::MISSION_ACK(data) => {
             mission::on_ack(app, data);
+            true
+        }
+        MavMessage::MISSION_COUNT(data) => {
+            mission::on_count(app, data);
+            true
+        }
+        MavMessage::MISSION_ITEM_INT(data) => {
+            mission::on_item_int(app, data);
+            true
+        }
+        MavMessage::FENCE_POINT(data) => {
+            fence::on_fence_point(app, data);
             true
         }
         MavMessage::FILE_TRANSFER_PROTOCOL(data) => {

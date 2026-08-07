@@ -23,7 +23,8 @@ export type VehicleCommand =
     | {type: "cancelAccelCalibration"}
     | {type: "startGyroCalibration"}
     | {type: "startCompassCalibration"}
-    | {type: "cancelCompassCalibration"};
+    | {type: "cancelCompassCalibration"}
+    | {type: "motorTest"; motor: number; throttlePercent: number; timeoutSecs: number};
 
 /**
  * Sends one vehicle action and waits for the backend to confirm the
@@ -50,4 +51,15 @@ export function sendVehicleCommand(command: VehicleCommand): Promise<void> {
 export function sendRcOverride(channels: number[]): Promise<void> {
     requireBackend();
     return invoke<void>("send_rc_override", {channels});
+}
+
+/**
+ * Fire-and-forget 0%-throttle motor test to every motor in `motors`, none of
+ * them waited on. Deliberately bypasses `sendVehicleCommand`'s `motorTest` —
+ * see the backend's `stop_all_motor_tests` doc for why firing several acked
+ * `MAV_CMD_DO_MOTOR_TEST` commands concurrently doesn't work.
+ */
+export function stopAllMotorTests(motors: number[]): Promise<void> {
+    requireBackend();
+    return invoke<void>("stop_all_motor_tests", {motors});
 }

@@ -1,7 +1,10 @@
 use serde::Deserialize;
 use tauri::{AppHandle, Manager};
 
-use mavlink::dialects::ardupilotmega::{MavCmd, MavMessage, MavModeFlag, MavResult, RC_CHANNELS_OVERRIDE_DATA};
+use mavlink::dialects::ardupilotmega::{
+    MavCmd, MavMessage, MavModeFlag, MavResult, MotorTestOrder, MotorTestThrottleType,
+    RC_CHANNELS_OVERRIDE_DATA,
+};
 
 use crate::commands::{self, CommandError};
 use crate::link::LinkState;
@@ -32,6 +35,13 @@ pub enum VehicleCommand {
     StartGyroCalibration,
     StartCompassCalibration,
     CancelCompassCalibration,
+    // The enum-level `rename_all` above only renames variant tags, not a
+    // struct variant's own fields (every other struct variant here happens
+    // to use single-word field names, so this never came up before) — needs
+    // its own `rename_all` to accept the frontend's camelCase
+    // `throttlePercent`/`timeoutSecs` keys.
+    #[serde(rename_all = "camelCase")]
+    MotorTest { motor: u8, throttle_percent: f32, timeout_secs: f32 },
 }
 
 /// Translate an app-level command into the `MavCmd` and seven-float param
@@ -150,6 +160,25 @@ fn to_mav_command(command: &VehicleCommand) -> (MavCmd, [f32; 7]) {
             MavCmd::MAV_CMD_DO_CANCEL_MAG_CAL,
             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         ),
+        VehicleCommand::MotorTest { motor, throttle_percent, timeout_secs } => (
+            // param5 (motor count) = 0 — a single motor, not the "run
+            // motor..motor+N in sequence" mode DO_MOTOR_TEST also supports.
+            // param6 (test order) = default: AP_Motors' own vehicle-specific
+            // numbering, the same numbering the frame diagrams and
+            // `SERVOx_FUNCTION`'s `MotorN` label use — not "board output
+            // order", which would make the number on this button not match
+            // the motor it actually spins.
+            MavCmd::MAV_CMD_DO_MOTOR_TEST,
+            [
+                *motor as f32,
+                MotorTestThrottleType::MOTOR_TEST_THROTTLE_PERCENT as u32 as f32,
+                *throttle_percent,
+                *timeout_secs,
+                0.0,
+                MotorTestOrder::MOTOR_TEST_ORDER_DEFAULT as u32 as f32,
+                0.0,
+            ],
+        ),
     }
 }
 
@@ -261,5 +290,46 @@ pub fn send_rc_override(app: AppHandle, channels: [u16; 8]) -> Result<(), String
     };
 
     let _ = connection.send_default(&MavMessage::RC_CHANNELS_OVERRIDE(data));
+    Ok(())
+}
+
+/// Fire-and-forget 0%-throttle `MAV_CMD_DO_MOTOR_TEST` to every motor in
+/// `motors`, one message each, none of them waited on. This deliberately
+/// does NOT go through `send_vehicle_command`/`commands::send_sync`: that
+/// path tracks exactly one pending sender *per command type* in
+/// `CommandState`, not one per call — sending several `MAV_CMD_DO_MOTOR_TEST`
+/// commands concurrently (one per motor, which is exactly what "stop every
+/// motor at once" needs) makes each new call's sender clobber the previous
+/// one's before it ever sees its ack, and the clobbered one's `send_sync`
+/// then sees its sender dropped and fails immediately with a misleading
+/// "did not acknowledge in time". An emergency stop has no business waiting
+/// on an ack anyway: it's telling the vehicle to do something, not asking it
+/// to confirm it did, and every motor needs to hear it promptly rather than
+/// one at a time through a contested slot.
+#[tauri::command]
+pub fn stop_all_motor_tests(app: AppHandle, motors: Vec<u8>) -> Result<(), String> {
+    let target = app
+        .state::<LinkState>()
+        .target
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .ok_or_else(|| "no vehicle has been heard from yet".to_string())?;
+
+    for motor in motors {
+        let _ = commands::send_async(
+            &app,
+            MavCmd::MAV_CMD_DO_MOTOR_TEST,
+            [
+                motor as f32,
+                MotorTestThrottleType::MOTOR_TEST_THROTTLE_PERCENT as u32 as f32,
+                0.0,
+                1.0,
+                0.0,
+                MotorTestOrder::MOTOR_TEST_ORDER_DEFAULT as u32 as f32,
+                0.0,
+            ],
+            target,
+        );
+    }
     Ok(())
 }

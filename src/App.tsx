@@ -7,6 +7,7 @@ import FullScreenPage from "@/pages/FullScreenPage.tsx";
 import SettingsPage from "@/pages/settings/SettingsPage.tsx";
 import ParametersPage from "@/pages/parameters/ParametersPage.tsx";
 import MissionPage from "@/pages/mission/MissionPage.tsx";
+import GeofencePage from "@/pages/geofence/GeofencePage.tsx";
 import ScriptingPage from "@/pages/scripting/ScriptingPage.tsx";
 import CalibrationPage from "@/pages/calibration/CalibrationPage.tsx";
 import SetupPage from "@/pages/setup/SetupPage.tsx";
@@ -132,6 +133,7 @@ function App() {
                             {page === "settings" && <SettingsPage settings={settings}/>}
                             {page === "parameters" && <ParametersPage/>}
                             {page === "mission" && <MissionPage mission={mission}/>}
+                            {page === "geofence" && <GeofencePage/>}
                             {page === "scripting" && <ScriptingPage/>}
                             {page === "calibration" && <CalibrationPage/>}
                             {page === "setup" && <SetupPage/>}

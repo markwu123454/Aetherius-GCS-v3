@@ -110,6 +110,17 @@ export const PANEL_DEFINITIONS: PanelDefinition[] = [
         defaultDock: "bottom",
         openByDefault: false,
     },
+    {
+        id: "checklist",
+        title: "Checklist",
+        component: "checklist",
+        dockLeft: true,
+        dockRight: true,
+        dockBottom: false,
+        floatable: true,
+        defaultDock: "right",
+        openByDefault: true,
+    },
 ];
 
 export function panelById(id: string): PanelDefinition | undefined {

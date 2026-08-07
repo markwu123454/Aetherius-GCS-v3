@@ -6,9 +6,11 @@ import {VehicleFirmware} from "@/lib/params/paramSheet.ts";
 import FrameSetupPanel from "./FrameSetupPanel.tsx";
 import ServoSetupPanel from "./ServoSetupPanel.tsx";
 import TrimSetupPanel from "./TrimSetupPanel.tsx";
+import MotorTestPanel from "./MotorTestPanel.tsx";
+import FailsafeSetupPanel from "./FailsafeSetupPanel.tsx";
 
 interface SetupItem {
-    id: "frame" | "servo" | "trim";
+    id: "frame" | "servo" | "trim" | "motorTest" | "failsafe";
     label: string;
 }
 
@@ -31,11 +33,13 @@ function SidebarRow({item, active, onSelect}: {item: SetupItem; active: boolean;
 }
 
 /**
- * Friendly forms over one specific param family — Frame, Servo, and (later)
- * Failsafe — distinct from `ParametersPage` (raw access to everything) and
- * `CalibrationPage` (sensor procedures with a live-value wizard). Nothing
- * here runs a routine; it's all a plain read/set of named params, which is
- * exactly why it doesn't belong crammed into either of those pages instead.
+ * Friendly forms over one specific param family — Frame, Servo, Trim, and
+ * (later) Failsafe — distinct from `ParametersPage` (raw access to
+ * everything) and `CalibrationPage` (sensor procedures with a live-value
+ * wizard). Motor Test is the one tab here that isn't a plain read/set of
+ * named params — it sends a live `MAV_CMD_DO_MOTOR_TEST` — but it belongs
+ * next to Frame/Servo rather than in `CalibrationPage` since it's verifying
+ * the wiring those two tabs configure, not calibrating a sensor.
  */
 export default function SetupPage() {
     const connection = useConnection();
@@ -50,6 +54,10 @@ export default function SetupPage() {
         }
         list.push({id: "servo", label: "Servo"});
         list.push({id: "trim", label: "Trim"});
+        if (vehicle.vehicleKind === "multirotor") {
+            list.push({id: "motorTest", label: "Motor Test"});
+        }
+        list.push({id: "failsafe", label: "Failsafe"});
         return list;
     }, [vehicle.vehicleKind]);
 
@@ -89,6 +97,10 @@ export default function SetupPage() {
                     <ServoSetupPanel live={live.values} onSet={live.setParam} firmware={firmware}/>
                 ) : selectedId === "trim" ? (
                     <TrimSetupPanel live={live.values} onSet={live.setParam} firmware={firmware}/>
+                ) : selectedId === "motorTest" ? (
+                    <MotorTestPanel live={live.values} firmware={firmware} armed={vehicle.armed}/>
+                ) : selectedId === "failsafe" ? (
+                    <FailsafeSetupPanel live={live.values} onSet={live.setParam} firmware={firmware}/>
                 ) : null}
             </div>
         </div>

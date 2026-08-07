@@ -1,10 +1,51 @@
 import {useState} from "react";
 import {DocumentDownload, DocumentExport, DocumentImport} from "@carbon/icons-react";
+import {save as saveDialog, open as openDialog} from "@tauri-apps/plugin-dialog";
+import {writeTextFile, readTextFile} from "@tauri-apps/plugin-fs";
 import MissionMap from "./MissionMap.tsx";
 import WaypointList from "./WaypointList.tsx";
 import type {MissionApi} from "@/lib/mission/useMission.ts";
 import type {Waypoint} from "@/lib/mission/mission.ts";
 import {distanceMeters} from "@/lib/vehicle/vehicle.ts";
+
+const MISSION_FILE_FILTERS = [{name: "Mission file", extensions: ["json"]}];
+
+interface MissionFile {
+    version: 1;
+    waypoints: Omit<Waypoint, "id">[];
+}
+
+/** Native save dialog, not a browser download link — this is a desktop app,
+ * and a silent drop into the downloads folder (what the `<a download>` trick
+ * used to do here) gives the operator no say over where the file lands.
+ * Mirrors `ParametersPage`'s `handleSave`. */
+async function exportMission(waypoints: Waypoint[]): Promise<string | null> {
+    const path = await saveDialog({
+        defaultPath: "mission.json",
+        filters: MISSION_FILE_FILTERS,
+    });
+    if (!path) return null; // user cancelled
+    const payload: MissionFile = {
+        version: 1,
+        waypoints: waypoints.map(({id: _id, ...rest}) => rest),
+    };
+    await writeTextFile(path, JSON.stringify(payload, null, 2));
+    return path;
+}
+
+/** Native open dialog, mirroring `ParametersPage`'s `handleLoad`. Returns
+ * `null` on cancel and throws on a malformed file so the caller can show it
+ * as an error rather than swallowing it. */
+async function importMission(): Promise<Omit<Waypoint, "id">[] | null> {
+    const path = await openDialog({multiple: false, filters: MISSION_FILE_FILTERS});
+    if (!path || Array.isArray(path)) return null; // user cancelled
+    const text = await readTextFile(path);
+    const data = JSON.parse(text) as Partial<MissionFile>;
+    if (data.version !== 1 || !Array.isArray(data.waypoints)) {
+        throw new Error("That file isn't a recognized mission file.");
+    }
+    return data.waypoints;
+}
 
 interface MissionPageProps {
     mission: MissionApi;
@@ -24,41 +65,8 @@ function formatDuration(seconds: number): string {
     return m > 0 ? `${m} min ${s}s` : `${s}s`;
 }
 
-function saveMission(waypoints: Waypoint[]): void {
-    const payload = {
-        version: 1,
-        waypoints: waypoints.map(({id: _id, ...rest}) => rest),
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {type: "application/json"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "mission.json";
-    a.click();
-    URL.revokeObjectURL(url);
-}
-
-function loadMission(onLoad: (saved: Omit<Waypoint, "id">[]) => void): void {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".json";
-    input.onchange = () => {
-        const file = input.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const data = JSON.parse(e.target?.result as string) as {version: number; waypoints: Omit<Waypoint, "id">[]};
-                if (data.version === 1 && Array.isArray(data.waypoints)) {
-                    onLoad(data.waypoints);
-                }
-            } catch {
-                // Silently ignore malformed files
-            }
-        };
-        reader.readAsText(file);
-    };
-    input.click();
+function message(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -70,9 +78,31 @@ function loadMission(onLoad: (saved: Omit<Waypoint, "id">[]) => void): void {
  */
 export default function MissionPage({mission}: MissionPageProps) {
     const [previewSpeed, setPreviewSpeed] = useState(10);
+    const [fileError, setFileError] = useState<string | null>(null);
 
     const totalDist = totalRouteDistance(mission.waypoints);
     const estTime = previewSpeed > 0 ? totalDist / previewSpeed : null;
+
+    const handleExport = async () => {
+        setFileError(null);
+        try {
+            await exportMission(mission.waypoints);
+        } catch (error) {
+            setFileError(message(error));
+        }
+    };
+
+    const handleImport = async () => {
+        setFileError(null);
+        try {
+            const waypoints = await importMission();
+            if (waypoints) {
+                mission.loadWaypoints(waypoints);
+            }
+        } catch (error) {
+            setFileError(message(error));
+        }
+    };
 
     return (
         <div className="flex h-full w-full">
@@ -84,33 +114,41 @@ export default function MissionPage({mission}: MissionPageProps) {
                 <div className="flex shrink-0 items-center gap-1 border-b border-border-subtle px-2 py-1.5">
                     <button
                         type="button"
-                        title="Load from file"
-                        onClick={() => loadMission(mission.loadWaypoints)}
+                        title="Import from a mission file"
+                        onClick={() => void handleImport()}
                         className="flex items-center gap-1 px-2 py-1 text-label text-text-secondary hover:bg-layer-hover-01 hover:text-text-primary"
                     >
                         <DocumentImport size={16}/>
-                        Load
+                        Import
                     </button>
                     <button
                         type="button"
-                        title="Save to file"
+                        title="Export to a mission file"
                         disabled={mission.waypoints.length === 0}
-                        onClick={() => saveMission(mission.waypoints)}
+                        onClick={() => void handleExport()}
                         className="flex items-center gap-1 px-2 py-1 text-label text-text-secondary hover:enabled:bg-layer-hover-01 hover:enabled:text-text-primary disabled:text-text-disabled"
                     >
                         <DocumentExport size={16}/>
-                        Save
+                        Export
                     </button>
                     <button
                         type="button"
-                        title="Download from vehicle — not yet implemented"
-                        disabled
-                        className="flex items-center gap-1 px-2 py-1 text-label text-text-disabled"
+                        title="Download the mission currently stored on the vehicle"
+                        disabled={mission.downloading}
+                        onClick={() => void mission.download().catch(() => {})}
+                        className="flex items-center gap-1 px-2 py-1 text-label text-text-secondary hover:enabled:bg-layer-hover-01 hover:enabled:text-text-primary disabled:text-text-disabled"
                     >
                         <DocumentDownload size={16}/>
-                        From Vehicle
+                        {mission.downloading ? "Downloading…" : "From Vehicle"}
                     </button>
                 </div>
+                {(fileError || mission.downloadError || mission.downloadWarning) && (
+                    <div className="shrink-0 border-b border-border-subtle bg-layer-02 px-3 py-1.5 text-label">
+                        {fileError && <div className="text-state-danger">{fileError}</div>}
+                        {mission.downloadError && <div className="text-state-danger">{mission.downloadError}</div>}
+                        {mission.downloadWarning && <div className="text-state-warn">{mission.downloadWarning}</div>}
+                    </div>
+                )}
 
                 {/* Waypoint list */}
                 <WaypointList

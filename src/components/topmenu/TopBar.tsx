@@ -130,6 +130,7 @@ export default function TopBar({vehicle, settings, openIds, page, mission, onRes
                         disabled: mission.starting,
                         title: mission.starting ? "Already starting" : undefined,
                     },
+                    {label: "Edit Geofence…", action: () => navigation.openPage("geofence"), separatorBefore: true},
                 ],
             },
             {

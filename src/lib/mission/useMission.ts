@@ -1,7 +1,7 @@
 import {useCallback, useState} from "react";
 import {listen} from "@tauri-apps/api/event";
 import {DEFAULT_WAYPOINT_ALTITUDE_M, Waypoint, WaypointAction} from "./mission.ts";
-import {uploadMission} from "./missionCommands.ts";
+import {downloadMission, uploadMission} from "./missionCommands.ts";
 import {sendVehicleCommand} from "@/lib/vehicle/commands.ts";
 import {createStore} from "@/lib/store.ts";
 import {useSyncExternalStore} from "react";
@@ -20,6 +20,14 @@ export interface MissionApi {
     upload: () => Promise<void>;
     uploading: boolean;
     uploadError: string | null;
+    /** Pulls the mission stored on the vehicle and replaces the draft with
+     * it. Resolves once `downloadWarning` (if any) has been set. */
+    download: () => Promise<void>;
+    downloading: boolean;
+    downloadError: string | null;
+    /** Set after a download that dropped one or more unrecognized mission
+     * items — not an error, just an incomplete round trip worth flagging. */
+    downloadWarning: string | null;
     start: () => Promise<void>;
     starting: boolean;
     startError: string | null;
@@ -72,6 +80,9 @@ export function useMission(): MissionApi {
     const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
     const [uploading, setUploading] = useState(false);
     const [uploadError, setUploadError] = useState<string | null>(null);
+    const [downloading, setDownloading] = useState(false);
+    const [downloadError, setDownloadError] = useState<string | null>(null);
+    const [downloadWarning, setDownloadWarning] = useState<string | null>(null);
     const [starting, setStarting] = useState(false);
     const [startError, setStartError] = useState<string | null>(null);
 
@@ -123,6 +134,26 @@ export function useMission(): MissionApi {
         }
     }, [waypoints]);
 
+    const download = useCallback(async () => {
+        setDownloading(true);
+        setDownloadError(null);
+        setDownloadWarning(null);
+        try {
+            const result = await downloadMission();
+            loadWaypoints(result.waypoints);
+            if (result.skipped > 0) {
+                setDownloadWarning(
+                    `${result.skipped} mission item${result.skipped === 1 ? "" : "s"} used an unsupported command and ${result.skipped === 1 ? "was" : "were"} skipped.`,
+                );
+            }
+        } catch (error) {
+            setDownloadError(message(error));
+            throw error;
+        } finally {
+            setDownloading(false);
+        }
+    }, [loadWaypoints]);
+
     const start = useCallback(async () => {
         setStarting(true);
         setStartError(null);
@@ -149,6 +180,10 @@ export function useMission(): MissionApi {
         upload,
         uploading,
         uploadError,
+        download,
+        downloading,
+        downloadError,
+        downloadWarning,
         start,
         starting,
         startError,

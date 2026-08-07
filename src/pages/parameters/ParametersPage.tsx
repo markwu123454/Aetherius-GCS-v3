@@ -1,4 +1,5 @@
-import {type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState} from "react";
+import {type ReactNode, forwardRef, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState} from "react";
+import {useVirtualizer} from "@tanstack/react-virtual";
 import {Search} from "@carbon/icons-react";
 import {save as saveDialog, open as openDialog} from "@tauri-apps/plugin-dialog";
 import {writeTextFile, readTextFile} from "@tauri-apps/plugin-fs";
@@ -428,107 +429,124 @@ interface ParamRowsProps {
     query: string;
 }
 
-function ParamTableRow({
-    row,
-    showGroup,
-    isActive,
-    liveEntry,
-    query,
-    onSelect,
-    rowRef,
-}: {
+/** Grid columns for the row layout — a hand-rolled `<table>` gave the
+ * browser no way to skip layout for off-screen rows, and pairs badly with
+ * virtualization (a `<tbody>` can't hold absolutely-positioned children).
+ * Widths are close approximations of what auto table layout used to pick;
+ * the "Group" column drops out entirely, same as before, when a selection
+ * already implies it. */
+const GRID_TEMPLATE_WITH_GROUP = "minmax(180px,1.3fr) 120px minmax(200px,1.6fr) 130px 90px";
+const GRID_TEMPLATE_NO_GROUP = "minmax(180px,1.3fr) minmax(200px,1.6fr) 130px 90px";
+
+const ROW_HEIGHT_ESTIMATE = 33;
+
+const ParamTableRow = forwardRef<HTMLDivElement, {
+    index: number;
     row: ParamMatch;
     showGroup: boolean;
     isActive: boolean;
     liveEntry: LiveParamEntry | undefined;
     query: string;
+    gridTemplate: string;
+    top: number;
     onSelect: () => void;
-    rowRef?: (el: HTMLTableRowElement | null) => void;
-}) {
+    /** Used once, off-screen, purely to measure a real row's rendered
+     * height before the virtualizer below is ever initialized — see the
+     * comment on `ParamRows`. Not interactive and not visible. */
+    probe?: boolean;
+}>(function ParamTableRow({index, row, showGroup, isActive, liveEntry, query, gridTemplate, top, onSelect, probe}, ref) {
     return (
-        <tr
-            ref={rowRef}
+        <div
+            ref={ref}
+            data-index={index}
             role="button"
-            tabIndex={0}
+            tabIndex={probe ? -1 : 0}
+            aria-hidden={probe}
             aria-pressed={isActive}
-            onClick={onSelect}
-            onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    onSelect();
-                }
-            }}
+            onClick={probe ? undefined : onSelect}
+            onKeyDown={
+                probe
+                    ? undefined
+                    : (event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              onSelect();
+                          }
+                      }
+            }
+            style={{gridTemplateColumns: gridTemplate, transform: `translateY(${top}px)`}}
             className={[
-                "cursor-pointer border-b border-border-subtle-base",
-                isActive ? "bg-layer-hover-01" : "hover:bg-layer-hover-01",
+                "absolute left-0 top-0 grid w-full items-center border-b border-border-subtle-base",
+                probe ? "invisible" : "cursor-pointer",
+                !probe && isActive ? "bg-layer-hover-01" : "",
+                !probe && !isActive ? "hover:bg-layer-hover-01" : "",
             ].join(" ")}
         >
-            <td className="px-3 py-1.5">
-                <div className="flex items-center gap-2">
-                    <span className="font-mono text-text-primary">
-                        <HighlightMatch text={row.param.name} query={query}/>
-                    </span>
-                    <FlagBadges param={row.param}/>
-                </div>
-            </td>
+            <div className="flex min-w-0 items-center gap-2 px-3 py-1.5">
+                <span className="truncate font-mono text-text-primary">
+                    <HighlightMatch text={row.param.name} query={query}/>
+                </span>
+                <FlagBadges param={row.param}/>
+            </div>
             {showGroup && (
-                <td className="px-3 py-1.5 text-text-helper">{groupLabel(row.group)}</td>
+                <div className="truncate px-3 py-1.5 text-text-helper">{groupLabel(row.group)}</div>
             )}
-            <td className="px-3 py-1.5 text-text-secondary">
+            <div className="truncate px-3 py-1.5 text-text-secondary">
                 <HighlightMatch text={row.param.humanName} query={query}/>
-            </td>
-            <td
+            </div>
+            <div
                 className={[
-                    "px-3 py-1.5 font-mono",
+                    "truncate px-3 py-1.5 font-mono",
                     liveEntry ? "text-text-primary" : "text-text-disabled",
                 ].join(" ")}
                 title={liveEntry ? undefined : "Not read from the vehicle yet"}
             >
                 {liveEntry ? formatParamValue(liveEntry) : "—"}
-            </td>
-            <td className="px-3 py-1.5 text-text-helper">{row.param.unitText ?? row.param.units ?? ""}</td>
-        </tr>
+            </div>
+            <div className="truncate px-3 py-1.5 text-text-helper">{row.param.unitText ?? row.param.units ?? ""}</div>
+        </div>
     );
-}
-
-/** A guess used only for the first paint, before `ParamRows` has measured a
- * real row — replaced immediately once one exists, see the `measureRef`
- * callback below. */
-const FALLBACK_ROW_HEIGHT = 33;
-const OVERSCAN_ROWS = 10;
+});
 
 /**
- * Row-windowed table body: with the full reference sheet loaded (~1500-5000
+ * Row-virtualized list: with the full reference sheet loaded (~1500-5000
  * parameters depending on firmware) either browsing "All" or a broad search
- * match can put thousands of matches in `rows`. Rendering every one of them
- * as a real `<tr>` — each running `HighlightMatch`'s character-by-character
- * scan plus a `Map` lookup — is what actually produced the reported lag, not
- * the substring search itself (that part got its own fix in
- * `paramSheet.ts`'s cached lowercase index). Only the rows within the
- * scrolled viewport (plus a small overscan) ever mount; the rest are two
- * spacer rows sized to hold their place, so the scrollbar and scroll
- * position behave exactly as if every row were present.
+ * match can put thousands of matches in `rows`. `@tanstack/react-virtual`
+ * drives the actual scroll-frame scheduling (a hand-rolled version of that
+ * part fell behind during a fast scrollbar drag).
+ *
+ * The row height feeding it is measured once, from a real (but invisible)
+ * row, *before* the virtualizer is ever initialized — not corrected
+ * afterward. An earlier version started the virtualizer on a rough guess and
+ * patched `estimateSize` once a real measurement came in, which turned out
+ * not to work: the library assigns each index a size the first time it's
+ * queried and never revisits it just because a later `estimateSize()` call
+ * returns something different, so indices already scanned before the
+ * correction landed stayed pinned to the wrong guess forever, while indices
+ * discovered afterward got the corrected value — a permanent, growing split
+ * that read as "drifts after dragging around a bit" once enough
+ * never-before-seen rows had been scanned under the stale guess. Measuring
+ * up front means `estimateSize` is only ever asked for the *correct* size,
+ * for every index, from the very first call — nothing to drift.
  */
 function ParamRows({rows, showGroup, selected, onSelect, live, query}: ParamRowsProps) {
     const scrollRef = useRef<HTMLDivElement | null>(null);
-    const [scrollTop, setScrollTop] = useState(0);
-    const [viewportHeight, setViewportHeight] = useState(0);
-    const [rowHeight, setRowHeight] = useState(FALLBACK_ROW_HEIGHT);
-    const measured = useRef(false);
+    const probeRef = useRef<HTMLDivElement | null>(null);
+    const [rowHeight, setRowHeight] = useState<number | null>(null);
 
-    useEffect(() => {
-        const el = scrollRef.current;
-        if (!el) return;
-        const onScroll = () => setScrollTop(el.scrollTop);
-        const resizeObserver = new ResizeObserver(() => setViewportHeight(el.clientHeight));
-        el.addEventListener("scroll", onScroll, {passive: true});
-        resizeObserver.observe(el);
-        setViewportHeight(el.clientHeight);
-        return () => {
-            el.removeEventListener("scroll", onScroll);
-            resizeObserver.disconnect();
-        };
-    }, []);
+    useLayoutEffect(() => {
+        if (rowHeight === null && probeRef.current) {
+            setRowHeight(probeRef.current.getBoundingClientRect().height || ROW_HEIGHT_ESTIMATE);
+        }
+    }, [rowHeight]);
+
+    // Not virtualized until the real row height is known — see above.
+    const virtualizer = useVirtualizer({
+        count: rowHeight === null ? 0 : rows.length,
+        getScrollElement: () => scrollRef.current,
+        estimateSize: () => rowHeight ?? ROW_HEIGHT_ESTIMATE,
+        overscan: 12,
+    });
 
     // A freshly-selected group or a new search result set starts scrolled to
     // the top — otherwise a scroll position from a much longer previous list
@@ -536,64 +554,62 @@ function ParamRows({rows, showGroup, selected, onSelect, live, query}: ParamRows
     // operator manually scrolls back up.
     useEffect(() => {
         scrollRef.current?.scrollTo({top: 0});
-        setScrollTop(0);
     }, [rows]);
 
-    const measureRef = (el: HTMLTableRowElement | null) => {
-        if (el && !measured.current) {
-            measured.current = true;
-            setRowHeight(el.getBoundingClientRect().height || FALLBACK_ROW_HEIGHT);
-        }
-    };
-
-    const total = rows.length;
-    const startIndex = Math.max(0, Math.floor(scrollTop / rowHeight) - OVERSCAN_ROWS);
-    const endIndex = Math.min(total, Math.ceil((scrollTop + viewportHeight) / rowHeight) + OVERSCAN_ROWS);
-    const visible = rows.slice(startIndex, endIndex);
-    const topSpacer = startIndex * rowHeight;
-    const bottomSpacer = (total - endIndex) * rowHeight;
-    const columnCount = showGroup ? 5 : 4;
+    const gridTemplate = showGroup ? GRID_TEMPLATE_WITH_GROUP : GRID_TEMPLATE_NO_GROUP;
+    const probeRow = rows[0];
 
     return (
         <div ref={scrollRef} className="h-full w-full overflow-auto">
-            <table className="w-full border-collapse text-label">
-                <thead className="sticky top-0 z-10 bg-layer-01 text-text-helper">
-                    <tr className="text-left">
-                        <th className="border-b border-border-subtle px-3 py-2 font-normal">Name</th>
-                        {showGroup && <th className="border-b border-border-subtle px-3 py-2 font-normal">Group</th>}
-                        <th className="border-b border-border-subtle px-3 py-2 font-normal">Human name</th>
-                        <th className="border-b border-border-subtle px-3 py-2 font-normal">Value</th>
-                        <th className="border-b border-border-subtle px-3 py-2 font-normal">Units</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {topSpacer > 0 && (
-                        <tr aria-hidden style={{height: topSpacer}}>
-                            <td colSpan={columnCount} />
-                        </tr>
-                    )}
-                    {visible.map((row, i) => {
+            <div
+                className="sticky top-0 z-10 grid border-b border-border-subtle bg-layer-01 text-left text-label text-text-helper"
+                style={{gridTemplateColumns: gridTemplate}}
+            >
+                <div className="px-3 py-2">Name</div>
+                {showGroup && <div className="px-3 py-2">Group</div>}
+                <div className="px-3 py-2">Human name</div>
+                <div className="px-3 py-2">Value</div>
+                <div className="px-3 py-2">Units</div>
+            </div>
+
+            {rowHeight === null && probeRow && (
+                <ParamTableRow
+                    ref={probeRef}
+                    probe
+                    index={0}
+                    row={probeRow}
+                    showGroup={showGroup}
+                    isActive={false}
+                    liveEntry={live.get(probeRow.param.name)}
+                    query={query}
+                    gridTemplate={gridTemplate}
+                    top={0}
+                    onSelect={() => {}}
+                />
+            )}
+
+            {rowHeight !== null && (
+                <div className="relative w-full" style={{height: virtualizer.getTotalSize()}}>
+                    {virtualizer.getVirtualItems().map((virtualRow) => {
+                        const row = rows[virtualRow.index];
                         const isActive = selected?.param.name === row.param.name && selected?.group === row.group;
                         return (
                             <ParamTableRow
-                                key={`${row.group}:${row.param.name}`}
+                                key={virtualRow.key}
+                                index={virtualRow.index}
                                 row={row}
                                 showGroup={showGroup}
                                 isActive={isActive}
                                 liveEntry={live.get(row.param.name)}
                                 query={query}
+                                gridTemplate={gridTemplate}
+                                top={virtualRow.start}
                                 onSelect={() => onSelect(row)}
-                                rowRef={i === 0 ? measureRef : undefined}
                             />
                         );
                     })}
-                    {bottomSpacer > 0 && (
-                        <tr aria-hidden style={{height: bottomSpacer}}>
-                            <td colSpan={columnCount} />
-                        </tr>
-                    )}
-                </tbody>
-            </table>
+                </div>
+            )}
         </div>
     );
 }

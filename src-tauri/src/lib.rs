@@ -4,6 +4,7 @@ use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 mod commands;
 mod dispatch;
+mod fence;
 mod firmware;
 mod link;
 mod logs;
@@ -51,6 +52,7 @@ pub fn run() {
         .manage(commands::CommandState::default())
         .manage(params::ParamState::default())
         .manage(mission::MissionState::default())
+        .manage(fence::FenceState::default())
         .manage(dispatch::DispatchState::default())
         .manage(scripting::FtpState::default())
         .manage(logs::LogsState::default())
@@ -64,9 +66,13 @@ pub fn run() {
             link::reboot_link,
             vehicle_command::send_vehicle_command,
             vehicle_command::send_rc_override,
+            vehicle_command::stop_all_motor_tests,
             params::refresh_params,
             params::set_param,
             mission::upload_mission,
+            mission::download_mission,
+            fence::upload_fence,
+            fence::download_fence,
             scripting::list_local_dir,
             scripting::read_local_file,
             scripting::write_local_file,

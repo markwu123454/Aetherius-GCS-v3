@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "name": "First-Time Setup",
+  "items": [
+    {
+      "id": "setup-01",
+      "text": "You're in Aetherius GCS — tick this off and keep this panel open",
+      "checked": false
+    },
+    {
+      "id": "setup-02",
+      "text": "Plug flight controller into computer via USB",
+      "checked": false
+    },
+    {
+      "id": "setup-03",
+      "text": "Flash ArduPilot — ☰ › Vehicle › Firmware, pick Copter, Plane or Rover",
+      "checked": false
+    },
+    {
+      "id": "setup-04",
+      "text": "Connect to FC — click Connect (top right), pick your COM port",
+      "checked": false,
+      "autoCheck": { "type": "connected" },
+      "autoUncheck": { "type": "disconnected" }
+    },
+    {
+      "id": "setup-05",
+      "text": "Set frame class — ☰ › Vehicle › Setup › Frame — Quad, Hex, Octo…",
+      "checked": false
+    },
+    {
+      "id": "setup-06",
+      "text": "Set frame geometry — same page — X, +, V, H…",
+      "checked": false
+    },
+    {
+      "id": "setup-07",
+      "text": "Calibrate accelerometer — ☰ › Vehicle › Calibration › Accelerometer",
+      "checked": false
+    },
+    {
+      "id": "setup-08",
+      "text": "Calibrate gyro — ☰ › Vehicle › Calibration › Gyro (just click Start)",
+      "checked": false
+    },
+    {
+      "id": "setup-09",
+      "text": "Calibrate compass — ☰ › Vehicle › Calibration › Compass, rotate through all axes",
+      "checked": false
+    },
+    {
+      "id": "setup-10",
+      "text": "Wire RC receiver to FC — CRSF, SBUS or PPM port (check your FC pinout)",
+      "checked": false
+    },
+    {
+      "id": "setup-11",
+      "text": "Bind transmitter to receiver — follow your receiver manual",
+      "checked": false
+    },
+    {
+      "id": "setup-12",
+      "text": "Calibrate radio — ☰ › Vehicle › Calibration › Radio, move all sticks and switches to limits",
+      "checked": false
+    },
+    {
+      "id": "setup-13",
+      "text": "Set flight modes — ☰ › Vehicle › Parameters, search FLTMODE — set Stabilize, Loiter, RTL",
+      "checked": false
+    },
+    {
+      "id": "setup-14",
+      "text": "Set RC failsafe — ☰ › Vehicle › Parameters, search FS_THR_ENABLE = 1",
+      "checked": false
+    },
+    {
+      "id": "setup-15",
+      "text": "Set RTL altitude — ☰ › Vehicle › Parameters, RTL_ALT = 3000 (means 30 m)",
+      "checked": false
+    },
+    {
+      "id": "setup-16",
+      "text": "REMOVE ALL PROPELLERS before the next step — every one",
+      "checked": false
+    },
+    {
+      "id": "setup-17",
+      "text": "Test motors — ☰ › Vehicle › Setup › Motor Test, all spin without grinding",
+      "checked": false
+    },
+    {
+      "id": "setup-18",
+      "text": "Motor directions correct — compare to frame diagram on your FC manufacturer's page",
+      "checked": false
+    },
+    {
+      "id": "setup-19",
+      "text": "Wrong direction? Swap any 2 of the 3 wires between ESC and that motor",
+      "checked": false
+    },
+    {
+      "id": "setup-20",
+      "text": "Install propellers — CW prop on CW motor, CCW on CCW (printed on the blade or hub)",
+      "checked": false
+    },
+    {
+      "id": "setup-21",
+      "text": "First-time setup done — use a pre-flight checklist before every flight from now on",
+      "checked": false
+    }
+  ]
+}
