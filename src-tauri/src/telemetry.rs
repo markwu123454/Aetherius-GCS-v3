@@ -2,6 +2,7 @@ use serde::Serialize;
 
 use mavlink::dialects::ardupilotmega::{MavMessage, MavSysStatusSensor};
 
+mod autopilot_version;
 mod ekf_status;
 mod global_position;
 mod heartbeat;
@@ -79,6 +80,33 @@ pub struct VehicleSnapshot {
     pub servo_voltage: Option<f32>,
     /// MISSION_CURRENT: sequence number of the currently active mission item.
     pub current_wp: Option<u16>,
+    /// AUTOPILOT_VERSION's `flight_sw_version`, unpacked MSB to LSB. `None`
+    /// until the one-shot request (`link::request_autopilot_version`) is
+    /// answered.
+    pub flight_sw_major: Option<u8>,
+    pub flight_sw_minor: Option<u8>,
+    pub flight_sw_patch: Option<u8>,
+    /// FIRMWARE_VERSION_TYPE: 0 dev, 64 alpha, 128 beta, 192 rc, 255 official.
+    pub flight_sw_version_type: Option<u8>,
+    /// HW/board version — the first 16 bits are ArduPilot's own board-type
+    /// enumeration (`Tools/AP_Bootloader/board_types.txt`), the rest a
+    /// silicon ID. Forwarded raw; the frontend doesn't resolve it to a name
+    /// since the USB vendor/product match already gives a friendlier one.
+    pub board_version: Option<u32>,
+    pub board_vendor_id: Option<u16>,
+    pub board_product_id: Option<u16>,
+    /// First 8 bytes of the firmware's git hash, hex-encoded. `None` if the
+    /// board reported an all-zero hash (not built with one).
+    pub flight_custom_version: Option<String>,
+    /// The board's own hardware UID, hex-encoded — `uid2` (18 bytes) if the
+    /// board populates it, falling back to the legacy `uid` (8 bytes) per
+    /// the MAVLink spec's own guidance, `None` if both come back all-zero
+    /// (a board too old to report either). Used to key per-vehicle storage
+    /// (`vehicle_profile.rs`) so two different aircraft's dataflash logs
+    /// can't collide — not derived from `sysid`, which is just the
+    /// configurable `SYSID_THISMAV` parameter and collides constantly
+    /// across different vehicles left at its default.
+    pub board_uid: Option<String>,
 }
 
 /// Fold one message into the snapshot. Only the messages the status strip
@@ -88,6 +116,7 @@ pub struct VehicleSnapshot {
 pub fn apply(snapshot: &mut VehicleSnapshot, message: &MavMessage) {
     match message {
         MavMessage::HEARTBEAT(data) => heartbeat::apply(snapshot, data),
+        MavMessage::AUTOPILOT_VERSION(data) => autopilot_version::apply(snapshot, data),
         MavMessage::GLOBAL_POSITION_INT(data) => global_position::apply(snapshot, data),
         MavMessage::EKF_STATUS_REPORT(data) => ekf_status::apply(snapshot, data),
         MavMessage::RADIO_STATUS(data) => snapshot.radio_rssi = Some(data.rssi),

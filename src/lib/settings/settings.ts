@@ -1,4 +1,8 @@
 import {DEFAULT_AIRSPACE_SETTINGS, type AirspaceSettings} from "@/lib/airspace/classes.ts";
+import type {SpeedUnit} from "@/lib/units/speed.ts";
+import type {VerticalSpeedUnit} from "@/lib/units/verticalSpeed.ts";
+import type {AltitudeUnit} from "@/lib/units/altitude.ts";
+import type {DistanceUnit} from "@/lib/units/distance.ts";
 
 export type DisplayMode = "windowed" | "borderless" | "fullscreen";
 
@@ -25,6 +29,22 @@ export interface Settings {
     /** Require a second click before disconnecting a link to an armed vehicle. */
     confirmDisconnectWhenArmed: boolean;
     displayMode: DisplayMode;
+    /** Unit every backend-reported horizontal speed (groundspeed, airspeed,
+     * wind speed) is displayed in. Doesn't touch editable fields tied to a
+     * specific wire unit — see units/speed.ts. */
+    speedUnit: SpeedUnit;
+    /** Unit climb rate is displayed in — separate from `speedUnit` since
+     * vertical speed conventionally uses a different unit (ft/min) than
+     * horizontal speed. See units/verticalSpeed.ts. */
+    verticalSpeedUnit: VerticalSpeedUnit;
+    /** Unit every backend-reported altitude is displayed in (position
+     * altitude, the PFD's ALT tape). See units/altitude.ts for what's
+     * excluded. */
+    altitudeUnit: AltitudeUnit;
+    /** Unit every backend-reported ground distance is displayed in (home
+     * distance, waypoint distance, cross-track error, mission route
+     * distance). See units/distance.ts. */
+    distanceUnit: DistanceUnit;
     mapBaseLayer: MapBaseLayer;
     mapRegionalLayers: MapRegionalLayers;
     /** Per-class airspace presentation. The single source of truth for which
@@ -62,6 +82,10 @@ export const MAX_TELEM_RATE_HZ = 20;
 export const DEFAULT_SETTINGS: Settings = {
     confirmDisconnectWhenArmed: true,
     displayMode: "windowed",
+    speedUnit: "mps",
+    verticalSpeedUnit: "mps",
+    altitudeUnit: "m",
+    distanceUnit: "m",
     mapBaseLayer: "esri",
     mapRegionalLayers: DEFAULT_MAP_REGIONAL_LAYERS,
     airspace: DEFAULT_AIRSPACE_SETTINGS,

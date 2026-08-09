@@ -98,8 +98,66 @@ export interface VehicleState {
     /** POWER_STATUS: FC 5V board rail and servo rail, both in volts. `null`
      * until the first POWER_STATUS message arrives. */
     power: {boardVoltage: number; servoVoltage: number} | null;
+    /** AUTOPILOT_VERSION, requested once right after the first HEARTBEAT
+     * (ArduPilot doesn't push it unasked). `null` until that reply arrives. */
+    firmware: FirmwareVersionInfo | null;
     /** Last packet of any kind, used to decide whether readings are stale. */
     updatedAt: number;
+}
+
+/** ArduPilot's `FIRMWARE_VERSION_TYPE` — its own release-channel tag, not the
+ * `.apj` manifest's `mav-firmware-version-type` string, though the two name
+ * the same idea. */
+export type FirmwareReleaseType = "dev" | "alpha" | "beta" | "rc" | "official" | "unknown";
+
+export interface FirmwareVersionInfo {
+    major: number;
+    minor: number;
+    patch: number;
+    releaseType: FirmwareReleaseType;
+    /** First 8 bytes of the build's git hash, hex-encoded. `null` if the
+     * board didn't report one. */
+    gitHash: string | null;
+    /** HW/board version straight off AUTOPILOT_VERSION — not resolved to a
+     * name here since the USB vendor/product match already gives a friendlier
+     * one when a board is plugged in. */
+    boardVersion: number;
+    vendorId: number;
+    productId: number;
+}
+
+const RELEASE_TYPES: Record<number, FirmwareReleaseType> = {
+    0: "dev",
+    64: "alpha",
+    128: "beta",
+    192: "rc",
+    255: "official",
+};
+
+export function releaseTypeOf(raw: number): FirmwareReleaseType {
+    return RELEASE_TYPES[raw] ?? "unknown";
+}
+
+export function releaseTypeLabel(type: FirmwareReleaseType): string {
+    switch (type) {
+        case "dev":
+            return "Dev";
+        case "alpha":
+            return "Alpha";
+        case "beta":
+            return "Beta";
+        case "rc":
+            return "RC";
+        case "official":
+            return "Stable";
+        case "unknown":
+            return "Unknown";
+    }
+}
+
+/** "V4.5.7 (Stable)". */
+export function firmwareVersionLabel(fw: FirmwareVersionInfo): string {
+    return `V${fw.major}.${fw.minor}.${fw.patch} (${releaseTypeLabel(fw.releaseType)})`;
 }
 
 /** A reading older than this is shown as stale rather than as a live value. */

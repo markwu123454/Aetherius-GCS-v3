@@ -31,6 +31,16 @@ function initial(): VehicleState {
         nav: null,
         currentWp: null,
         power: {boardVoltage: 5.03, servoVoltage: 4.98},
+        firmware: {
+            major: 4,
+            minor: 5,
+            patch: 7,
+            releaseType: "official",
+            gitHash: "a1b2c3d4",
+            boardVersion: 140,
+            vendorId: 0x2dae,
+            productId: 0x1058,
+        },
         updatedAt: now,
     };
 }

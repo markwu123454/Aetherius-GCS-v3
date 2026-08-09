@@ -5,7 +5,7 @@ use std::{
 
 use mavlink::dialects::ardupilotmega::{
     COMMAND_LONG_DATA, MAG_CAL_PROGRESS_DATA, MAG_CAL_REPORT_DATA, MavCmd, MavMessage,
-    MavMissionType, RC_CHANNELS_DATA, SERVO_OUTPUT_RAW_DATA, STATUSTEXT_DATA,
+    RC_CHANNELS_DATA, SERVO_OUTPUT_RAW_DATA, STATUSTEXT_DATA,
 };
 use num_traits::ToPrimitive;
 use tauri::{AppHandle, Emitter, Manager};
@@ -44,6 +44,7 @@ pub fn route(app: &AppHandle, snapshot: &mut VehicleSnapshot, message: &MavMessa
     flush_stale_statustext(app);
     match message {
         MavMessage::HEARTBEAT(_)
+        | MavMessage::AUTOPILOT_VERSION(_)
         | MavMessage::SYS_STATUS(_)
         | MavMessage::GPS_RAW_INT(_)
         | MavMessage::GLOBAL_POSITION_INT(_)
@@ -74,37 +75,31 @@ pub fn route(app: &AppHandle, snapshot: &mut VehicleSnapshot, message: &MavMessa
             true
         }
         MavMessage::MISSION_REQUEST_INT(data) => {
-            if data.mission_type == MavMissionType::MAV_MISSION_TYPE_FENCE {
-                fence::on_mission_request_int(app, data);
-            } else {
+            if !fence::try_on_mission_request_int(app, data) {
                 mission::on_request_int(app, data);
             }
             true
         }
         MavMessage::MISSION_REQUEST(data) => {
-            mission::on_request(app, data);
+            if !fence::try_on_mission_request(app, data) {
+                mission::on_request(app, data);
+            }
             true
         }
         MavMessage::MISSION_ACK(data) => {
-            if data.mission_type == MavMissionType::MAV_MISSION_TYPE_FENCE {
-                fence::on_mission_ack(app, data);
-            } else {
+            if !fence::try_on_mission_ack(app, data) {
                 mission::on_ack(app, data);
             }
             true
         }
         MavMessage::MISSION_COUNT(data) => {
-            if data.mission_type == MavMissionType::MAV_MISSION_TYPE_FENCE {
-                fence::on_mission_count(app, data);
-            } else {
+            if !fence::try_on_mission_count(app, data) {
                 mission::on_count(app, data);
             }
             true
         }
         MavMessage::MISSION_ITEM_INT(data) => {
-            if data.mission_type == MavMissionType::MAV_MISSION_TYPE_FENCE {
-                fence::on_mission_item_int(app, data);
-            } else {
+            if !fence::try_on_mission_item_int(app, data) {
                 mission::on_item_int(app, data);
             }
             true

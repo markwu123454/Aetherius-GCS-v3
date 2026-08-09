@@ -13,6 +13,7 @@ mod params;
 mod scripting;
 mod telemetry;
 mod vehicle_command;
+mod vehicle_profile;
 
 #[tauri::command]
 fn close_splash(app: tauri::AppHandle) {
@@ -39,6 +40,10 @@ pub fn run() {
                 .decorations(false)
                 .center()
                 .build()?;
+            // One-time move of any log downloaded before per-vehicle
+            // folders existed (see `vehicle_profile.rs`) — a no-op on
+            // every run after the first.
+            vehicle_profile::migrate_legacy_logs(app.handle());
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
@@ -56,6 +61,7 @@ pub fn run() {
         .manage(dispatch::DispatchState::default())
         .manage(scripting::FtpState::default())
         .manage(logs::LogsState::default())
+        .manage(logs::analysis::AnalysisState::default())
         .manage(firmware::flash::FlashState::default())
         .invoke_handler(tauri::generate_handler![
             close_splash,
@@ -95,6 +101,15 @@ pub fn run() {
             scripting::absolute_local_path,
             logs::list_logs,
             logs::download_log,
+            logs::cancel_download,
+            logs::list_downloaded_logs,
+            logs::analysis::open_log,
+            logs::analysis::get_log_series,
+            logs::analysis::get_log_text_events,
+            logs::analysis::load_analysis_state,
+            logs::analysis::save_analysis_state,
+            vehicle_profile::get_vehicle_profile,
+            vehicle_profile::set_vehicle_profile,
             firmware::flash::flash_fetch_manifest,
             firmware::flash::flash_prepare,
             firmware::flash::flash_start,

@@ -2,10 +2,12 @@ import {useSyncExternalStore} from "react";
 import {listen} from "@tauri-apps/api/event";
 import {createStore} from "@/lib/store.ts";
 import {
+    FirmwareVersionInfo,
     FixType,
     HomePosition,
     PREARM_TEXT_PREFIX,
     PrearmReason,
+    releaseTypeOf,
     VehicleAttitude,
     VehicleKind,
     VehiclePosition,
@@ -63,6 +65,14 @@ interface Snapshot {
     boardVoltage?: number | null;
     servoVoltage?: number | null;
     currentWp?: number | null;
+    flightSwMajor?: number | null;
+    flightSwMinor?: number | null;
+    flightSwPatch?: number | null;
+    flightSwVersionType?: number | null;
+    boardVersion?: number | null;
+    boardVendorId?: number | null;
+    boardProductId?: number | null;
+    flightCustomVersion?: string | null;
 }
 
 /** MAVLink GPS_FIX_TYPE. 0 (no GPS) and 1 (no fix) are both "no fix" to a pilot. */
@@ -92,6 +102,7 @@ export const NO_VEHICLE: VehicleState = {
     nav: null,
     power: null,
     currentWp: null,
+    firmware: null,
     updatedAt: 0,
 };
 
@@ -131,6 +142,30 @@ function homeOf(snapshot: Snapshot): HomePosition | null {
         return null;
     }
     return {lat: snapshot.homeLat, lon: snapshot.homeLon};
+}
+
+/** `null` until AUTOPILOT_VERSION has been requested and answered. */
+function firmwareOf(snapshot: Snapshot): FirmwareVersionInfo | null {
+    if (
+        snapshot.flightSwMajor == null ||
+        snapshot.flightSwMinor == null ||
+        snapshot.flightSwPatch == null ||
+        snapshot.boardVersion == null ||
+        snapshot.boardVendorId == null ||
+        snapshot.boardProductId == null
+    ) {
+        return null;
+    }
+    return {
+        major: snapshot.flightSwMajor,
+        minor: snapshot.flightSwMinor,
+        patch: snapshot.flightSwPatch,
+        releaseType: releaseTypeOf(snapshot.flightSwVersionType ?? -1),
+        gitHash: snapshot.flightCustomVersion ?? null,
+        boardVersion: snapshot.boardVersion,
+        vendorId: snapshot.boardVendorId,
+        productId: snapshot.boardProductId,
+    };
 }
 
 function fromSnapshot(snapshot: Snapshot): VehicleState {
@@ -183,6 +218,7 @@ function fromSnapshot(snapshot: Snapshot): VehicleState {
         power: snapshot.boardVoltage != null
             ? {boardVoltage: snapshot.boardVoltage, servoVoltage: snapshot.servoVoltage ?? 0}
             : null,
+        firmware: firmwareOf(snapshot),
         // The backend reports heartbeat age, so the wall-clock time it arrived
         // is derived here and the staleness rules keep working unchanged.
         updatedAt: sinceHeartbeat === null ? 0 : Date.now() - sinceHeartbeat,

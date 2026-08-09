@@ -5,7 +5,7 @@
 * Frontend: React
 * Desktop runtime: Tauri
 * Design system: IBM Carbon Design System
-* Target: ArduPilot only, no PX4 or other flight-stack abstraction
+* Scope: ArduPlane and ArduCopter only, windows only, no PX4 or other flight-stack abstraction
 
 ---
 
@@ -63,14 +63,34 @@ frontend renders whatever the backend hands it and holds only local UI state.
 
 * `link` — connection lifecycle only: opening/closing the transport, scanning
   for endpoints, the connect/disconnect state machine and its generation-based
-  cancellation.
+  cancellation. Reads off the wire and hands each message to `dispatch`.
+* `dispatch` — the single fan-out point `link` calls into for message
+  handling. Routes each incoming `MavMessage` to whichever module owns it
+  (`telemetry`, `fence`, `mission`, `params`, `logs`, `scripting`) and holds
+  the one piece of cross-cutting reassembly logic that doesn't belong to any
+  of them (STATUSTEXT chunk coalescing).
+* `commands` — the generic `COMMAND_LONG` → `COMMAND_ACK` machinery (send,
+  await, timeout, retry). Owns the ack-matching mechanism itself, not the
+  meaning of any particular command.
+* `vehicle_command` — the enum of actual vehicle actions the frontend can
+  ask for (arm, set mode, takeoff, mission start/pause/resume, reboot, motor
+  test, calibration start, ...) and their translation to a `COMMAND_LONG`'s
+  flat `param1..param7` layout. Built on `commands`.
 * `telemetry` — one file per MAVLink message type, each owning exactly the
-  snapshot fields that message carries. `telemetry::apply()` is the only
-  thing `link` calls into for message handling.
-* Future modules (`mission`, `params`, `calibration`) follow the same shape:
-  their own directory, a module root holding shared state and Tauri commands,
-  one file per message/action inside, registered into `lib.rs` the same way
-  `link` is today.
+  snapshot fields that message carries.
+* `mission`, `params`, `fence`, `logs` — one module each, holding that
+  domain's cache and Tauri commands. Each is currently a single file: a
+  module only grows its own directory (as `telemetry`, `firmware`, and
+  `scripting` have) once it needs one file per message/action to stay
+  readable, not on the assumption it eventually will.
+* `firmware` — bootloader handshake and flashing, split across
+  `firmware/bootloader.rs` and `firmware/flash.rs`.
+* `scripting` — Lua script sync with the vehicle over MAVLink FTP, split
+  across `scripting/ftp_protocol.rs`, `scripting/local_fs.rs`, and
+  `scripting/vehicle_cache.rs`.
+
+New modules register into `lib.rs` and `dispatch` the same way the ones above
+do.
 
 ---
 
@@ -82,7 +102,15 @@ The map is visible during normal operations, with tools displayed around or abov
 
 Exceptions:
 
-* Workflows that do not require situational awareness, such as firmware flashing, can use dedicated full-screen pages or workflows.
+* Workflows that do not require situational awareness, such as firmware
+  flashing, parameter/mission-plan file management, calibration, and vehicle
+  setup, use dedicated full-screen pages.
+* Workflows that edit a spatial *draft* — the Mission and Geofence editors —
+  are also full-screen pages, but they render their own dedicated map
+  instance rather than the persistent docked one. Editing a plan that isn't
+  uploaded yet shouldn't fight with the live vehicle position on the same
+  map, and the full-screen page gives the draft the room a docked panel
+  couldn't.
 
 ---
 
@@ -110,55 +138,9 @@ Supported dock areas:
 
 The top area is reserved for application-level controls.
 
-## Left and Right docks
-
-* Vertical splitting only
-* Maximum of three sections:
-
-    * Upper
-    * Middle
-    * Lower
-
-Example:
-
-```
-+-------------+
-| Upper       |
-+-------------+
-| Middle      |
-+-------------+
-| Lower       |
-+-------------+
-```
-
-No horizontal splitting.
-
----
-
-## Bottom dock
-
-* Horizontal splitting only
-* Maximum of three sections
-
-Example:
-
-```
-+-----------+-----------+-----------+
-| Panel 1   | Panel 2   | Panel 3   |
-+-----------+-----------+-----------+
-```
-
-No vertical splitting.
-
----
-
-# Tabs
-
-Each dock section contains a tab group.
-
-Multiple panels can share the same dock section.
-
-Example:
+Each dock area is exactly one tab group — no sub-splitting into sections.
+Multiple panels share that one tab group and are switched by tab, not laid
+out side by side within the dock:
 
 ```
 Right Dock
@@ -167,6 +149,15 @@ Right Dock
 ```
 
 The tab group model is similar to applications such as Adobe tools.
+
+Some panels (`Telemetry`, `Manual`) render a different internal layout
+depending on which dock area they're in — a stacked column on left/right, a
+side-by-side row on bottom — since their own layout is what actually
+benefits from the dock's shape, not the docking system itself splitting the
+area for them.
+
+Panels reorder by dragging within a dock's tab strip, and move between dock
+areas or out to floating by dragging toward the target.
 
 ---
 
@@ -189,19 +180,28 @@ They reopen in the same location after restarting.
 
 ## Floating panels
 
-Do not persist across restarts.
+Do not persist across restarts — reopening a panel that was floating when
+the app last closed opens it floating fresh near the panel launcher, with no
+memory of where it was.
 
-They are treated as temporary windows.
+They are treated as temporary windows. Their last size is still remembered
+per-panel independent of whether the window itself is currently open, so a
+reopened float doesn't reset to a default size even though its position
+does.
 
 ---
 
 # Navigation
 
-The application should avoid large traditional menus.
+The application should avoid large traditional menus. The app menu is a
+compact hamburger dropdown, not a persistent menu bar.
 
-Panels are opened through a panel selection system.
+Panels are opened through a panel selection system (the app menu's Panels
+list), which also shows which panels are currently open.
 
-A panel can have its own tab group inside a dock area.
+Full-screen pages (Settings, Parameters, Mission, Geofence, Scripting,
+Calibration, Setup, Firmware, Logs, About) are opened the same way and
+replace the workspace entirely until closed, rather than docking.
 
 ---
 

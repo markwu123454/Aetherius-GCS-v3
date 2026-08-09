@@ -6,6 +6,7 @@ export type PageId =
     | "parameters"
     | "scripting"
     | "logs"
+    | "logAnalysis"
     | "mission"
     | "geofence"
     | "settings"
@@ -18,8 +19,18 @@ export const PAGE_TITLES: Record<PageId, string> = {
     parameters: "Parameters",
     scripting: "Scripting",
     logs: "Logs",
+    logAnalysis: "Log Analysis",
     mission: "Mission",
     geofence: "Geofence",
     settings: "Settings",
     about: "About",
+};
+
+/** Where `closePage` lands instead of the bare workspace, for pages that
+ * are conceptually nested under another page even though they're just
+ * another flat `PageId` like any other — no page stack, just a per-page
+ * override of "back"'s default target. Absent from this table means back
+ * goes to the workspace, same as every page today. */
+export const PAGE_BACK_TARGET: Partial<Record<PageId, PageId>> = {
+    logAnalysis: "logs",
 };

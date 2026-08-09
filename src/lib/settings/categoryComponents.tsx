@@ -3,11 +3,55 @@ import {DisplayMode, MapBaseLayer, MapRegionalLayers, MIN_CONSOLE_COLLAPSE_THRES
 import {SettingsApi} from "./useSettings.ts";
 import {AIRSPACE_CLASSES, type AirspaceClass, type AirspaceClassSettings} from "@/lib/airspace/classes.ts";
 import {resolveToken} from "@/lib/airspace/airspace.ts";
+import {SPEED_UNITS} from "@/lib/units/speed.ts";
+import {VERTICAL_SPEED_UNITS} from "@/lib/units/verticalSpeed.ts";
+import {ALTITUDE_UNITS} from "@/lib/units/altitude.ts";
+import {DISTANCE_UNITS} from "@/lib/units/distance.ts";
 
 export type SettingsCategoryComponent = (props: {settings: SettingsApi}) => ReactElement;
 
 function clampedInt(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+/** One row of the Units section — a labeled radiogroup over a unit list
+ * from `lib/units/*.ts`, shared by speed/altitude/distance since all three
+ * are "pick one of these unit defs" with the same shape. */
+function UnitRow<T extends string>({
+    name,
+    label,
+    options,
+    value,
+    onChange,
+    help,
+}: {
+    name: string;
+    label: string;
+    options: {value: T; label: string; suffix: string}[];
+    value: T;
+    onChange: (value: T) => void;
+    help: string;
+}) {
+    return (
+        <div className="flex flex-col gap-1">
+            <span className="text-body text-text-primary">{label}</span>
+            <div className="flex flex-wrap gap-x-4 gap-y-1" role="radiogroup" aria-label={`${label} unit`}>
+                {options.map((opt) => (
+                    <label key={opt.value} className="flex items-center gap-2 text-body text-text-secondary">
+                        <input
+                            type="radio"
+                            name={name}
+                            checked={value === opt.value}
+                            onChange={() => onChange(opt.value)}
+                        />
+                        {opt.label}
+                        <span className="text-label text-text-helper">{opt.suffix}</span>
+                    </label>
+                ))}
+            </div>
+            <p className="text-label text-text-helper">{help}</p>
+        </div>
+    );
 }
 
 function ConnectionSettings({settings}: {settings: SettingsApi}) {
@@ -212,6 +256,50 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
                     />
                     Tilt map marker with vehicle attitude (multirotor only)
                 </label>
+            </section>
+
+            <section className="flex flex-col gap-4 border-t border-border-subtle pt-6">
+                <h2 className="text-heading text-text-primary">Units</h2>
+
+                <UnitRow
+                    name="speed-unit"
+                    label="Speed"
+                    options={SPEED_UNITS}
+                    value={settings.speedUnit}
+                    onChange={(v) => settings.set("speedUnit", v)}
+                    help="Groundspeed, airspeed, and wind speed. Mission speed overrides and
+                        vehicle parameters stay in m/s, since that's what's sent over the wire."
+                />
+
+                <UnitRow
+                    name="vertical-speed-unit"
+                    label="Climb rate"
+                    options={VERTICAL_SPEED_UNITS}
+                    value={settings.verticalSpeedUnit}
+                    onChange={(v) => settings.set("verticalSpeedUnit", v)}
+                    help="Separate from Speed above — vertical speed conventionally uses its own
+                        unit (ft/min) even when horizontal speed is in knots or km/h."
+                />
+
+                <UnitRow
+                    name="altitude-unit"
+                    label="Altitude"
+                    options={ALTITUDE_UNITS}
+                    value={settings.altitudeUnit}
+                    onChange={(v) => settings.set("altitudeUnit", v)}
+                    help="Position altitude and the PFD's ALT tape. Mission waypoint altitude,
+                        the Takeoff climb altitude, and fence altitude limits stay in meters."
+                />
+
+                <UnitRow
+                    name="distance-unit"
+                    label="Distance"
+                    options={DISTANCE_UNITS}
+                    value={settings.distanceUnit}
+                    onChange={(v) => settings.set("distanceUnit", v)}
+                    help="Distance to home, distance to the current waypoint, cross-track
+                        error, and the mission editor's route-distance stat."
+                />
             </section>
 
             <section className="flex flex-col gap-2 border-t border-border-subtle pt-6">

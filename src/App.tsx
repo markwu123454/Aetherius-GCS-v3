@@ -13,6 +13,7 @@ import CalibrationPage from "@/pages/calibration/CalibrationPage.tsx";
 import SetupPage from "@/pages/setup/SetupPage.tsx";
 import FirmwarePage from "@/pages/firmware/FirmwarePage.tsx";
 import LogsPage from "@/pages/logs/LogsPage.tsx";
+import LogAnalysisPage from "@/pages/logs/LogAnalysisPage.tsx";
 import AboutPage from "@/pages/about/AboutPage.tsx";
 import {useWorkspace} from "@/lib/workspace/useWorkspace.ts";
 import {useAirspace} from "@/lib/airspace/useAirspace.ts";
@@ -25,7 +26,7 @@ import {useApplyConsoleSettings} from "@/lib/settings/useApplyConsoleSettings.ts
 import {useApplyTelemetrySettings} from "@/lib/settings/useApplyTelemetrySettings.ts";
 import {useUpdateCheck} from "@/lib/update/useUpdateCheck.ts";
 import {NavigationApi, NavigationProvider} from "@/lib/navigation/useNavigation.tsx";
-import {PageId} from "@/lib/navigation/navigation.ts";
+import {PAGE_BACK_TARGET, PageId} from "@/lib/navigation/navigation.ts";
 import "./App.css";
 
 function App() {
@@ -94,13 +95,21 @@ function App() {
     // cache, and come back at the zoom-2 world view with the first-fix
     // flight-in queued up again.
     const [page, setPage] = useState<PageId | null>(null);
+    // Which log Log Analysis has open. A sibling of the page rather than
+    // state inside `LogAnalysisPage`, same reasoning as `mission` above —
+    // the Logs page's "Analyze" button is what sets it, and needs to reach
+    // it whether or not Log Analysis happens to be mounted yet.
+    const [analysisLogPath, setAnalysisLogPath] = useState<string | null>(null);
 
     const navigation = useMemo<NavigationApi>(
         () => ({
             openPanel: workspace.actions.open,
             closePanel: workspace.actions.close,
             openPage: setPage,
-            closePage: () => setPage(null),
+            // Most pages close straight to the workspace; a page present in
+            // `PAGE_BACK_TARGET` (just Log Analysis today) instead swaps to
+            // the page it's conceptually nested under.
+            closePage: () => setPage((prev) => (prev && PAGE_BACK_TARGET[prev]) ?? null),
         }),
         [workspace.actions],
     );
@@ -138,7 +147,15 @@ function App() {
                             {page === "calibration" && <CalibrationPage/>}
                             {page === "setup" && <SetupPage/>}
                             {page === "firmware" && <FirmwarePage/>}
-                            {page === "logs" && <LogsPage/>}
+                            {page === "logs" && (
+                                <LogsPage
+                                    onAnalyze={(path) => {
+                                        setAnalysisLogPath(path);
+                                        navigation.openPage("logAnalysis");
+                                    }}
+                                />
+                            )}
+                            {page === "logAnalysis" && <LogAnalysisPage path={analysisLogPath}/>}
                             {page === "about" && <AboutPage update={update}/>}
                         </FullScreenPage>
                     )}

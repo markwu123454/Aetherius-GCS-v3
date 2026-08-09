@@ -74,6 +74,20 @@ fn request_data_streams(app: &AppHandle, target_system: u8, target_component: u8
     }
 }
 
+/// ArduPilot doesn't push AUTOPILOT_VERSION on its own — it has to be asked
+/// for, same as the streams above. Sent once, right after the first
+/// HEARTBEAT; the reply is routed through `telemetry::apply` like any other
+/// message and lands in the same `vehicle` event the frontend already reads.
+fn request_autopilot_version(app: &AppHandle, target_system: u8, target_component: u8) {
+    let _ = commands::send_async(
+        app,
+        MavCmd::MAV_CMD_REQUEST_MESSAGE,
+        // param1: message id. AUTOPILOT_VERSION = 148.
+        [148.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        (target_system, target_component),
+    );
+}
+
 #[derive(Default)]
 pub struct LinkState {
     pub snapshot: Mutex<VehicleSnapshot>,
@@ -130,6 +144,7 @@ fn read_loop(
 
                     if first_heartbeat {
                         request_data_streams(&app, header.system_id, header.component_id, telem_interval_us);
+                        request_autopilot_version(&app, header.system_id, header.component_id);
                     }
                 }
 

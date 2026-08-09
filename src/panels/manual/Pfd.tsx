@@ -1,5 +1,8 @@
 import {useId} from "react";
 import FitBox from "./FitBox.tsx";
+import {useSettings} from "@/lib/settings/useSettings.ts";
+import {convertSpeed, speedUnitDef} from "@/lib/units/speed.ts";
+import {altitudeUnitDef, convertAltitude} from "@/lib/units/altitude.ts";
 
 /** Radius the horizon ball fills. Bank ticks are painted on its own rim;
  * everything heading-related lives further out, in the annulus between here
@@ -29,6 +32,12 @@ interface AttitudeIndicatorProps {
      * distinct from `unknown` since heading (from position, not attitude)
      * can already be live while this still isn't. */
     attitudeUnknown: boolean;
+    /** Unit abbreviation for the GS corner label, following the operator's
+     * speed unit preference — the flanking tape itself is scaled the same
+     * way, by the caller. */
+    speedSuffix: string;
+    /** Same as `speedSuffix`, for the ALT corner label. */
+    altSuffix: string;
 }
 
 /**
@@ -39,7 +48,7 @@ interface AttitudeIndicatorProps {
  * on the map. This instrument's job is answering "is the vehicle doing
  * something it shouldn't" at a glance, not being a manual flight reference.
  */
-function AttitudeIndicator({heading, roll, pitch, unknown, attitudeUnknown}: AttitudeIndicatorProps) {
+function AttitudeIndicator({heading, roll, pitch, unknown, attitudeUnknown, speedSuffix, altSuffix}: AttitudeIndicatorProps) {
     const clipId = useId();
     const showAttitude = !unknown && !attitudeUnknown;
 
@@ -199,8 +208,8 @@ function AttitudeIndicator({heading, roll, pitch, unknown, attitudeUnknown}: Att
                 flanking tapes, which otherwise carry no unit of their own —
                 units are spelled out here too, same abbreviations used by
                 the badges elsewhere in the panel (m/s, m). */}
-            <text x={5} y={11} fontSize={4.5} className="fill-text-helper font-mono">GS m/s</text>
-            <text x={95} y={11} textAnchor="end" fontSize={4.5} className="fill-text-helper font-mono">ALT m</text>
+            <text x={5} y={11} fontSize={4.5} className="fill-text-helper font-mono">GS {speedSuffix}</text>
+            <text x={95} y={11} textAnchor="end" fontSize={4.5} className="fill-text-helper font-mono">ALT {altSuffix}</text>
         </svg>
     );
 }
@@ -227,6 +236,10 @@ interface TapeProps {
     majorEvery: number;
     pxPerUnit: number;
     decimals: number;
+    /** Decimal places for tick labels specifically — defaults to 0 (whole
+     * numbers), since `majorEvery` is a whole number for every tape except
+     * the groundspeed one in km/min. */
+    tickDecimals?: number;
     side: "left" | "right";
 }
 
@@ -238,7 +251,7 @@ interface TapeProps {
  * is what makes trend (climbing/descending, speeding up/slowing down)
  * readable as motion instead of requiring a watched number to change.
  */
-function Tape({value, tickInterval, majorEvery, pxPerUnit, decimals, side}: TapeProps) {
+function Tape({value, tickInterval, majorEvery, pxPerUnit, decimals, tickDecimals = 0, side}: TapeProps) {
     const centerY = TAPE_HEIGHT / 2;
     const innerX = side === "left" ? TAPE_WIDTH : 0;
     const dir = side === "left" ? -1 : 1;
@@ -291,7 +304,7 @@ function Tape({value, tickInterval, majorEvery, pxPerUnit, decimals, side}: Tape
                                 textAnchor={side === "left" ? "end" : "start"}
                                 className="fill-text-secondary font-mono"
                             >
-                                {Math.round(v)}
+                                {v.toFixed(tickDecimals)}
                             </text>
                         )}
                     </g>
@@ -352,16 +365,46 @@ interface PfdProps {
  * the same way it always has.
  */
 export default function Pfd({heading, roll, pitch, unknown, attitudeUnknown, groundspeed, alt}: PfdProps) {
+    const {speedUnit, altitudeUnit} = useSettings();
+    const speed = speedUnitDef(speedUnit);
+    const altitude = altitudeUnitDef(altitudeUnit);
+    const displaySpeed = groundspeed === null ? null : convertSpeed(groundspeed, speedUnit);
+    const displayAlt = alt === null ? null : convertAltitude(alt, altitudeUnit);
+
     return (
         <FitBox ratio={PFD_RATIO} className="flex items-stretch justify-center gap-3">
             <div className="aspect-[56/288] h-full w-auto">
-                <Tape value={groundspeed} tickInterval={1} majorEvery={2} pxPerUnit={TAPE_HEIGHT / 2 / 6} decimals={1} side="left"/>
+                <Tape
+                    value={displaySpeed}
+                    tickInterval={speed.tapeTick}
+                    majorEvery={speed.tapeMajorEvery}
+                    pxPerUnit={TAPE_HEIGHT / 2 / speed.tapeHalfRange}
+                    decimals={speed.decimals}
+                    tickDecimals={speed.tapeTickDecimals}
+                    side="left"
+                />
             </div>
             <div className="aspect-square h-full w-auto">
-                <AttitudeIndicator heading={heading} roll={roll} pitch={pitch} unknown={unknown} attitudeUnknown={attitudeUnknown}/>
+                <AttitudeIndicator
+                    heading={heading}
+                    roll={roll}
+                    pitch={pitch}
+                    unknown={unknown}
+                    attitudeUnknown={attitudeUnknown}
+                    speedSuffix={speed.suffix}
+                    altSuffix={altitude.suffix}
+                />
             </div>
             <div className="aspect-[56/288] h-full w-auto">
-                <Tape value={alt} tickInterval={5} majorEvery={10} pxPerUnit={TAPE_HEIGHT / 2 / 25} decimals={1} side="right"/>
+                <Tape
+                    value={displayAlt}
+                    tickInterval={altitude.tapeTick}
+                    majorEvery={altitude.tapeMajorEvery}
+                    pxPerUnit={TAPE_HEIGHT / 2 / altitude.tapeHalfRange}
+                    decimals={altitude.decimals}
+                    tickDecimals={altitude.tapeTickDecimals}
+                    side="right"
+                />
             </div>
         </FitBox>
     );

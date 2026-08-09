@@ -14,6 +14,11 @@ import {useArmedSince, useVehicle} from "@/lib/vehicle/useVehicle.ts";
 import {useNow} from "@/lib/vehicle/useMockVehicle.ts";
 import {useTelemetryHistory, useTelemetrySparklines} from "@/lib/vehicle/useTelemetryHistory.ts";
 import {distanceMeters} from "@/lib/vehicle/vehicle.ts";
+import {useSettings} from "@/lib/settings/useSettings.ts";
+import {formatSpeed} from "@/lib/units/speed.ts";
+import {formatVerticalSpeed} from "@/lib/units/verticalSpeed.ts";
+import {formatAltitude} from "@/lib/units/altitude.ts";
+import {formatDistance} from "@/lib/units/distance.ts";
 import {Tone, TONE_TEXT} from "@/components/topmenu/StatusChip.tsx";
 import {PanelArea} from "@/panels/panelComponents.tsx";
 import Sparkline from "@/components/Sparkline.tsx";
@@ -162,6 +167,7 @@ export default function TelemetryPanel({area}: {area: PanelArea}) {
     const history = useTelemetryHistory();
     const sparklines = useTelemetrySparklines();
     const armedSince = useArmedSince();
+    const {speedUnit, verticalSpeedUnit, altitudeUnit, distanceUnit} = useSettings();
 
     const packetAge = vehicle.updatedAt === 0 ? null : now - vehicle.updatedAt;
     const stale = isLinkFailing(connection.status);
@@ -209,25 +215,25 @@ export default function TelemetryPanel({area}: {area: PanelArea}) {
                 />
                 <StatRow
                     label="Alt"
-                    value={vehicle.position ? `${vehicle.position.alt.toFixed(1)}m` : "—"}
+                    value={formatAltitude(vehicle.position?.alt ?? null, altitudeUnit)}
                 />
                 <StatRow
                     label="GS"
-                    value={vehicle.groundspeed === null ? "—" : `${vehicle.groundspeed.toFixed(1)}m/s`}
+                    value={formatSpeed(vehicle.groundspeed, speedUnit)}
                 />
                 <StatRow
                     label="Climb"
-                    value={vehicle.climbRate === null ? "—" : `${vehicle.climbRate.toFixed(1)}m/s`}
+                    value={formatVerticalSpeed(vehicle.climbRate, verticalSpeedUnit)}
                 />
                 {vehicle.vehicleKind === "plane" && (
                     <StatRow
                         label="AS"
-                        value={vehicle.airspeed === null ? "—" : `${vehicle.airspeed.toFixed(1)}m/s`}
+                        value={formatSpeed(vehicle.airspeed, speedUnit)}
                     />
                 )}
                 <StatRow
                     label="Home"
-                    value={homeDistance === null ? "—" : `${Math.round(homeDistance)}m`}
+                    value={formatDistance(homeDistance, distanceUnit)}
                 />
                 <StatRow
                     label="Hdg"
@@ -263,16 +269,16 @@ export default function TelemetryPanel({area}: {area: PanelArea}) {
                 <StatRow
                     label="Wind"
                     value={vehicle.wind
-                        ? `${Math.round(vehicle.wind.dir)}° · ${vehicle.wind.speed.toFixed(1)}m/s`
+                        ? `${Math.round(vehicle.wind.dir)}° · ${formatSpeed(vehicle.wind.speed, speedUnit)}`
                         : "—"}
                 />
                 <StatRow
                     label="WP"
-                    value={vehicle.nav ? `${vehicle.nav.wpDist}m` : "—"}
+                    value={formatDistance(vehicle.nav?.wpDist ?? null, distanceUnit)}
                 />
                 <StatRow
                     label="XTE"
-                    value={vehicle.nav ? `${vehicle.nav.xtrackError.toFixed(1)}m` : "—"}
+                    value={formatDistance(vehicle.nav?.xtrackError ?? null, distanceUnit)}
                     tone={vehicle.nav ? xteTone(vehicle.nav.xtrackError) : "neutral"}
                 />
                 <StatRow

@@ -33,3 +33,36 @@ export function downloadLog(id: number, size: number): Promise<string> {
     requireBackend();
     return invoke<string>("download_log", {id, size});
 }
+
+/** The error message `downloadLog` rejects with when it stopped because of
+ * `cancelDownload` rather than a real failure — matches the backend's
+ * `CANCELLED` constant in `logs.rs`. */
+export const DOWNLOAD_CANCELLED = "cancelled";
+
+/**
+ * Requests that an in-flight `downloadLog` for `id` stop after its current
+ * chunk. A no-op if `id` isn't the download actually in progress. Doesn't
+ * itself reject or resolve the pending `downloadLog` call — that promise
+ * settles on its own once the backend loop notices and unwinds, rejecting
+ * with `DOWNLOAD_CANCELLED`.
+ */
+export function cancelDownload(id: number): Promise<void> {
+    requireBackend();
+    return invoke("cancel_download", {id});
+}
+
+export interface DownloadedLog {
+    id: number;
+    path: string;
+}
+
+/**
+ * Scans the connected vehicle's own logs folder on disk (scoped by its
+ * hardware UID — see `vehicle_profile.rs`) for logs already downloaded, so
+ * a log saved in an earlier session still shows as saved rather than only
+ * ones `downloadLog` personally ran this session.
+ */
+export function listDownloadedLogs(): Promise<DownloadedLog[]> {
+    requireBackend();
+    return invoke<DownloadedLog[]>("list_downloaded_logs");
+}

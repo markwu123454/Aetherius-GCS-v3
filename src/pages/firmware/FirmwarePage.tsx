@@ -4,6 +4,7 @@ import {useConnection} from "@/lib/vehicle/useConnection.ts";
 import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
 import {scanLinks, ScannedLink} from "@/lib/vehicle/connection.ts";
 import {sendVehicleCommand} from "@/lib/vehicle/commands.ts";
+import {firmwareVersionLabel} from "@/lib/vehicle/vehicle.ts";
 import {
     ApjSummary,
     FirmwareOption,
@@ -31,7 +32,11 @@ const VEHICLE_OPTS: {type: UserVehicleType; label: string; sub: string}[] = [
     {type: "helicopter", label: "ArduCopter", sub: "Helicopter"},
 ];
 
-const VERSION_ORDER = ["stable", "beta", "dev"];
+// ArduPilot's manifest spells these "OFFICIAL"/"BETA"/"RC"/"DEV" (see
+// `mav-firmware-version-type` in flash.rs) — lowercased for comparison here.
+// "stable" was never a value the backend actually sends; matching on it left
+// every "official"-only filter finding nothing.
+const VERSION_ORDER = ["official", "rc", "beta", "dev"];
 const RECONNECT_TIMEOUT_MS = 20_000;
 const RECONNECT_POLL_MS = 1_000;
 
@@ -53,6 +58,15 @@ function manifestTypeOf(v: UserVehicleType | null): "Copter" | "Plane" {
     return v === "plane" ? "Plane" : "Copter";
 }
 
+/** Name for the firmware currently running, from HEARTBEAT's `vehicleKind` —
+ * distinct from `UserVehicleType`, which also splits out helicopter and only
+ * exists to pick a manifest entry, not to describe what's already flashed. */
+function runningFirmwareName(kind: "plane" | "multirotor" | "other" | null): string {
+    if (kind === "plane") return "ArduPlane";
+    if (kind === "multirotor") return "ArduCopter";
+    return "ArduPilot";
+}
+
 function mavTypeOf(v: UserVehicleType): string {
     if (v === "plane") return "FIXED_WING";
     if (v === "helicopter") return "HELICOPTER";
@@ -68,7 +82,7 @@ function sortVersionTypes(types: string[]): string[] {
 }
 
 function versionLabel(v: string): string {
-    const m: Record<string, string> = {stable: "Stable", beta: "Beta", dev: "Dev"};
+    const m: Record<string, string> = {official: "Stable", rc: "RC", beta: "Beta", dev: "Dev"};
     return m[v.toLowerCase()] ?? v;
 }
 
@@ -152,7 +166,10 @@ function FlashItem({
                 {done ? (
                     <CheckmarkFilled size={16} className="shrink-0 text-state-ok" />
                 ) : active ? (
-                    <InProgress size={16} className="shrink-0 text-text-primary" />
+                    // Spins so a step with no other progress signal (erase, in
+                    // particular, sits here silently for several seconds)
+                    // still visibly shows something is happening.
+                    <InProgress size={16} className="shrink-0 animate-spin text-text-primary" />
                 ) : (
                     <RadioButton size={16} className="shrink-0 text-text-disabled" />
                 )}
@@ -307,11 +324,12 @@ export default function FirmwarePage() {
         return sortVersionTypes(types);
     }, [candidateOptions]);
 
-    // Auto-select "stable" (or the first available) when the version list changes.
+    // Auto-select "official" (shown as "Stable") or the first available when
+    // the version list changes.
     useEffect(() => {
         if (availableVersions.length === 0) return;
         if (selectedVersion && availableVersions.includes(selectedVersion.toLowerCase())) return;
-        setSelectedVersion(availableVersions.find((v) => v === "stable") ?? availableVersions[0] ?? null);
+        setSelectedVersion(availableVersions.find((v) => v === "official") ?? availableVersions[0] ?? null);
     }, [availableVersions]);
 
     // The single option that matches all selections.
@@ -439,7 +457,7 @@ export default function FirmwarePage() {
         const mav = mavTypeOf(vehicleType);
         let opts = manifest.options.filter((o) => o.mavType === mav);
         if (!showAllVersions) {
-            opts = opts.filter((o) => o.versionType.toLowerCase() === "stable");
+            opts = opts.filter((o) => o.versionType.toLowerCase() === "official");
         }
         const q = boardQuery.trim().toLowerCase();
         if (q) {
@@ -476,6 +494,36 @@ export default function FirmwarePage() {
                     />
                     Advanced
                 </label>
+            </div>
+
+            {/* Current board / firmware info */}
+            <div className="flex shrink-0 flex-wrap items-center gap-x-8 gap-y-1 border-b border-border-subtle bg-layer-01 px-6 py-3">
+                <div>
+                    <span className="text-micro text-text-helper">Connected board</span>
+                    <p className="text-label text-text-primary">
+                        {detectedBoard
+                            ? detectedBoard.label
+                            : mavlinkConnected
+                            ? "Unknown board"
+                            : "None detected"}
+                    </p>
+                </div>
+                <div>
+                    <span className="text-micro text-text-helper">Running firmware</span>
+                    <p className="text-label text-text-primary">
+                        {vehicle.firmware
+                            ? `${runningFirmwareName(vehicle.vehicleKind)} ${firmwareVersionLabel(vehicle.firmware)}`
+                            : mavlinkConnected
+                            ? "Reading version…"
+                            : "Not connected"}
+                    </p>
+                </div>
+                {vehicle.firmware?.gitHash && (
+                    <div>
+                        <span className="text-micro text-text-helper">Git hash</span>
+                        <p className="text-label font-mono text-text-primary">{vehicle.firmware.gitHash}</p>
+                    </div>
+                )}
             </div>
 
             {/* Checklist */}

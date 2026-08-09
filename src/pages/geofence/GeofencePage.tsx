@@ -1,5 +1,5 @@
-import {useEffect, useState} from "react";
-import {DocumentDownload, DocumentExport, DocumentImport} from "@carbon/icons-react";
+import {useEffect, useMemo, useState} from "react";
+import {Add, CheckmarkFilled, DocumentDownload, DocumentExport, DocumentImport, TrashCan} from "@carbon/icons-react";
 import {save as saveDialog, open as openDialog} from "@tauri-apps/plugin-dialog";
 import {writeTextFile, readTextFile} from "@tauri-apps/plugin-fs";
 import GeofenceMap from "./GeofenceMap.tsx";
@@ -8,30 +8,41 @@ import {useLiveParams} from "@/lib/params/useLiveParams.ts";
 import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
 import type {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import type {FenceVertex} from "@/lib/geofence/fence.ts";
+import {destinationPoint, distanceMeters} from "@/lib/geofence/fence.ts";
 
 const FILE_FILTERS = [{name: "Geofence file", extensions: ["json"]}];
 
 interface FenceFile {
     version: 1;
-    vertices: {lat: number; lon: number}[];
+    polygons: {vertices: {lat: number; lon: number}[]}[];
+    // Optional so files exported before circles existed still import cleanly.
+    circles?: {center: {lat: number; lon: number}; radiusM: number}[];
 }
 
-async function exportFence(vertices: {lat: number; lon: number}[]): Promise<void> {
+interface FenceFileContents {
+    polygons: {vertices: {lat: number; lon: number}[]}[];
+    circles: {center: {lat: number; lon: number}; radiusM: number}[];
+}
+
+async function exportFence(
+    polygons: {vertices: {lat: number; lon: number}[]}[],
+    circles: {center: {lat: number; lon: number}; radiusM: number}[],
+): Promise<void> {
     const path = await saveDialog({defaultPath: "geofence.json", filters: FILE_FILTERS});
     if (!path) return;
-    const payload: FenceFile = {version: 1, vertices};
+    const payload: FenceFile = {version: 1, polygons, circles};
     await writeTextFile(path, JSON.stringify(payload, null, 2));
 }
 
-async function importFence(): Promise<{lat: number; lon: number}[] | null> {
+async function importFence(): Promise<FenceFileContents | null> {
     const path = await openDialog({multiple: false, filters: FILE_FILTERS});
     if (!path || Array.isArray(path)) return null;
     const text = await readTextFile(path);
     const data = JSON.parse(text) as Partial<FenceFile>;
-    if (data.version !== 1 || !Array.isArray(data.vertices)) {
+    if (data.version !== 1 || !Array.isArray(data.polygons)) {
         throw new Error("That file isn't a recognized geofence file.");
     }
-    return data.vertices;
+    return {polygons: data.polygons, circles: Array.isArray(data.circles) ? data.circles : []};
 }
 
 function message(e: unknown): string {
@@ -40,7 +51,11 @@ function message(e: unknown): string {
 
 // ── Self-intersection check ────────────────────────────────────────────────
 
-function cross(o: {lat: number; lon: number}, a: {lat: number; lon: number}, b: {lat: number; lon: number}): number {
+function cross(
+    o: {lat: number; lon: number},
+    a: {lat: number; lon: number},
+    b: {lat: number; lon: number},
+): number {
     return (a.lon - o.lon) * (b.lat - o.lat) - (a.lat - o.lat) * (b.lon - o.lon);
 }
 
@@ -67,7 +82,7 @@ function isSelfIntersecting(vertices: FenceVertex[]): boolean {
         const p1 = vertices[i]!;
         const p2 = vertices[(i + 1) % n]!;
         for (let j = i + 2; j < n; j++) {
-            if (i === 0 && j === n - 1) continue; // adjacent (shares vertex 0)
+            if (i === 0 && j === n - 1) continue;
             const p3 = vertices[j]!;
             const p4 = vertices[(j + 1) % n]!;
             if (segmentsIntersect(p1, p2, p3, p4)) return true;
@@ -264,12 +279,37 @@ export default function GeofencePage() {
 
     const [fileError, setFileError] = useState<string | null>(null);
 
-    const selfIntersecting = isSelfIntersecting(fence.vertices);
+    // Compute self-intersecting polygon IDs.
+    const selfIntersectingIds = useMemo<Set<number>>(() => {
+        const ids = new Set<number>();
+        for (const p of fence.polygons) {
+            if (isSelfIntersecting(p.vertices)) ids.add(p.id);
+        }
+        return ids;
+    }, [fence.polygons]);
+
+    const incompleteCircles = fence.circles.filter((c) => c.center === null || c.edge === null);
+    const anyInvalid =
+        fence.polygons.some((p) => p.vertices.length < 3) ||
+        selfIntersectingIds.size > 0 ||
+        incompleteCircles.length > 0;
+    const shapeCount = fence.polygons.length + fence.circles.length;
+    const canUpload = shapeCount > 0 && !fence.uploading && !anyInvalid;
 
     const handleExport = async () => {
         setFileError(null);
         try {
-            await exportFence(fence.vertices.map(({lat, lon}) => ({lat, lon})));
+            await exportFence(
+                fence.polygons.map((p) => ({
+                    vertices: p.vertices.map(({lat, lon}) => ({lat, lon})),
+                })),
+                fence.circles
+                    .filter((c) => c.center !== null && c.edge !== null)
+                    .map((c) => ({
+                        center: c.center!,
+                        radiusM: Math.max(1, Math.round(distanceMeters(c.center!, c.edge!))),
+                    })),
+            );
         } catch (e) {
             setFileError(message(e));
         }
@@ -278,39 +318,36 @@ export default function GeofencePage() {
     const handleImport = async () => {
         setFileError(null);
         try {
-            const verts = await importFence();
-            if (verts) fence.loadVertices(verts);
+            const imported = await importFence();
+            if (!imported) return;
+            fence.clear();
+            for (const p of imported.polygons) {
+                fence.addPolygon();
+                for (const v of p.vertices) {
+                    fence.addVertex(v.lat, v.lon);
+                }
+            }
+            for (const c of imported.circles) {
+                // Replay the same two-click placement a user would do by
+                // hand: first the center, then a point exactly `radiusM`
+                // away, so it goes through the same validated path.
+                fence.addCircle();
+                fence.placeCircle(c.center.lat, c.center.lon);
+                const edge = destinationPoint(c.center, 0, c.radiusM);
+                fence.placeCircle(edge.lat, edge.lon);
+            }
         } catch (e) {
             setFileError(message(e));
         }
     };
 
-    const handleDownload = async () => {
-        setFileError(null);
-        try {
-            await fence.download();
-        } catch {
-            // downloadError set inside useFence
-        }
-    };
-
-    const handleUpload = async () => {
-        setFileError(null);
-        try {
-            await fence.upload();
-        } catch {
-            // uploadError set inside useFence
-        }
-    };
-
-    const canUpload = fence.vertices.length >= 3 && !fence.uploading && !selfIntersecting;
-
     return (
         <div className="flex h-full w-full">
             <div className="min-w-0 flex-1">
-                <GeofenceMap fence={fence} selfIntersecting={selfIntersecting}/>
+                <GeofenceMap fence={fence} selfIntersectingIds={selfIntersectingIds}/>
             </div>
             <div className="flex w-72 shrink-0 flex-col overflow-y-auto border-l border-border-subtle bg-layer-01">
+
                 {/* Toolbar */}
                 <div className="flex shrink-0 items-center gap-1 border-b border-border-subtle px-2 py-1.5">
                     <button
@@ -325,7 +362,7 @@ export default function GeofencePage() {
                     <button
                         type="button"
                         title="Export to a geofence file"
-                        disabled={fence.vertices.length === 0}
+                        disabled={fence.polygons.length === 0}
                         onClick={() => void handleExport()}
                         className="flex items-center gap-1 px-2 py-1 text-label text-text-secondary hover:enabled:bg-layer-hover-01 hover:enabled:text-text-primary disabled:text-text-disabled"
                     >
@@ -336,7 +373,7 @@ export default function GeofencePage() {
                         type="button"
                         title="Download the fence stored on the vehicle"
                         disabled={fence.downloading}
-                        onClick={() => void handleDownload()}
+                        onClick={() => void fence.download().catch(() => {})}
                         className="flex items-center gap-1 px-2 py-1 text-label text-text-secondary hover:enabled:bg-layer-hover-01 hover:enabled:text-text-primary disabled:text-text-disabled"
                     >
                         <DocumentDownload size={16}/>
@@ -426,43 +463,175 @@ export default function GeofencePage() {
                     onSet={live.setParam}
                 />
 
-                {/* Polygon */}
-                <SectionHeader title="Polygon fence"/>
+                {/* Polygon fences */}
+                <SectionHeader title="Polygon fences"/>
+
                 <div className="border-b border-border-subtle px-2 py-1.5 text-micro text-text-helper">
-                    Click the map to add vertices. Click a vertex to remove it. Drag to move.
-                    Only one inclusion polygon supported.
+                    Click on a polygon below to select it, then click the map to add vertices.
+                    Drag vertices to move them. Click a vertex to remove it.
                 </div>
+
+                {/* Polygon list */}
+                {fence.polygons.length === 0 ? (
+                    <div className="border-b border-border-subtle px-2 py-2 text-micro text-text-disabled">
+                        No polygons yet — click Add Polygon to start.
+                    </div>
+                ) : (
+                    <div className="border-b border-border-subtle">
+                        {fence.polygons.map((p, i) => {
+                            const isSelected = p.id === fence.selectedId;
+                            const tooFew = p.vertices.length < 3;
+                            const intersects = selfIntersectingIds.has(p.id);
+                            return (
+                                <button
+                                    key={p.id}
+                                    type="button"
+                                    onClick={() => fence.selectPolygon(p.id)}
+                                    className={[
+                                        "flex w-full items-center gap-2 border-b border-border-subtle-base px-2 py-1.5 text-left last:border-b-0",
+                                        isSelected
+                                            ? "bg-layer-selected-01 text-text-primary"
+                                            : "text-text-secondary hover:bg-layer-hover-01",
+                                    ].join(" ")}
+                                >
+                                    <span className="flex-1 text-label">
+                                        Polygon {i + 1}
+                                        <span className="ml-1.5 text-micro text-text-helper">
+                                            {p.vertices.length} pt{p.vertices.length !== 1 ? "s" : ""}
+                                        </span>
+                                    </span>
+                                    {tooFew && (
+                                        <span className="text-micro text-state-warn">need&nbsp;≥3</span>
+                                    )}
+                                    {intersects && (
+                                        <span className="text-micro text-state-danger">crosses</span>
+                                    )}
+                                    <span
+                                        role="button"
+                                        title="Remove polygon"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            fence.removePolygon(p.id);
+                                        }}
+                                        className="shrink-0 text-text-helper hover:text-state-danger"
+                                    >
+                                        <TrashCan size={14}/>
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+
+                <button
+                    type="button"
+                    onClick={fence.addPolygon}
+                    className="flex shrink-0 items-center gap-1.5 border-b border-border-subtle px-2 py-1.5 text-label text-text-secondary hover:bg-layer-hover-01 hover:text-text-primary"
+                >
+                    <Add size={16}/>
+                    Add Polygon
+                </button>
+
+                {/* Circle fences (independent inclusion circles — not the single
+                    home-centered Radius fence configured above) */}
+                <SectionHeader title="Circle fences"/>
+
+                <div className="border-b border-border-subtle px-2 py-1.5 text-micro text-text-helper">
+                    Click a circle below to select it, then click the map: once for
+                    the center, once for the edge — anywhere, any distance. Drag the
+                    center to move it, drag the edge to reshape it.
+                </div>
+
+                {fence.circles.length === 0 ? (
+                    <div className="border-b border-border-subtle px-2 py-2 text-micro text-text-disabled">
+                        No circles yet — click Add Circle to start.
+                    </div>
+                ) : (
+                    <div className="border-b border-border-subtle">
+                        {fence.circles.map((c, i) => {
+                            const isSelected = c.id === fence.selectedCircleId;
+                            const status =
+                                c.center === null
+                                    ? "click map for center"
+                                    : c.edge === null
+                                        ? "click map for edge"
+                                        : `${Math.round(distanceMeters(c.center, c.edge))} m radius`;
+                            return (
+                                <button
+                                    key={c.id}
+                                    type="button"
+                                    onClick={() => fence.selectCircle(c.id)}
+                                    className={[
+                                        "flex w-full items-center gap-2 border-b border-border-subtle-base px-2 py-1.5 text-left last:border-b-0",
+                                        isSelected
+                                            ? "bg-layer-selected-01 text-text-primary"
+                                            : "text-text-secondary hover:bg-layer-hover-01",
+                                    ].join(" ")}
+                                >
+                                    <span className="flex-1 text-label">
+                                        Circle {i + 1}
+                                        <span className="ml-1.5 text-micro text-text-helper">{status}</span>
+                                    </span>
+                                    <span
+                                        role="button"
+                                        title="Remove circle"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            fence.removeCircle(c.id);
+                                        }}
+                                        className="shrink-0 text-text-helper hover:text-state-danger"
+                                    >
+                                        <TrashCan size={14}/>
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+
+                <button
+                    type="button"
+                    onClick={fence.addCircle}
+                    className="flex shrink-0 items-center gap-1.5 border-b border-border-subtle px-2 py-1.5 text-label text-text-secondary hover:bg-layer-hover-01 hover:text-text-primary"
+                >
+                    <Add size={16}/>
+                    Add Circle
+                </button>
 
                 {/* Spacer */}
                 <div className="min-h-0 flex-1"/>
 
-                {/* Stats + actions */}
-                <div className="shrink-0 border-t border-border-subtle px-3 py-2 text-micro text-text-helper">
-                    {fence.vertices.length} vertex{fence.vertices.length !== 1 ? "es" : ""}
-                    {fence.vertices.length > 0 && fence.vertices.length < 3 && (
-                        <span className="ml-2 text-state-warn">need ≥ 3</span>
-                    )}
-                    {selfIntersecting && (
-                        <span className="ml-2 text-state-danger">polygon self-intersects</span>
-                    )}
-                </div>
+                {/* Upload / Clear */}
                 <div className="flex shrink-0 flex-col gap-2 border-t border-border-subtle p-3">
                     <button
                         type="button"
                         disabled={!canUpload}
-                        onClick={() => void handleUpload()}
-                        title={selfIntersecting ? "Polygon edges cross — fix before uploading" : undefined}
-                        className="h-control-sm w-full border border-border-subtle text-label text-text-primary hover:enabled:bg-layer-hover-01 disabled:text-text-disabled"
+                        onClick={() => void fence.upload().catch(() => {})}
+                        title={
+                            anyInvalid
+                                ? "Fix polygon/circle issues before uploading"
+                                : undefined
+                        }
+                        className="flex h-control-sm w-full items-center justify-center gap-1.5 border border-border-subtle text-label text-text-primary hover:enabled:bg-layer-hover-01 disabled:text-text-disabled"
                     >
-                        {fence.uploading ? "Uploading…" : "Upload Polygon to Vehicle"}
+                        {fence.uploading ? (
+                            "Uploading…"
+                        ) : fence.uploaded ? (
+                            <>
+                                <CheckmarkFilled size={16} className="text-state-ok"/>
+                                Uploaded
+                            </>
+                        ) : (
+                            `Upload ${shapeCount > 0 ? `${shapeCount} Shape${shapeCount !== 1 ? "s" : ""}` : "Fence"} to Vehicle`
+                        )}
                     </button>
                     <button
                         type="button"
-                        disabled={fence.vertices.length === 0}
+                        disabled={shapeCount === 0}
                         onClick={fence.clear}
                         className="h-control-sm w-full border border-border-subtle text-label text-text-secondary hover:enabled:bg-layer-hover-01 disabled:text-text-disabled"
                     >
-                        Clear Polygon
+                        Clear All
                     </button>
                 </div>
             </div>

@@ -5,6 +5,8 @@ import {useConnection} from "@/lib/vehicle/useConnection.ts";
 import {isLinkIdle} from "@/lib/vehicle/connection.ts";
 import {sendVehicleCommand} from "@/lib/vehicle/commands.ts";
 import {useUploadedMissionCount} from "@/lib/mission/useMission.ts";
+import {useSettings} from "@/lib/settings/useSettings.ts";
+import {formatSpeed} from "@/lib/units/speed.ts";
 
 type MissionState = "no-mission" | "ready" | "active" | "paused" | "rtl" | "complete";
 
@@ -86,6 +88,7 @@ const XTE_MAX_M = 30;
 
 export default function MissionPanel() {
     const vehicle = useVehicle();
+    const {speedUnit} = useSettings();
     const connection = useConnection();
     const totalWps = useUploadedMissionCount();
     const [cmdError, setCmdError] = useState<string | null>(null);
@@ -205,7 +208,7 @@ export default function MissionPanel() {
                             <ArrowUp size={14}/>
                         </div>
                         <span className="font-mono text-label text-text-primary tabular-nums">
-                            {windCardinal(vehicle.wind.dir)} {vehicle.wind.speed.toFixed(1)} m/s
+                            {windCardinal(vehicle.wind.dir)} {formatSpeed(vehicle.wind.speed, speedUnit)}
                         </span>
                     </>
                 ) : (

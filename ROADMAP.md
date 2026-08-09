@@ -1,43 +1,58 @@
 # Roadmap
 
-Ideas for what to build next — not commitments, not scoped, no promised order.
-Grouped by where each feature would live: a full-screen **Page** (like
-Parameters/Mission/Scripting/Settings today), a dockable **Panel** (like
-Telemetry/Console/Prearm), or **Other** (top bar, map, app-wide behavior).
+Not a schedule — just what exists today, and what could plausibly be added
+later. Nothing under Potential Features is scoped, prioritized, or promised.
 
-## Page
+## Features
 
-### Vehicle Setup *(new page)*
-* Sensor calibration (accelerometer, compass, radio, ESC) — flagged as a
-  planned backend module in `CLAUDE.md`'s design notes.
-* Firmware flashing.
-* Motor test.
+### Pages
 
-### Mission *(existing page)*
-* Save/load a mission to a file.
-* Download the mission already on the vehicle into the editor (upload-only
-  today).
-* Geofence editing.
-* Rally points.
-* Mission item types beyond a plain waypoint — loiter, RTL-as-item,
-  jump/repeat.
-* Mission preview stats (distance, ETA) in the editor sidebar.
+* **Mission** — waypoint editor (waypoint, takeoff, loiter, RTL, land) on its
+  own full-screen map; upload to and download from the vehicle; save/load a
+  mission plan to a local file; route distance stats in the sidebar.
+* **Geofence** — polygon fence editor on its own full-screen map, with
+  self-intersection detection; upload to and download from the vehicle.
+* **Parameters** — full live parameter sheet grouped by relation tables,
+  search, save all read parameters to a file, load a parameter file and
+  review a diff against live values before applying.
+* **Scripting** — Lua script editor (Monaco) with a file tree, synced to and
+  from the vehicle over MAVLink FTP.
+* **Calibration** — accelerometer, compass (with a 3D orientation/coverage
+  viewport), gyro, and radio calibration.
+* **Setup** — frame setup, servo setup, motor test, failsafe setup, trim
+  setup.
+* **Firmware** — bootloader handshake and firmware flashing.
+* **Logs** — list and download dataflash logs off the vehicle over MAVLink
+  FTP to local disk.
+* **Settings** — connection, display, and panel preferences.
+* **About** — version info, update check, link to the repo.
 
-### Logs *(new page)*
-* Dataflash log download over MAVLink FTP — no log support exists anywhere
-  in the codebase yet.
-* Log analysis / graphing.
+### Panels (dockable)
 
-### Parameters *(existing page)*
-* Save/load a parameter set to a file.
+* **Telemetry** — live vehicle telemetry, laid out differently per dock area.
+* **Manual** — joystick input/display and a PFD, laid out differently per
+  dock area.
+* **RC Override** — floating-only, latch-safe manual RC override.
+* **Console** — STATUSTEXT log, with chunked-message reassembly.
+* **Prearm** — live prearm check failure reasons.
+* **Mission** — flight-status mini panel: mission state, start/pause/resume,
+  current waypoint.
+* **Servo Outputs** — live per-channel servo output values.
+* **Checklist** — custom checklists with condition-based auto-checking,
+  import/export to file.
 
-### Parameter Compare *(new page)*
-* Export/import parameter sets.
-* Diff live values against a saved file.
-* Split out from the Parameters page rather than crammed in — that page is
-  already dense.
+### Core / Infrastructure
 
-## Panel
+* Dockable + floating panel workspace (left/right/bottom docks, tab groups,
+  drag to reorder/retarget), persisted across restarts.
+* Persistent map (vehicle track, airspace class overlays) shared by normal
+  operation; Mission/Geofence get their own dedicated map instance instead.
+* MAVLink dispatch/telemetry decode, `COMMAND_LONG` ack/retry machinery,
+  generation-based connect/disconnect/reconnect.
+* Mock vehicle mode for development without live hardware.
+* Auto-update check.
+
+## Potential Features
 
 ### Camera / Video *(new panel)*
 * Camera control.
@@ -48,13 +63,23 @@ Telemetry/Console/Prearm), or **Other** (top bar, map, app-wide behavior).
   the frontend render it into a plain `<video>` element so the browser's own
   hardware decoder does the 1080p60 work.
 
-## Other
+### Mission
+* Rally points.
+* Mission item types beyond the current set — jump/repeat, spline waypoints.
+* `DO_CHANGE_SPEED` interleaving in the upload path (the draft model already
+  carries a per-waypoint speed override; only the upload side doesn't use it
+  yet).
+* ETA alongside the existing distance stat.
+
+### Logs
+* Log analysis: charting, map replay, an auto-diagnosis pass (the listing
+  and download half is done; analysis is explicitly a later phase).
 
 ### Top Bar
-* Takeoff button — a Guided climb-to-altitude command. The one vehicle
-  action with no equivalent mode switch (RTL and Land were considered and
-  dropped: both are, functionally, exactly the RTL/LAND mode switch already
-  available from the mode dropdown).
+* Takeoff button — a Guided climb-to-altitude command. The backend command
+  enum already has a `Takeoff` variant; nothing in the top bar calls it yet.
+  (RTL and Land were considered and dropped: both are, functionally, exactly
+  the RTL/LAND mode switch already available from the mode dropdown.)
 
 ### Map / Workspace
 * Click-to-fly / goto-point-on-map in Guided mode — also covers landing at a

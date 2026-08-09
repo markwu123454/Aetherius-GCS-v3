@@ -6,7 +6,8 @@ use std::{
 
 use mavlink::{
     dialects::ardupilotmega::{
-        LOG_DATA_DATA, LOG_ENTRY_DATA, LOG_REQUEST_DATA_DATA, LOG_REQUEST_LIST_DATA, MavMessage,
+        LOG_DATA_DATA, LOG_ENTRY_DATA, LOG_REQUEST_DATA_DATA, LOG_REQUEST_END_DATA, LOG_REQUEST_LIST_DATA,
+        MavMessage,
     },
     MavConnection,
 };
@@ -14,7 +15,10 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::oneshot;
 
-use crate::link::LinkState;
+use crate::{link::LinkState, vehicle_profile};
+
+pub mod analysis;
+pub mod parser;
 
 /// How many bytes `LOG_DATA`'s `data` field holds per reply — the
 /// protocol's own fixed chunk size, not a tunable.
@@ -28,6 +32,10 @@ const LOG_LIST_MAX_ROUNDS: u32 = 5;
 
 const LOG_CHUNK_TIMEOUT: Duration = Duration::from_secs(1);
 const LOG_CHUNK_MAX_RETRIES: u32 = 5;
+/// The error string `download_log` returns when it stopped because of
+/// `cancel_download` rather than a real failure — the frontend matches on
+/// this to skip showing it as an error.
+const CANCELLED: &str = "cancelled";
 /// How often to emit `log-download-progress` during a transfer — a 90-byte
 /// chunk can mean tens of thousands of them for one log, and emitting a
 /// progress event for every single one floods the IPC bridge for no
@@ -64,6 +72,10 @@ pub struct LogsState {
     total: Mutex<Option<u16>>,
     /// The chunk `download_log`'s current iteration is waiting on, if any.
     pending_chunk: Mutex<Option<oneshot::Sender<LogChunk>>>,
+    /// Set by `cancel_download` to the id it wants stopped. Checked by the
+    /// in-flight `download_log` loop for that id between chunks; cleared at
+    /// the start of every new `download_log` call.
+    cancel: Mutex<Option<u16>>,
 }
 
 /// Routes one `LOG_ENTRY` into the shared map `list_logs` polls. Called
@@ -166,23 +178,111 @@ struct DownloadProgress {
     total: u32,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadedLog {
+    pub id: u16,
+    pub path: String,
+}
+
+/// Scans the connected vehicle's own `logs/` folder (see
+/// `vehicle_profile::vehicle_dir`) for files already downloaded, so the
+/// Logs page can show "already have this one" without needing to have
+/// downloaded it in the current session — `download_log`'s own
+/// `savedPaths` tracking only knows about downloads it personally ran.
+/// Only `.bin` files count: `logs/analysis.rs`'s `save_analysis_state`
+/// writes a `<id>.json` sidecar into this same directory, and a file whose
+/// stem parses as the same numeric id would otherwise collide with it in
+/// the id-keyed map the frontend builds from this list, silently handing
+/// the sidecar's own path back as if it were the log itself.
+#[tauri::command]
+pub fn list_downloaded_logs(app: AppHandle) -> Result<Vec<DownloadedLog>, String> {
+    let dir = vehicle_profile::vehicle_dir(&app)?.join("logs");
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("bin") {
+            continue;
+        }
+        let Some(id) = path.file_stem().and_then(|s| s.to_str()).and_then(|s| s.parse::<u16>().ok()) else {
+            continue;
+        };
+        out.push(DownloadedLog { id, path: path.to_string_lossy().to_string() });
+    }
+    Ok(out)
+}
+
+/// Requests that an in-flight `download_log` for `id` stop after its
+/// current chunk. A no-op if `id` isn't the download actually in progress —
+/// matches `pending_chunk`'s "one in-flight download at a time" model, so a
+/// stale cancel from a finished download can't affect a later one.
+#[tauri::command]
+pub fn cancel_download(app: AppHandle, id: u16) {
+    *app.state::<LogsState>().cancel.lock().unwrap_or_else(|e| e.into_inner()) = Some(id);
+}
+
+fn is_cancelled(app: &AppHandle, id: u16) -> bool {
+    *app.state::<LogsState>().cancel.lock().unwrap_or_else(|e| e.into_inner()) == Some(id)
+}
+
 /// Downloads one log's raw bytes and writes them to
-/// `$APPDATA/logs/<id>.bin`, returning that path. `size` comes from the
+/// `$APPDATA/<vehicle>/logs/<id>.bin` — `<vehicle>` is the connected
+/// board's own hardware UID (see `vehicle_profile.rs`), or `unknown` if it
+/// hasn't reported one, so two different aircraft's log `#21`s can't
+/// overwrite each other. Returns the saved path. `size` comes from the
 /// caller's own `LogEntry` (from `list_logs`) — read `LOG_CHUNK_BYTES` at a
 /// time sequentially, one `LOG_REQUEST_DATA`/`LOG_DATA` round trip per
 /// chunk, retrying a chunk up to `LOG_CHUNK_MAX_RETRIES` times before
 /// giving up on the whole download. Emits `log-download-progress` after
 /// every chunk so the frontend can show a progress bar without polling.
+///
+/// Whether the transfer completes, is cancelled via `cancel_download`, or
+/// errors out, a `LOG_REQUEST_END` is always sent afterward — ArduPilot
+/// uses that to know the GCS is done pulling chunks and it can resume
+/// normal logging behavior, so it needs sending on every exit path, not
+/// just success.
 #[tauri::command]
 pub async fn download_log(app: AppHandle, id: u16, size: u32) -> Result<String, String> {
     let (connection, target) = current_link(&app)?;
+    *app.state::<LogsState>().cancel.lock().unwrap_or_else(|e| e.into_inner()) = None;
 
+    let result = fetch_all_chunks(&app, &connection, target, id, size).await;
+
+    let _ = connection.send_default(&MavMessage::LOG_REQUEST_END(LOG_REQUEST_END_DATA {
+        target_system: target.0,
+        target_component: target.1,
+    }));
+
+    let bytes = result?;
+
+    let dir = vehicle_profile::vehicle_dir(&app)?.join("logs");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("{id:08}.bin"));
+    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+async fn fetch_all_chunks(
+    app: &AppHandle,
+    connection: &Arc<dyn MavConnection<MavMessage> + Send + Sync>,
+    target: (u8, u8),
+    id: u16,
+    size: u32,
+) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::with_capacity(size as usize);
     let mut ofs: u32 = 0;
     let mut last_emit = Instant::now();
 
     while ofs < size {
-        let chunk = fetch_chunk(&app, &connection, target, id, ofs).await?;
+        if is_cancelled(app, id) {
+            return Err(CANCELLED.to_string());
+        }
+
+        let chunk = fetch_chunk(app, connection, target, id, ofs).await?;
         let got = (chunk.count as usize).min(chunk.data.len());
         if got == 0 {
             break; // ArduPilot signals end-of-log with a zero-count reply
@@ -198,11 +298,7 @@ pub async fn download_log(app: AppHandle, id: u16, size: u32) -> Result<String, 
         }
     }
 
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("logs");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let path = dir.join(format!("{id:08}.bin"));
-    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
-    Ok(path.to_string_lossy().to_string())
+    Ok(bytes)
 }
 
 /// One `LOG_REQUEST_DATA`/`LOG_DATA` round trip, retried on timeout or on a
@@ -217,6 +313,10 @@ async fn fetch_chunk(
     ofs: u32,
 ) -> Result<LogChunk, String> {
     for _ in 0..LOG_CHUNK_MAX_RETRIES {
+        if is_cancelled(app, id) {
+            return Err(CANCELLED.to_string());
+        }
+
         let (tx, rx) = oneshot::channel();
         *app.state::<LogsState>().pending_chunk.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
 

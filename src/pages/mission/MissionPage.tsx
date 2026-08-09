@@ -7,6 +7,8 @@ import WaypointList from "./WaypointList.tsx";
 import type {MissionApi} from "@/lib/mission/useMission.ts";
 import type {Waypoint} from "@/lib/mission/mission.ts";
 import {distanceMeters} from "@/lib/vehicle/vehicle.ts";
+import {useSettings} from "@/lib/settings/useSettings.ts";
+import {formatDistance} from "@/lib/units/distance.ts";
 
 const MISSION_FILE_FILTERS = [{name: "Mission file", extensions: ["json"]}];
 
@@ -79,6 +81,7 @@ function message(error: unknown): string {
 export default function MissionPage({mission}: MissionPageProps) {
     const [previewSpeed, setPreviewSpeed] = useState(10);
     const [fileError, setFileError] = useState<string | null>(null);
+    const {distanceUnit} = useSettings();
 
     const totalDist = totalRouteDistance(mission.waypoints);
     const estTime = previewSpeed > 0 ? totalDist / previewSpeed : null;
@@ -164,7 +167,7 @@ export default function MissionPage({mission}: MissionPageProps) {
                     <span>{mission.waypoints.length} WP{mission.waypoints.length !== 1 ? "s" : ""}</span>
                     {mission.waypoints.length >= 2 && (
                         <>
-                            <span>{(totalDist / 1000).toFixed(2)} km</span>
+                            <span>{formatDistance(totalDist, distanceUnit)}</span>
                             <span className="flex items-center gap-1">
                                 @
                                 <input
