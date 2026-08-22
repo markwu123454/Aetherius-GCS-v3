@@ -346,6 +346,40 @@ pub struct ScannedLink {
     /// the port directly at the bootloader's own baud rate, not whatever
     /// baud this board talks MAVLink at.
     pub port_name: Option<String>,
+    /// Best-effort match for `vehicle_profile`'s per-board UID, derived from
+    /// the USB serial number — see `chibios_uid_from_serial`. `None` when
+    /// there's no serial number, or it doesn't look like one of these UIDs,
+    /// which just means this particular board can't be recognized until it's
+    /// actually connected once and reports its UID over MAVLink instead.
+    pub candidate_uid: Option<String>,
+}
+
+/// Every current ArduPilot board runs ChibiOS on an STM32, and reports its
+/// USB serial-number descriptor as the plain hex of the chip's 96-bit
+/// (12-byte) unique ID register — the exact same bytes `AUTOPILOT_VERSION`'s
+/// `uid2` field carries once connected, just zero-padded there to 18 bytes
+/// (see `telemetry::autopilot_version::apply`). So the pre-connect UID is
+/// derivable, not guessed: right-pad the USB serial to the same 18-byte hex
+/// length and it's the identical string `board_uid` will be once the board
+/// actually answers a heartbeat.
+///
+/// Returns `None` for anything that doesn't look like that — no serial
+/// number, one longer than 12 bytes already, or containing non-hex
+/// characters (some vendors put a human-readable string here instead). A
+/// board that doesn't match still works the normal way: connect once,
+/// and its real `board_uid` takes over as the identity from then on.
+fn chibios_uid_from_serial(serial: &str) -> Option<String> {
+    const UID2_HEX_LEN: usize = 36; // 18 bytes
+    if serial.is_empty()
+        || serial.len() > UID2_HEX_LEN
+        || serial.len() % 2 != 0
+        || !serial.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        return None;
+    }
+    let mut uid = serial.to_ascii_lowercase();
+    uid.push_str(&"0".repeat(UID2_HEX_LEN - uid.len()));
+    Some(uid)
 }
 
 /// Collapses a board's several USB CDC interfaces down to the one worth
@@ -415,6 +449,9 @@ pub fn scan_links() -> Vec<ScannedLink> {
                     vid: usb.map(|u| u.vid),
                     pid: usb.map(|u| u.pid),
                     port_name: Some(port.port_name.clone()),
+                    candidate_uid: usb
+                        .and_then(|usb| usb.serial_number.as_deref())
+                        .and_then(chibios_uid_from_serial),
                 });
             }
         }
@@ -429,6 +466,7 @@ pub fn scan_links() -> Vec<ScannedLink> {
             vid: None,
             pid: None,
             port_name: None,
+            candidate_uid: None,
         });
     }
 
@@ -630,6 +668,37 @@ mod tests {
         .map(|c| serde_json::to_string(c).unwrap())
         .collect();
         assert_eq!(names, [r#""pixhawk""#, r#""sikRadio""#, r#""rtkGps""#, r#""openPilot""#]);
+    }
+
+    /// The exact serial number a real Pixhawk 6C reported over USB
+    /// (VID:PID `0x3162:0x0053`), right-padded to `uid2`'s 18-byte length —
+    /// this is the actual round trip a saved auto-connect profile depends
+    /// on: `chibios_uid_from_serial`'s output has to equal what
+    /// `telemetry::autopilot_version::apply` would derive from that same
+    /// board's `AUTOPILOT_VERSION.uid2` once it's actually connected.
+    #[test]
+    fn derives_the_same_uid_a_real_pixhawk_6c_reports_over_mavlink() {
+        assert_eq!(
+            chibios_uid_from_serial("350048001451333531333639").as_deref(),
+            Some("350048001451333531333639000000000000"),
+        );
+    }
+
+    #[test]
+    fn rejects_serials_that_dont_look_like_a_chip_uid() {
+        assert_eq!(chibios_uid_from_serial(""), None); // empty
+        assert_eq!(chibios_uid_from_serial("NOTHEX12345678901234567"), None); // non-hex
+        assert_eq!(chibios_uid_from_serial("abc"), None); // odd length
+        // Longer than the 18-byte uid2 field can hold.
+        assert_eq!(chibios_uid_from_serial(&"ab".repeat(19)), None);
+    }
+
+    #[test]
+    fn is_case_insensitive() {
+        assert_eq!(
+            chibios_uid_from_serial("350048001451333531333639"),
+            chibios_uid_from_serial("350048001451333531333639".to_uppercase().as_str()),
+        );
     }
 }
 

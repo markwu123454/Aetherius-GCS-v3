@@ -9,8 +9,12 @@ export type PageId =
     | "logAnalysis"
     | "mission"
     | "geofence"
+    | "rally"
     | "settings"
-    | "about";
+    | "about"
+    | "inspector"
+    | "sdcardLogs"
+    | "sdcardScripting";
 
 export const PAGE_TITLES: Record<PageId, string> = {
     firmware: "Firmware",
@@ -22,8 +26,12 @@ export const PAGE_TITLES: Record<PageId, string> = {
     logAnalysis: "Log Analysis",
     mission: "Mission",
     geofence: "Geofence",
+    rally: "Rally Points",
     settings: "Settings",
     about: "About",
+    inspector: "MAVLink Inspector",
+    sdcardLogs: "SD Card – Logs",
+    sdcardScripting: "SD Card – Scripts",
 };
 
 /** Where `closePage` lands instead of the bare workspace, for pages that

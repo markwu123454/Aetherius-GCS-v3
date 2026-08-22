@@ -127,6 +127,12 @@ export interface ScannedLink {
     /** Bare serial port name (e.g. `COM5`) — what firmware flashing opens
      * directly, independent of `address`'s MAVLink baud rate. */
     portName?: string;
+    /** Best-effort match for a `KnownBoard.uid` (see `boards.ts`), derived
+     * backend-side from the USB serial number. `undefined` when this entry
+     * can't be recognized that way yet — no serial number, or one that
+     * doesn't look like a board's chip UID — which just means it isn't
+     * matched against saved boards until it's actually connected once. */
+    candidateUid?: string;
 }
 
 /**

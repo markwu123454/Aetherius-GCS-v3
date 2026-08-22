@@ -1,5 +1,20 @@
-import {ReactElement} from "react";
-import {DisplayMode, MapBaseLayer, MapRegionalLayers, MIN_CONSOLE_COLLAPSE_THRESHOLD, MIN_TELEM_RATE_HZ, MAX_TELEM_RATE_HZ, MIN_PREARM_CHECK_INTERVAL, MAX_PREARM_CHECK_INTERVAL} from "./settings.ts";
+import {ReactElement, useEffect, useState} from "react";
+import {
+    AutoZoomMode,
+    DisplayMode,
+    MapBaseLayer,
+    MapCacheMode,
+    MapCacheProvider,
+    MapRegionalLayers,
+    MIN_CONSOLE_COLLAPSE_THRESHOLD,
+    MIN_TELEM_RATE_HZ,
+    MAX_TELEM_RATE_HZ,
+    MIN_PREARM_CHECK_INTERVAL,
+    MAX_PREARM_CHECK_INTERVAL,
+    MIN_MAP_CACHE_MB,
+    MIN_MAP_CACHE_ZOOM,
+    MAX_MAP_CACHE_ZOOM,
+} from "./settings.ts";
 import {SettingsApi} from "./useSettings.ts";
 import {AIRSPACE_CLASSES, type AirspaceClass, type AirspaceClassSettings} from "@/lib/airspace/classes.ts";
 import {resolveToken} from "@/lib/airspace/airspace.ts";
@@ -7,6 +22,7 @@ import {SPEED_UNITS} from "@/lib/units/speed.ts";
 import {VERTICAL_SPEED_UNITS} from "@/lib/units/verticalSpeed.ts";
 import {ALTITUDE_UNITS} from "@/lib/units/altitude.ts";
 import {DISTANCE_UNITS} from "@/lib/units/distance.ts";
+import {clearMapCache, getMapCacheSizeBytes} from "@/lib/map/tileCache.ts";
 
 export type SettingsCategoryComponent = (props: {settings: SettingsApi}) => ReactElement;
 
@@ -215,6 +231,115 @@ const BASE_LAYER_OPTIONS: {value: MapBaseLayer; label: string; description: stri
     {value: "openfreemap", label: "OpenFreeMap", description: "Vector street map, offline-capable"},
 ];
 
+const AUTO_ZOOM_MODES: {value: AutoZoomMode; label: string; description: string}[] = [
+    {value: "off", label: "Off", description: "Zoom stays exactly where you left it"},
+    {value: "groundspeed", label: "By groundspeed", description: "Zooms out as the vehicle moves faster over the ground"},
+    {value: "altitude", label: "By altitude", description: "Zooms out as the vehicle climbs"},
+];
+
+const MAP_CACHE_MODES: {value: MapCacheMode; label: string; description: string}[] = [
+    {value: "off", label: "Off", description: "Every tile is a plain network fetch — nothing read from or written to disk"},
+    {value: "readOnly", label: "Read-only", description: "Serve cached tiles, never add new ones — locks in a cache built ahead of time"},
+    {value: "readWrite", label: "Read + write", description: "Serve cached tiles, and cache anything new as it's fetched"},
+];
+
+const MAP_CACHE_PROVIDER_OPTIONS: {key: MapCacheProvider; label: string}[] = [
+    {key: "esri", label: "ESRI World Imagery"},
+    {key: "openfreemap", label: "OpenFreeMap"},
+    {key: "japanGsi", label: "Japan — GSI Seamless Photo"},
+    {key: "statkart", label: "Norway — Kartverket Topo4"},
+    {key: "usgsNaip", label: "US — USGS NAIP"},
+];
+
+function bytesToMb(bytes: number): string {
+    return (bytes / (1024 * 1024)).toFixed(1);
+}
+
+type SizeUnit = "mb" | "gb";
+
+/** The max-size input, kept as its own component only because it needs its
+ * own local `unit` state — the setting itself always stores megabytes, this
+ * is purely a display/entry convenience layered on top. */
+function MapCacheSizeInput({settings}: {settings: SettingsApi}) {
+    const [unit, setUnit] = useState<SizeUnit>("mb");
+    const disabled = settings.mapCacheMode === "off";
+    const displayValue = unit === "gb" ? settings.mapCacheMaxSizeMb / 1024 : settings.mapCacheMaxSizeMb;
+
+    const commit = (raw: number) => {
+        if (!Number.isFinite(raw) || raw <= 0) return;
+        const mb = unit === "gb" ? raw * 1024 : raw;
+        settings.set("mapCacheMaxSizeMb", Math.max(MIN_MAP_CACHE_MB, Math.round(mb)));
+    };
+
+    return (
+        <label className="flex items-center gap-2 text-body text-text-secondary">
+            Limit
+            <input
+                type="number"
+                min={unit === "gb" ? MIN_MAP_CACHE_MB / 1024 : MIN_MAP_CACHE_MB}
+                step={unit === "gb" ? 0.1 : 64}
+                disabled={disabled}
+                value={Math.round(displayValue * 100) / 100}
+                onChange={(event) => commit(event.target.valueAsNumber)}
+                className="w-24 border-b border-border-strong bg-layer-02 px-2 py-1 text-center font-mono text-body text-text-primary disabled:text-text-disabled"
+            />
+            <select
+                value={unit}
+                disabled={disabled}
+                onChange={(event) => setUnit(event.target.value as SizeUnit)}
+                className="border-b border-border-strong bg-layer-02 px-1 py-1 text-body text-text-primary disabled:text-text-disabled"
+            >
+                <option value="mb">MB</option>
+                <option value="gb">GB</option>
+            </select>
+        </label>
+    );
+}
+
+/** The cache's current on-disk size and a Clear button — kept as its own
+ * component since the size is fetched async and isn't part of `Settings`
+ * itself (it's disk state, not a preference). */
+function MapCacheUsage() {
+    const [sizeBytes, setSizeBytes] = useState<number | null>(null);
+    const [clearing, setClearing] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        getMapCacheSizeBytes().then((bytes) => {
+            if (!cancelled) setSizeBytes(bytes);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    const handleClear = async () => {
+        setClearing(true);
+        try {
+            await clearMapCache();
+            setSizeBytes(0);
+        } finally {
+            setClearing(false);
+        }
+    };
+
+    return (
+        <div className="flex items-center gap-3">
+            <span className="text-label text-text-helper">
+                {sizeBytes === null ? "—" : `${bytesToMb(sizeBytes)} MB cached`}
+            </span>
+            <button
+                type="button"
+                onClick={handleClear}
+                disabled={clearing || !sizeBytes}
+                className="text-label text-text-secondary hover:text-text-primary disabled:text-text-disabled"
+            >
+                Clear cache
+            </button>
+        </div>
+    );
+}
+
 const REGIONAL_LAYER_OPTIONS: {key: keyof MapRegionalLayers; label: string; description: string}[] = [
     {key: "japanGsi", label: "Japan — GSI Seamless Photo", description: "Aerial imagery, Japan only"},
     {key: "statkart", label: "Norway — Kartverket Topo4", description: "Topographic map, Norway only"},
@@ -256,6 +381,31 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
                     />
                     Tilt map marker with vehicle attitude (multirotor only)
                 </label>
+            </section>
+
+            <section className="flex flex-col gap-2 border-t border-border-subtle pt-6">
+                <h2 className="text-heading text-text-primary">Auto-zoom</h2>
+                <p className="text-label text-text-helper">
+                    Only takes effect while the map is following the vehicle. Zooming or panning
+                    manually cancels following the same way it already does today.
+                </p>
+                <div className="flex flex-col gap-1" role="radiogroup" aria-label="Auto-zoom">
+                    {AUTO_ZOOM_MODES.map((mode) => (
+                        <label key={mode.value} className="flex items-start gap-2 text-body text-text-secondary">
+                            <input
+                                type="radio"
+                                name="auto-zoom-mode"
+                                className="mt-0.5"
+                                checked={settings.autoZoomMode === mode.value}
+                                onChange={() => settings.set("autoZoomMode", mode.value)}
+                            />
+                            <span>
+                                {mode.label}
+                                <span className="ml-2 text-label text-text-helper">{mode.description}</span>
+                            </span>
+                        </label>
+                    ))}
+                </div>
             </section>
 
             <section className="flex flex-col gap-4 border-t border-border-subtle pt-6">
@@ -350,6 +500,120 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
                         </label>
                     ))}
                 </div>
+            </section>
+
+            <section className="flex flex-col gap-2 border-t border-border-subtle pt-6">
+                <h2 className="text-heading text-text-primary">Map cache</h2>
+                <p className="text-label text-text-helper">
+                    Keeps a copy of every fetched tile — base layer and regional overlays alike —
+                    on disk, so they don't need re-downloading on the next launch. Useful for
+                    flying the same field again without a connection. Only caches tiles you
+                    actually pan or zoom over, not a pre-fetched region.
+                </p>
+
+                <div className="flex flex-col gap-1" role="radiogroup" aria-label="Map cache mode">
+                    {MAP_CACHE_MODES.map((mode) => (
+                        <label key={mode.value} className="flex items-start gap-2 text-body text-text-secondary">
+                            <input
+                                type="radio"
+                                name="map-cache-mode"
+                                className="mt-0.5"
+                                checked={settings.mapCacheMode === mode.value}
+                                onChange={() => settings.set("mapCacheMode", mode.value)}
+                            />
+                            <span>
+                                {mode.label}
+                                <span className="ml-2 text-label text-text-helper">{mode.description}</span>
+                            </span>
+                        </label>
+                    ))}
+                </div>
+
+                <MapCacheSizeInput settings={settings}/>
+                <p className="text-label text-text-helper">
+                    No upper bound enforced — oldest tiles are dropped first once the cache grows
+                    past whatever this is set to.
+                </p>
+
+                <label className="flex items-center gap-2 text-body text-text-secondary">
+                    Refresh after
+                    <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        disabled={settings.mapCacheMode === "off"}
+                        value={settings.mapCacheMaxAgeDays}
+                        onChange={(event) => {
+                            const v = event.target.valueAsNumber;
+                            if (Number.isFinite(v)) settings.set("mapCacheMaxAgeDays", Math.max(0, Math.round(v)));
+                        }}
+                        className="w-16 border-b border-border-strong bg-layer-02 px-2 py-1 text-center font-mono text-body text-text-primary disabled:text-text-disabled"
+                    />
+                    days (0 = never)
+                </label>
+                <p className="text-label text-text-helper">
+                    Past this age, a tile is refetched if there's a connection — the aged copy is
+                    only kept and reused if that refetch fails, rather than the tile ever being
+                    deleted for age alone.
+                </p>
+
+                <div className="flex items-center gap-2 text-body text-text-secondary">
+                    Cache zoom
+                    <input
+                        type="number"
+                        min={MIN_MAP_CACHE_ZOOM}
+                        max={settings.mapCacheMaxZoom}
+                        step={1}
+                        disabled={settings.mapCacheMode === "off"}
+                        value={settings.mapCacheMinZoom}
+                        onChange={(event) => {
+                            const v = event.target.valueAsNumber;
+                            if (Number.isFinite(v)) settings.set("mapCacheMinZoom", clampedInt(v, MIN_MAP_CACHE_ZOOM, settings.mapCacheMaxZoom));
+                        }}
+                        className="w-14 border-b border-border-strong bg-layer-02 px-2 py-1 text-center font-mono text-body text-text-primary disabled:text-text-disabled"
+                    />
+                    to
+                    <input
+                        type="number"
+                        min={settings.mapCacheMinZoom}
+                        max={MAX_MAP_CACHE_ZOOM}
+                        step={1}
+                        disabled={settings.mapCacheMode === "off"}
+                        value={settings.mapCacheMaxZoom}
+                        onChange={(event) => {
+                            const v = event.target.valueAsNumber;
+                            if (Number.isFinite(v)) settings.set("mapCacheMaxZoom", clampedInt(v, settings.mapCacheMinZoom, MAX_MAP_CACHE_ZOOM));
+                        }}
+                        className="w-14 border-b border-border-strong bg-layer-02 px-2 py-1 text-center font-mono text-body text-text-primary disabled:text-text-disabled"
+                    />
+                </div>
+                <p className="text-label text-text-helper">
+                    Tiles outside this range are always fetched fresh, never cached.
+                </p>
+
+                <div className="flex flex-col gap-1">
+                    <span className="text-body text-text-secondary">Cache these sources</span>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                        {MAP_CACHE_PROVIDER_OPTIONS.map((opt) => (
+                            <label key={opt.key} className="flex items-center gap-2 text-label text-text-secondary">
+                                <input
+                                    type="checkbox"
+                                    disabled={settings.mapCacheMode === "off"}
+                                    checked={settings.mapCacheProviders[opt.key]}
+                                    onChange={(event) =>
+                                        settings.set("mapCacheProviders", {
+                                            ...settings.mapCacheProviders,
+                                            [opt.key]: event.target.checked,
+                                        })
+                                    }
+                                />
+                                {opt.label}
+                            </label>
+                        ))}
+                    </div>
+                </div>
+
+                <MapCacheUsage/>
             </section>
 
             <section className="flex max-w-2xl flex-col gap-1 border-t border-border-subtle pt-6">

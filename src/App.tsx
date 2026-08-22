@@ -8,6 +8,8 @@ import SettingsPage from "@/pages/settings/SettingsPage.tsx";
 import ParametersPage from "@/pages/parameters/ParametersPage.tsx";
 import MissionPage from "@/pages/mission/MissionPage.tsx";
 import GeofencePage from "@/pages/geofence/GeofencePage.tsx";
+import RallyPage from "@/pages/rally/RallyPage.tsx";
+import InspectorPage from "@/pages/inspector/InspectorPage.tsx";
 import ScriptingPage from "@/pages/scripting/ScriptingPage.tsx";
 import CalibrationPage from "@/pages/calibration/CalibrationPage.tsx";
 import SetupPage from "@/pages/setup/SetupPage.tsx";
@@ -15,6 +17,8 @@ import FirmwarePage from "@/pages/firmware/FirmwarePage.tsx";
 import LogsPage from "@/pages/logs/LogsPage.tsx";
 import LogAnalysisPage from "@/pages/logs/LogAnalysisPage.tsx";
 import AboutPage from "@/pages/about/AboutPage.tsx";
+import SdCardLogsPage from "@/pages/sdcard/SdCardLogsPage.tsx";
+import SdCardScriptingPage from "@/pages/sdcard/SdCardScriptingPage.tsx";
 import {useWorkspace} from "@/lib/workspace/useWorkspace.ts";
 import {useAirspace} from "@/lib/airspace/useAirspace.ts";
 import {useConsoleEvents} from "@/lib/console/useConsoleEvents.ts";
@@ -100,6 +104,11 @@ function App() {
     // the Logs page's "Analyze" button is what sets it, and needs to reach
     // it whether or not Log Analysis happens to be mounted yet.
     const [analysisLogPath, setAnalysisLogPath] = useState<string | null>(null);
+    // Log Analysis opens from either the live Logs page or SD Card Logs —
+    // `PAGE_BACK_TARGET`'s static table can't express "back to whichever
+    // one opened it," so whoever calls `openAnalysis` records itself here
+    // instead, and `closePage` prefers this over the table for that one page.
+    const [analysisReturnPage, setAnalysisReturnPage] = useState<PageId>("logs");
 
     const navigation = useMemo<NavigationApi>(
         () => ({
@@ -108,11 +117,22 @@ function App() {
             openPage: setPage,
             // Most pages close straight to the workspace; a page present in
             // `PAGE_BACK_TARGET` (just Log Analysis today) instead swaps to
-            // the page it's conceptually nested under.
-            closePage: () => setPage((prev) => (prev && PAGE_BACK_TARGET[prev]) ?? null),
+            // the page it's conceptually nested under — except Log Analysis
+            // itself, which uses `analysisReturnPage` since that page's
+            // "nested under" target isn't fixed the way the table assumes.
+            closePage: () =>
+                setPage((prev) => (prev === "logAnalysis" ? analysisReturnPage : (prev && PAGE_BACK_TARGET[prev]) ?? null)),
         }),
-        [workspace.actions],
+        [workspace.actions, analysisReturnPage],
     );
+
+    // Shared by the live Logs page and SD Card Logs — both just hand this a
+    // path, local either way (SD Card's was never anywhere but local).
+    const openAnalysis = (path: string, from: PageId) => {
+        setAnalysisLogPath(path);
+        setAnalysisReturnPage(from);
+        navigation.openPage("logAnalysis");
+    };
 
     return (
         <NavigationProvider value={navigation}>
@@ -143,20 +163,17 @@ function App() {
                             {page === "parameters" && <ParametersPage/>}
                             {page === "mission" && <MissionPage mission={mission}/>}
                             {page === "geofence" && <GeofencePage/>}
+                            {page === "rally" && <RallyPage/>}
+                            {page === "inspector" && <InspectorPage/>}
                             {page === "scripting" && <ScriptingPage/>}
                             {page === "calibration" && <CalibrationPage/>}
                             {page === "setup" && <SetupPage/>}
                             {page === "firmware" && <FirmwarePage/>}
-                            {page === "logs" && (
-                                <LogsPage
-                                    onAnalyze={(path) => {
-                                        setAnalysisLogPath(path);
-                                        navigation.openPage("logAnalysis");
-                                    }}
-                                />
-                            )}
+                            {page === "logs" && <LogsPage onAnalyze={(path) => openAnalysis(path, "logs")}/>}
                             {page === "logAnalysis" && <LogAnalysisPage path={analysisLogPath}/>}
                             {page === "about" && <AboutPage update={update}/>}
+                            {page === "sdcardLogs" && <SdCardLogsPage onAnalyze={(path) => openAnalysis(path, "sdcardLogs")}/>}
+                            {page === "sdcardScripting" && <SdCardScriptingPage/>}
                         </FullScreenPage>
                     )}
                 </div>

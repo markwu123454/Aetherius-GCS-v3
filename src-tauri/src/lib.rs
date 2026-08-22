@@ -6,11 +6,15 @@ mod commands;
 mod dispatch;
 mod fence;
 mod firmware;
+mod inspector;
 mod link;
 mod logs;
+mod map_cache;
 mod mission;
 mod params;
+mod rally;
 mod scripting;
+mod sdcard;
 mod telemetry;
 mod vehicle_command;
 mod vehicle_profile;
@@ -58,7 +62,9 @@ pub fn run() {
         .manage(params::ParamState::default())
         .manage(mission::MissionState::default())
         .manage(fence::FenceState::default())
+        .manage(rally::RallyState::default())
         .manage(dispatch::DispatchState::default())
+        .manage(inspector::InspectorState::default())
         .manage(scripting::FtpState::default())
         .manage(logs::LogsState::default())
         .manage(logs::analysis::AnalysisState::default())
@@ -79,6 +85,9 @@ pub fn run() {
             mission::download_mission,
             fence::upload_fence,
             fence::download_fence,
+            rally::upload_rally,
+            rally::download_rally,
+            inspector::reset_inspector_stats,
             scripting::list_local_dir,
             scripting::read_local_file,
             scripting::write_local_file,
@@ -108,11 +117,26 @@ pub fn run() {
             logs::analysis::get_log_text_events,
             logs::analysis::load_analysis_state,
             logs::analysis::save_analysis_state,
-            vehicle_profile::get_vehicle_profile,
-            vehicle_profile::set_vehicle_profile,
+            sdcard::list_sdcard_dir,
+            sdcard::read_sdcard_file,
+            sdcard::write_sdcard_file,
+            sdcard::create_sdcard_file,
+            sdcard::create_sdcard_dir,
+            sdcard::delete_sdcard,
+            sdcard::rename_sdcard,
+            sdcard::list_sdcard_logs,
+            sdcard::resolve_sdcard_scripts_dir,
+            sdcard::create_sdcard_scripts_dir,
+            vehicle_profile::get_board_profile,
+            vehicle_profile::set_board_profile,
+            vehicle_profile::list_known_boards,
             firmware::flash::flash_fetch_manifest,
             firmware::flash::flash_prepare,
             firmware::flash::flash_start,
+            map_cache::get_cached_tile,
+            map_cache::put_cached_tile,
+            map_cache::clear_map_cache,
+            map_cache::map_cache_size_bytes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

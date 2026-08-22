@@ -10,6 +10,19 @@ function formatUs(us: number): string {
     return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+/** Same `m:ss` shape as `formatUs`, plus milliseconds — the playhead is a
+ * single instant someone is actively scrubbing to, not a coarse range
+ * endpoint, so it's worth the extra precision the start/end labels don't
+ * need. */
+function formatPlayheadUs(us: number): string {
+    const totalMs = Math.max(0, Math.round(us / 1000));
+    const ms = totalMs % 1000;
+    const totalSeconds = Math.floor(totalMs / 1000);
+    const s = totalSeconds % 60;
+    const m = Math.floor(totalSeconds / 60);
+    return `${m}:${s.toString().padStart(2, "0")}.${ms.toString().padStart(3, "0")}`;
+}
+
 interface OverviewBarProps {
     fullStartUs: number;
     fullEndUs: number;
@@ -68,8 +81,12 @@ export default function OverviewBar({fullStartUs, fullEndUs, visibleStartUs, vis
         <div className="flex shrink-0 border-t border-border-subtle bg-layer-01" style={{height: BAR_HEIGHT}}>
             <div style={{width: ROW_LABEL_WIDTH_PX}} className="shrink-0 border-r border-border-subtle"/>
             <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 px-2">
-                <div className="flex justify-between text-micro text-text-helper">
+                <div className="flex items-center justify-between text-micro text-text-helper">
                     <span>{formatUs(fullStartUs)}</span>
+                    {/* Colored to match the playhead line drawn below it —
+                        the one readout tied to "right now," between the two
+                        fixed range endpoints either side of it. */}
+                    <span className="font-mono text-label text-state-info">{formatPlayheadUs(playheadUs)}</span>
                     <span>{formatUs(fullEndUs)}</span>
                 </div>
                 <div

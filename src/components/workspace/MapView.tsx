@@ -7,6 +7,7 @@ import {AIRSPACE_CLASSES, airspaceColor} from "@/lib/airspace/airspace.ts";
 import type {AirspaceState} from "@/lib/airspace/useAirspace.ts";
 import {useBaseMap} from "@/lib/map/useBaseMap.ts";
 import {useVehicleTrack} from "@/lib/map/useVehicleTrack.ts";
+import {autoZoomTarget} from "@/lib/map/autoZoom.ts";
 import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
 import {useSettings} from "@/lib/settings/useSettings.ts";
 import {useUploadedWaypoints} from "@/lib/mission/useMission.ts";
@@ -33,6 +34,14 @@ const LOCATION_CURRENT_BEARING = 45;
  */
 const MIN_INTERPOLATE_MS = 20;
 const MAX_INTERPOLATE_MS = 500;
+
+/** Fraction of the remaining gap to the auto-zoom target closed per tick
+ * (~60fps) — eases the camera toward it instead of snapping straight to
+ * whatever the current groundspeed/altitude implies, since that value can
+ * shift a little from one telemetry update to the next. At this rate the
+ * camera covers ~86% of the distance to a new target in about a quarter
+ * second. */
+const AUTO_ZOOM_EASE = 0.06;
 
 function clamp(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value));
@@ -92,7 +101,7 @@ interface MapViewProps {
 export default function MapView({position, vehicleKind, airspace}: MapViewProps) {
     const {containerRef, mapRef, styleReady} = useBaseMap();
     const track = useVehicleTrack();
-    const {markerTilt} = useSettings();
+    const {markerTilt, autoZoomMode} = useSettings();
     const vehicle = useVehicle();
     const uploadedWaypoints = useUploadedWaypoints();
     const tiltActive = markerTilt && vehicleKind === "multirotor";
@@ -125,6 +134,23 @@ export default function MapView({position, vehicleKind, airspace}: MapViewProps)
     useEffect(() => {
         vehicleKindRef.current = vehicleKind;
     }, [vehicleKind]);
+
+    // Read by the tick loop below, which runs on its own rAF clock rather
+    // than in response to a render — same reasoning as `vehicleKindRef`.
+    const autoZoomModeRef = useRef(autoZoomMode);
+    useEffect(() => {
+        autoZoomModeRef.current = autoZoomMode;
+    }, [autoZoomMode]);
+
+    const groundspeedRef = useRef(vehicle.groundspeed);
+    useEffect(() => {
+        groundspeedRef.current = vehicle.groundspeed;
+    }, [vehicle.groundspeed]);
+
+    const altitudeRef = useRef<number | null>(position?.alt ?? null);
+    useEffect(() => {
+        altitudeRef.current = position?.alt ?? null;
+    }, [position]);
 
     // A deliberate eased camera move in flight — the first-fix flight-in, or
     // the recenter button — that the follow tick below must not fight. Both
@@ -443,7 +469,15 @@ export default function MapView({position, vehicleKind, airspace}: MapViewProps)
                 marker.setRotation(markerRotation(heading, vehicleKindRef.current));
 
                 if (followingRef.current && !recenteringRef.current) {
-                    map.jumpTo({center: lngLat});
+                    const target = autoZoomTarget(autoZoomModeRef.current, groundspeedRef.current, altitudeRef.current);
+                    // Built conditionally rather than `{center, zoom: undefined}` —
+                    // MapLibre checks `"zoom" in options`, so an explicit
+                    // `undefined` key would still be seen as "zoom requested".
+                    if (target === null) {
+                        map.jumpTo({center: lngLat});
+                    } else {
+                        map.jumpTo({center: lngLat, zoom: lerp(map.getZoom(), target, AUTO_ZOOM_EASE)});
+                    }
                 }
             }
 

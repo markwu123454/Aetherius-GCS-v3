@@ -18,10 +18,13 @@ export default function Splitter({orientation, onResize}: SplitterProps) {
         <div
             role="separator"
             aria-orientation={vertical ? "vertical" : "horizontal"}
+            // The hit area is a full 8px strip — noticeably easier to grab
+            // than the 1px line down its center is to look at — so at rest
+            // this reads as a normal border rather than a thick solid bar,
+            // while still being comfortable to land a drag on.
             className={[
-                "shrink-0 bg-layer-02 transition-colors",
-                vertical ? "w-1 cursor-col-resize hover:bg-state-info" : "h-1 cursor-row-resize hover:bg-state-info",
-                dragging ? "bg-state-info" : "",
+                "group flex shrink-0 items-center justify-center",
+                vertical ? "w-2 cursor-col-resize" : "h-2 cursor-row-resize",
             ].join(" ")}
             onPointerDown={(event) => {
                 event.preventDefault();
@@ -42,6 +45,14 @@ export default function Splitter({orientation, onResize}: SplitterProps) {
                 setDragging(false);
             }}
             onPointerCancel={() => setDragging(false)}
-        />
+        >
+            <div
+                className={[
+                    "transition-colors",
+                    vertical ? "h-full w-px" : "h-px w-full",
+                    dragging ? "bg-state-info" : "bg-border-subtle group-hover:bg-state-info",
+                ].join(" ")}
+            />
+        </div>
     );
 }

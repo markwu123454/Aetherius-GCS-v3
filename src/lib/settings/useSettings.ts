@@ -28,6 +28,7 @@ async function readSettings(): Promise<Settings> {
         // undefined and every read of it throwing.
         airspace: {...DEFAULT_SETTINGS.airspace, ...saved?.airspace},
         mapRegionalLayers: {...DEFAULT_SETTINGS.mapRegionalLayers, ...saved?.mapRegionalLayers},
+        mapCacheProviders: {...DEFAULT_SETTINGS.mapCacheProviders, ...saved?.mapCacheProviders},
     };
 }
 

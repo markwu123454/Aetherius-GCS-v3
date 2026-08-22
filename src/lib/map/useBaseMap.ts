@@ -3,6 +3,7 @@ import {Map, type RasterSourceSpecification, type StyleSpecification} from "mapl
 import "maplibre-gl/dist/maplibre-gl.css";
 import {useSettings} from "@/lib/settings/useSettings.ts";
 import type {MapRegionalLayers} from "@/lib/settings/settings.ts";
+import {ensureTileCacheProtocol, maybeCachedTileUrl, updateMapCacheSettings} from "@/lib/map/tileCache.ts";
 
 const OPENFREEMAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 
@@ -88,13 +89,33 @@ export function useBaseMap(): BaseMap {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const mapRef = useRef<Map | null>(null);
     const [styleReady, setStyleReady] = useState(false);
-    const {mapBaseLayer, mapRegionalLayers} = useSettings();
+    const {
+        mapBaseLayer, mapRegionalLayers,
+        mapCacheMode, mapCacheMaxSizeMb, mapCacheMaxAgeDays, mapCacheMinZoom, mapCacheMaxZoom, mapCacheProviders,
+    } = useSettings();
+
+    // `tileCache.ts`'s protocol handler is a module singleton shared by every
+    // map instance, not something re-created per map — so cache settings are
+    // pushed into it here rather than closed over, letting a change take
+    // effect on the very next tile request with no map teardown/rebuild.
+    useEffect(() => {
+        updateMapCacheSettings({
+            mode: mapCacheMode,
+            maxSizeMb: mapCacheMaxSizeMb,
+            maxAgeDays: mapCacheMaxAgeDays,
+            minZoom: mapCacheMinZoom,
+            maxZoom: mapCacheMaxZoom,
+            providers: mapCacheProviders,
+        });
+    }, [mapCacheMode, mapCacheMaxSizeMb, mapCacheMaxAgeDays, mapCacheMinZoom, mapCacheMaxZoom, mapCacheProviders]);
 
     // Create the map once. The initial style uses whatever base layer the settings
     // have at mount time (usually the default "esri" since settings load async).
     // If settings later change mapBaseLayer, the switch effect below handles it.
     useEffect(() => {
         if (!containerRef.current || mapRef.current) return;
+
+        ensureTileCacheProtocol();
 
         const initialStyle: StyleSpecification | string =
             mapBaseLayer === "openfreemap" ? OPENFREEMAP_STYLE_URL : buildEsriStyle();
@@ -104,6 +125,12 @@ export function useBaseMap(): BaseMap {
             style: typeof initialStyle === "string" ? initialStyle : structuredClone(initialStyle),
             center: [0, 20],
             zoom: 2,
+            // Routes tile requests (raster tiles from the base layer and
+            // regional overlays, plus OpenFreeMap's vector tiles) through the
+            // on-disk cache when the current settings say to. Style JSON,
+            // glyphs, and sprites are left untouched — see `tileCache.ts`.
+            transformRequest: (url, resourceType) =>
+                resourceType === "Tile" ? {url: maybeCachedTileUrl(url)} : {url},
         });
 
         mapRef.current.on("error", (e) => {

@@ -139,7 +139,10 @@ export default function TimelineRow({row, series, colorIndex, startUs, endUs, pl
 
     return (
         <div ref={setNodeRef} style={sortableStyle} className="flex flex-col bg-background">
-            <div className="flex border-b border-border-subtle" style={{height: row.height}}>
+            {/* No `border-b` here — the `Splitter` right below already draws
+                the one line between rows; adding this row's own would stack
+                a second line right on top of it. */}
+            <div className="flex" style={{height: row.height}}>
                 <div className="flex w-40 shrink-0 items-stretch gap-1 border-r border-border-subtle px-1 py-1">
                     <button
                         type="button"

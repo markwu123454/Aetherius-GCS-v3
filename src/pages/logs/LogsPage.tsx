@@ -131,15 +131,8 @@ export default function LogsPage({onAnalyze}: LogsPageProps) {
     }
 
     return (
-        <div className="flex h-full w-full flex-col gap-6 p-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-heading text-text-primary">Logs</h2>
-                    <p className="text-body text-text-secondary">
-                        Dataflash logs recorded on the vehicle's SD card — one per flight, plus anything logged while
-                        disarmed if <span className="font-mono">LOG_DISARMED</span> is set.
-                    </p>
-                </div>
+        <div className="flex h-full w-full flex-col">
+            <div className="flex h-control-sm shrink-0 items-center justify-end border-b border-border-subtle px-3">
                 <button
                     type="button"
                     disabled={logs.listing}
@@ -149,11 +142,17 @@ export default function LogsPage({onAnalyze}: LogsPageProps) {
                     {logs.listing ? "Refreshing…" : "Refresh"}
                 </button>
             </div>
-
-            {logs.listError && <p className="text-label text-state-danger">{logs.listError}</p>}
-            {logs.downloadError && <p className="text-label text-state-danger">{logs.downloadError}</p>}
-
-            <div className="min-h-0 flex-1 overflow-auto border border-border-subtle">
+            {logs.listError && (
+                <div className="flex h-control-sm shrink-0 items-center border-b border-border-subtle px-3">
+                    <span className="text-label text-state-danger">{logs.listError}</span>
+                </div>
+            )}
+            {logs.downloadError && (
+                <div className="flex h-control-sm shrink-0 items-center border-b border-border-subtle px-3">
+                    <span className="text-label text-state-danger">{logs.downloadError}</span>
+                </div>
+            )}
+            <div className="min-h-0 flex-1 overflow-auto">
                 <div className="flex items-center gap-4 border-b border-border-subtle bg-layer-01 px-3 py-2 text-micro text-text-helper uppercase">
                     <span className="w-16 shrink-0">ID</span>
                     <span className="w-48 shrink-0">Recorded</span>

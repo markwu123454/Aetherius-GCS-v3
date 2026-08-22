@@ -10,7 +10,7 @@ use mavlink::dialects::ardupilotmega::{
 use num_traits::ToPrimitive;
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::{commands, fence, logs, mission, params, scripting, telemetry, telemetry::VehicleSnapshot};
+use crate::{commands, fence, inspector, logs, mission, params, rally, scripting, telemetry, telemetry::VehicleSnapshot};
 
 /// How long a full-length STATUSTEXT chunk waits for a continuation before
 /// being shown standalone. ArduPilot sends split chunks back-to-back with no
@@ -41,6 +41,10 @@ pub struct DispatchState {
 /// Every inbound message type is routed here, and only here — read this top
 /// to bottom and you know exactly what happens to each MAVLink message.
 pub fn route(app: &AppHandle, snapshot: &mut VehicleSnapshot, message: &MavMessage) {
+    // Observes every message verbatim, ahead of and independent from the
+    // routing below — it owns no interpretation, so it never needs updating
+    // when a case is added or changed here.
+    inspector::observe(app, message);
     flush_stale_statustext(app);
     match message {
         MavMessage::HEARTBEAT(_)
@@ -75,31 +79,31 @@ pub fn route(app: &AppHandle, snapshot: &mut VehicleSnapshot, message: &MavMessa
             true
         }
         MavMessage::MISSION_REQUEST_INT(data) => {
-            if !fence::try_on_mission_request_int(app, data) {
+            if !fence::try_on_mission_request_int(app, data) && !rally::try_on_mission_request_int(app, data) {
                 mission::on_request_int(app, data);
             }
             true
         }
         MavMessage::MISSION_REQUEST(data) => {
-            if !fence::try_on_mission_request(app, data) {
+            if !fence::try_on_mission_request(app, data) && !rally::try_on_mission_request(app, data) {
                 mission::on_request(app, data);
             }
             true
         }
         MavMessage::MISSION_ACK(data) => {
-            if !fence::try_on_mission_ack(app, data) {
+            if !fence::try_on_mission_ack(app, data) && !rally::try_on_mission_ack(app, data) {
                 mission::on_ack(app, data);
             }
             true
         }
         MavMessage::MISSION_COUNT(data) => {
-            if !fence::try_on_mission_count(app, data) {
+            if !fence::try_on_mission_count(app, data) && !rally::try_on_mission_count(app, data) {
                 mission::on_count(app, data);
             }
             true
         }
         MavMessage::MISSION_ITEM_INT(data) => {
-            if !fence::try_on_mission_item_int(app, data) {
+            if !fence::try_on_mission_item_int(app, data) && !rally::try_on_mission_item_int(app, data) {
                 mission::on_item_int(app, data);
             }
             true

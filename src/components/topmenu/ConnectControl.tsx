@@ -1,7 +1,112 @@
-import {useEffect, useRef, useState} from "react";
-import {Close} from "@carbon/icons-react";
-import {ConnectionStatus, HISTORY_DISPLAY_LIMIT} from "@/lib/vehicle/connection.ts";
+import {useEffect, useMemo, useRef, useState} from "react";
+import {Close, Edit, Star, StarFilled} from "@carbon/icons-react";
+import {ConnectionStatus, HISTORY_DISPLAY_LIMIT, ScannedLink} from "@/lib/vehicle/connection.ts";
 import {Connection} from "@/lib/vehicle/useConnection.ts";
+import {KnownBoard} from "@/lib/vehicle/boards.ts";
+
+interface AvailableRowProps {
+    entry: ScannedLink;
+    board: KnownBoard | undefined;
+    disabled: boolean;
+    onSelect: () => void;
+    onRename: (name: string | null) => void;
+    onToggleAutoConnect: () => void;
+}
+
+/**
+ * One scanned endpoint. Plain and unrecognizable-by-UID entries (SITL, or a
+ * USB device whose serial doesn't look like a chip UID — see
+ * `chibios_uid_from_serial`) get just the select button, same as before;
+ * only entries with a `candidateUid` can have a saved profile at all, so
+ * only those get the rename/auto-connect controls.
+ */
+function AvailableRow({entry, board, disabled, onSelect, onRename, onToggleAutoConnect}: AvailableRowProps) {
+    const [renaming, setRenaming] = useState(false);
+    const [draftName, setDraftName] = useState(board?.displayName ?? entry.label);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (renaming) {
+            inputRef.current?.focus();
+            inputRef.current?.select();
+        }
+    }, [renaming]);
+
+    const startRename = () => {
+        setDraftName(board?.displayName ?? entry.label);
+        setRenaming(true);
+    };
+
+    const commitRename = () => {
+        setRenaming(false);
+        const trimmed = draftName.trim();
+        onRename(trimmed.length > 0 ? trimmed : null);
+    };
+
+    const label = board?.displayName || entry.label;
+    const recognizable = entry.candidateUid !== undefined;
+
+    if (renaming) {
+        return (
+            <input
+                ref={inputRef}
+                value={draftName}
+                onChange={(event) => setDraftName(event.target.value)}
+                onBlur={commitRename}
+                onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                        event.preventDefault();
+                        commitRename();
+                    } else if (event.key === "Escape") {
+                        event.preventDefault();
+                        setRenaming(false);
+                    }
+                }}
+                className="h-control-sm w-full border-b border-border-strong bg-layer-02 px-1 font-mono text-label text-text-primary focus-visible:outline-none"
+            />
+        );
+    }
+
+    return (
+        <div className="flex items-stretch">
+            <button
+                type="button"
+                disabled={disabled}
+                onClick={onSelect}
+                title={board?.displayName ? entry.label : undefined}
+                className="flex-1 truncate px-1 text-left font-mono text-label text-text-secondary hover:bg-layer-hover-01 hover:text-text-primary disabled:text-text-disabled"
+            >
+                {label}
+            </button>
+            {recognizable && (
+                <>
+                    <button
+                        type="button"
+                        aria-label={`Rename ${label}`}
+                        disabled={disabled}
+                        onClick={startRename}
+                        className="flex items-center px-1.5 text-text-helper hover:text-text-primary disabled:text-text-disabled"
+                    >
+                        <Edit size={14}/>
+                    </button>
+                    <button
+                        type="button"
+                        aria-label={board?.autoConnect ? `Stop auto-connecting ${label}` : `Auto-connect ${label} from now on`}
+                        title={board?.autoConnect ? "Auto-connects when plugged in — click to stop" : "Auto-connect this board when it's plugged in"}
+                        disabled={disabled}
+                        onClick={onToggleAutoConnect}
+                        className={[
+                            "flex items-center px-1.5 disabled:text-text-disabled",
+                            board?.autoConnect ? "text-state-warn" : "text-text-helper hover:text-text-primary",
+                        ].join(" ")}
+                    >
+                        {board?.autoConnect ? <StarFilled size={14}/> : <Star size={14}/>}
+                    </button>
+                </>
+            )}
+        </div>
+    );
+}
 
 interface ConnectControlProps {
     connection: Connection;
@@ -25,7 +130,13 @@ export default function ConnectControl({connection, armed, confirmDisconnectWhen
         connect,
         disconnect,
         reboot,
+        knownBoards,
+        saveBoard,
     } = connection;
+    const boardsByUid = useMemo(
+        () => new Map(knownBoards.map((board) => [board.uid, board])),
+        [knownBoards],
+    );
     const [open, setOpen] = useState(false);
     const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
     const [confirmingReboot, setConfirmingReboot] = useState(false);
@@ -67,18 +178,22 @@ export default function ConnectControl({connection, armed, confirmDisconnectWhen
     const settingsLocked = live || status === "disconnecting" || status === "rebooting";
 
     useEffect(() => {
-        // Scanning while a link is live/tearing down would probe a port that
-        // may already be in use by the active connection — pointless at best,
-        // contended at worst — and the fields are disabled anyway, so there's
-        // nothing to fill in from a result.
-        if (!open || settingsLocked) {
+        // While cleanly disconnected, `useConnection`'s own background scan
+        // loop already keeps `available` fresh continuously (it has to, for
+        // auto-connect to notice a hot-plugged board without this dropdown
+        // being open at all) — nothing to add here. "lost"/"error" aren't
+        // covered by that loop, so this covers them for as long as the
+        // dropdown stays open, same as scanning always used to work here.
+        // Live/tearing-down is skipped either way: scanning would probe a
+        // port that may already be in use by the active connection.
+        if (!open || settingsLocked || status === "disconnected") {
             return;
         }
 
         void scan();
         const interval = window.setInterval(() => void scan(), 3_000);
         return () => window.clearInterval(interval);
-    }, [open, settingsLocked, scan]);
+    }, [open, settingsLocked, status, scan]);
 
     const STATUS_LABELS: Record<ConnectionStatus, string> = {
         connected: endpoint ?? "Connected",
@@ -184,15 +299,24 @@ export default function ConnectControl({connection, armed, confirmDisconnectWhen
                             <div className="flex flex-col gap-1">
                                 <span className="text-micro text-text-helper uppercase">Available</span>
                                 {available.map((entry) => (
-                                    <button
+                                    <AvailableRow
                                         key={entry.address}
-                                        type="button"
+                                        entry={entry}
+                                        board={entry.candidateUid ? boardsByUid.get(entry.candidateUid) : undefined}
                                         disabled={settingsLocked}
-                                        onClick={() => setDraft(entry.address)}
-                                        className="truncate px-1 text-left font-mono text-label text-text-secondary hover:bg-layer-hover-01 hover:text-text-primary disabled:text-text-disabled"
-                                    >
-                                        {entry.label}
-                                    </button>
+                                        onSelect={() => setDraft(entry.address)}
+                                        onRename={(name) => {
+                                            if (entry.candidateUid) {
+                                                void saveBoard(entry.candidateUid, {displayName: name});
+                                            }
+                                        }}
+                                        onToggleAutoConnect={() => {
+                                            if (entry.candidateUid) {
+                                                const current = boardsByUid.get(entry.candidateUid);
+                                                void saveBoard(entry.candidateUid, {autoConnect: !current?.autoConnect});
+                                            }
+                                        }}
+                                    />
                                 ))}
                             </div>
                         )}

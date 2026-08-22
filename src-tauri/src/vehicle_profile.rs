@@ -22,40 +22,58 @@ use crate::link::LinkState;
 /// bucket rather than refusing to save that vehicle's data.
 const UNKNOWN_VEHICLE_DIR: &str = "unknown";
 
-/// The directory the currently connected vehicle's own data lives under —
-/// `$APPDATA/<uid-hex>/`, or `$APPDATA/unknown/` if it hasn't reported a
-/// UID. Created if it doesn't exist yet. Doesn't require a link itself —
-/// callers needing "must be connected" (like `download_log`) already check
-/// that via `logs::current_link` before reaching here; this only cares
-/// whether a UID happens to be known.
+/// A board's directory by explicit UID — `$APPDATA/<uid-hex>/`. Created if
+/// it doesn't exist yet. The primitive every other lookup here goes
+/// through: knowing a UID is enough, no live link required, which is what
+/// lets a board's profile be read or written before it's ever been
+/// connected to (see `get_board_profile`/`set_board_profile`), from just a
+/// USB scan's derived UID.
+pub fn dir_for_uid(app: &AppHandle, uid: &str) -> Result<PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join(uid);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+/// The directory the currently connected vehicle's own data lives under, or
+/// `$APPDATA/unknown/` if it hasn't reported a UID. Doesn't require a link
+/// itself — callers needing "must be connected" (like `download_log`)
+/// already check that via `logs::current_link` before reaching here; this
+/// only cares whether a UID happens to be known.
 pub fn vehicle_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let uid = {
         let link = app.state::<LinkState>();
         let snapshot = link.snapshot.lock().unwrap_or_else(|e| e.into_inner());
         snapshot.board_uid.clone()
     };
-    let name = uid.unwrap_or_else(|| UNKNOWN_VEHICLE_DIR.to_string());
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join(name);
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir)
+    dir_for_uid(app, &uid.unwrap_or_else(|| UNKNOWN_VEHICLE_DIR.to_string()))
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VehicleProfile {
     pub display_name: Option<String>,
+    /// Connect to this board automatically (on launch, or when it's
+    /// plugged in while disconnected) whenever `link::scan_links` can
+    /// derive its UID from the USB serial number and match it here — see
+    /// `link::chibios_uid_from_serial`. `#[serde(default)]` so a profile
+    /// written before this field existed still loads instead of failing.
+    #[serde(default)]
+    pub auto_connect: bool,
 }
 
-fn profile_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(vehicle_dir(app)?.join("fc.json"))
+fn profile_path_for_uid(app: &AppHandle, uid: &str) -> Result<PathBuf, String> {
+    Ok(dir_for_uid(app, uid)?.join("fc.json"))
 }
 
-/// Reads the connected vehicle's stored profile — a default (empty) one if
+/// Reads a board's stored profile by UID — a default (empty) one if
 /// nothing's been saved for it yet, not an error, since "no profile saved
-/// yet" is the ordinary state for a board seen for the first time.
+/// yet" is the ordinary state for a board seen for the first time. Explicit
+/// UID rather than "whichever vehicle is currently connected": the
+/// Connect dropdown needs to read/write a scanned board's profile before
+/// any link exists at all.
 #[tauri::command]
-pub fn get_vehicle_profile(app: AppHandle) -> Result<VehicleProfile, String> {
-    let path = profile_path(&app)?;
+pub fn get_board_profile(app: AppHandle, uid: String) -> Result<VehicleProfile, String> {
+    let path = profile_path_for_uid(&app, &uid)?;
     if !path.exists() {
         return Ok(VehicleProfile::default());
     }
@@ -64,10 +82,49 @@ pub fn get_vehicle_profile(app: AppHandle) -> Result<VehicleProfile, String> {
 }
 
 #[tauri::command]
-pub fn set_vehicle_profile(app: AppHandle, profile: VehicleProfile) -> Result<(), String> {
-    let path = profile_path(&app)?;
+pub fn set_board_profile(app: AppHandle, uid: String, profile: VehicleProfile) -> Result<(), String> {
+    let path = profile_path_for_uid(&app, &uid)?;
     let content = serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?;
     fs::write(&path, content).map_err(|e| e.to_string())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnownBoard {
+    pub uid: String,
+    pub display_name: Option<String>,
+    pub auto_connect: bool,
+}
+
+/// Every board this app has ever stored anything for — one entry per
+/// `$APPDATA/<uid>/` directory, `unknown/` excluded since it isn't a real
+/// board's identity, just the bucket for boards too old to report a UID at
+/// all. A directory with no `fc.json` (a board that's connected and had a
+/// log downloaded but was never explicitly renamed or pinned) still gets
+/// an entry, with a default profile — it's "known" in the sense of "seen
+/// before", the same sense the Recent list already uses for raw addresses.
+#[tauri::command]
+pub fn list_known_boards(app: AppHandle) -> Result<Vec<KnownBoard>, String> {
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let Ok(entries) = fs::read_dir(&app_data) else {
+        return Ok(Vec::new());
+    };
+
+    let mut boards: Vec<KnownBoard> = entries
+        .flatten()
+        .filter(|entry| entry.file_type().is_ok_and(|t| t.is_dir()))
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| name != UNKNOWN_VEHICLE_DIR)
+        .map(|uid| {
+            let profile = get_board_profile(app.clone(), uid.clone()).unwrap_or_default();
+            KnownBoard {uid, display_name: profile.display_name, auto_connect: profile.auto_connect}
+        })
+        .collect();
+
+    // Stable, deterministic order — by UID, since that's the one field
+    // every entry always has (unlike `display_name`).
+    boards.sort_by(|a, b| a.uid.cmp(&b.uid));
+    Ok(boards)
 }
 
 /// One-time migration for logs downloaded before per-vehicle folders

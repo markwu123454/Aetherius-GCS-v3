@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from "react";
-import {Menu as MenuIcon} from "@carbon/icons-react";
+import {Checkmark, Menu as MenuIcon} from "@carbon/icons-react";
 
 export interface MenuItem {
     label: string;
@@ -110,8 +110,8 @@ export default function AppMenu({menus, expanded, onExpandedChange}: AppMenuProp
                                             }}
                                             className="flex h-control-sm w-full items-center gap-2 px-4 text-left text-label text-text-secondary hover:bg-layer-hover-01 hover:text-text-primary disabled:text-text-helper"
                                         >
-                                            <span className="w-3 shrink-0 text-state-info">
-                                                {item.checked ? "✓" : ""}
+                                            <span className="flex w-3 shrink-0 items-center text-state-info">
+                                                {item.checked && <Checkmark size={12}/>}
                                             </span>
                                             {item.label}
                                         </button>

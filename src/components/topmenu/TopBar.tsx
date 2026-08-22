@@ -10,6 +10,7 @@ import {alertLevel, fixLabel, VehicleState, worst} from "@/lib/vehicle/vehicle.t
 import {isLinkFailing, isLinkIdle, linkSeverity} from "@/lib/vehicle/connection.ts";
 import {PANEL_DEFINITIONS} from "@/lib/workspace/panels.ts";
 import {useConnection} from "@/lib/vehicle/useConnection.ts";
+import {useSdCard} from "@/lib/sdcard/useSdCard.ts";
 import {SettingsApi} from "@/lib/settings/useSettings.ts";
 import {useNavigation} from "@/lib/navigation/useNavigation.tsx";
 import {PAGE_TITLES, PageId} from "@/lib/navigation/navigation.ts";
@@ -35,6 +36,9 @@ export default function TopBar({vehicle, settings, openIds, page, mission, onRes
     // Reachable the same way from a panel's own content or a page's own
     // content — this is just the top bar's turn to use it.
     const navigation = useNavigation();
+    // Only needed here for "Choose Folder…"; the pages themselves read the
+    // same store directly.
+    const sdCard = useSdCard();
 
     // Null until a packet has actually arrived. Deriving an age from a zero
     // timestamp would measure against the epoch, not against a packet.
@@ -116,6 +120,22 @@ export default function TopBar({vehicle, settings, openIds, page, mission, onRes
                 ],
             },
             {
+                label: "SD Card",
+                items: [
+                    {label: "Logs", action: () => navigation.openPage("sdcardLogs")},
+                    {label: "Scripts", action: () => navigation.openPage("sdcardScripting")},
+                    // Parameters was dropped: ArduPilot doesn't write a
+                    // `.param` file to the card, only an opaque binary
+                    // EEPROM backup (`APM/STRG_BAK`) with no names in it —
+                    // there was never anything real for this to show.
+                    //
+                    // Separated from the pages above: this isn't a
+                    // destination, it's the setting that decides what they
+                    // all show.
+                    {label: "Choose Folder…", action: sdCard.chooseFolder, separatorBefore: true},
+                ],
+            },
+            {
                 label: "Mission",
                 items: [
                     {label: "Edit Mission…", action: () => navigation.openPage("mission")},
@@ -131,6 +151,7 @@ export default function TopBar({vehicle, settings, openIds, page, mission, onRes
                         title: mission.starting ? "Already starting" : undefined,
                     },
                     {label: "Edit Geofence…", action: () => navigation.openPage("geofence"), separatorBefore: true},
+                    {label: "Edit Rally Points…", action: () => navigation.openPage("rally")},
                 ],
             },
             {
@@ -151,14 +172,19 @@ export default function TopBar({vehicle, settings, openIds, page, mission, onRes
                 ],
             },
             {
-                label: "Settings",
+                // Not "Settings": Preferences is the only actual setting here —
+                // About and the Inspector are look-up/diagnostic tools, not
+                // configuration, and don't belong under that name. "Help" is
+                // the conventional home for exactly this mix.
+                label: "Help",
                 items: [
                     {label: "Preferences…", action: () => navigation.openPage("settings")},
-                    {label: "About", action: () => navigation.openPage("about")},
+                    {label: "MAVLink Inspector…", action: () => navigation.openPage("inspector")},
+                    {label: "About", action: () => navigation.openPage("about"), separatorBefore: true},
                 ],
             },
         ],
-        [openIds, navigation, mission, onResetWorkspace],
+        [openIds, navigation, mission, onResetWorkspace, sdCard.chooseFolder],
     );
 
     const compact = menuExpanded;

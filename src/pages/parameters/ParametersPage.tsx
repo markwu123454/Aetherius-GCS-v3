@@ -361,7 +361,7 @@ function GroupList({groups, vehicle, selectedKey, onSelect}: GroupListProps) {
     }, [tree, filterQuery]);
 
     return (
-        <div className="flex h-full w-56 shrink-0 flex-col border-r border-border-subtle bg-layer-01">
+        <div className="flex h-full w-48 shrink-0 flex-col border-r border-border-subtle bg-layer-01">
             <div className="shrink-0 border-b border-border-subtle p-2">
                 <input
                     type="text"

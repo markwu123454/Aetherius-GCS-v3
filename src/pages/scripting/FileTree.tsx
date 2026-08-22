@@ -814,7 +814,7 @@ export default function FileTree({
         <>
             <div
                 data-scripting-tree
-                className="flex h-full w-64 shrink-0 flex-col overflow-auto border-r border-border-subtle bg-layer-01"
+                className="flex h-full w-48 shrink-0 flex-col overflow-auto border-r border-border-subtle bg-layer-01"
                 onContextMenu={(event) => event.preventDefault()}
                 onKeyDown={(event) => {
                     const mod = event.ctrlKey || event.metaKey;
