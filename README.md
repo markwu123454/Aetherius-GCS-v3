@@ -2,8 +2,6 @@
 
 A **Windows** ground control station for **ArduPlane** and **ArduCopter**, built with [Tauri](https://tauri.app) (Rust) and React.
 
-> **Screenshot placeholder** — see the [screenshot instructions](#screenshot) below if you want to drop one in here.
-
 ---
 
 ## Features

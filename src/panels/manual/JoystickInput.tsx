@@ -66,9 +66,12 @@ function isTypingTarget(target: EventTarget | null): boolean {
 
 /** Full `-1..1` sweep takes about 0.8s of a key held down. */
 const RAMP_RATE = 2.5;
-/** How often a held key actually pushes a new override out over the link —
- * fast enough to feel responsive, slow enough not to flood the serial/radio
- * link the way sending on every animation frame would. */
+/** How often an engaged override re-asserts itself over the link, whether or
+ * not a stick moved this frame — fast enough to feel responsive and to stay
+ * well inside ArduPilot's ~1s override timeout (`RC_OVERRIDE_TIME`, after
+ * which it hands the channels back to the real transmitter), slow enough not
+ * to flood the serial/radio link the way sending on every animation frame
+ * would. */
 const SEND_INTERVAL_MS = 100;
 
 function clamp(value: number): number {
@@ -326,7 +329,6 @@ function useManualControl(focused: boolean, mirrored: MirroredSticks, calibratio
             const heldNow = heldRef.current;
             let nextLeft = leftRef.current;
             let nextRight = rightRef.current;
-            let changed = false;
 
             if (heldNow.size > 0) {
                 const lRateX = axisRate(heldNow, LEFT_KEYS, "x");
@@ -334,7 +336,6 @@ function useManualControl(focused: boolean, mirrored: MirroredSticks, calibratio
                 if (lRateX !== 0 || lRateY !== 0) {
                     nextLeft = {x: clamp(nextLeft.x + lRateX * dt), y: clamp(nextLeft.y + lRateY * dt)};
                     setLeft(nextLeft);
-                    changed = true;
                 }
 
                 const rRateX = axisRate(heldNow, RIGHT_KEYS, "x");
@@ -342,11 +343,18 @@ function useManualControl(focused: boolean, mirrored: MirroredSticks, calibratio
                 if (rRateX !== 0 || rRateY !== 0) {
                     nextRight = {x: clamp(nextRight.x + rRateX * dt), y: clamp(nextRight.y + rRateY * dt)};
                     setRight(nextRight);
-                    changed = true;
                 }
             }
 
-            if (changed && time - lastSendRef.current >= SEND_INTERVAL_MS) {
+            // Re-assert the override on a fixed cadence whether or not a stick
+            // moved this frame: ArduPilot times the override out and reverts to
+            // the real transmitter within ~1s of the last RC_CHANNELS_OVERRIDE
+            // it heard, so a stick held still has to keep being re-sent, not
+            // just a moving one. `engagedRef` scopes the heartbeat to a live
+            // focus session — `release` (blur/unmount) clears it, so a released
+            // widget goes genuinely silent instead of idling out a heartbeat
+            // that would re-grab control the operator just let go of.
+            if (engagedRef.current && time - lastSendRef.current >= SEND_INTERVAL_MS) {
                 send(nextLeft, nextRight);
             }
         };
