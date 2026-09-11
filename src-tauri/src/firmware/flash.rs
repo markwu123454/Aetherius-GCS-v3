@@ -1,9 +1,8 @@
-//! Tauri commands for ArduPilot firmware flashing — the orchestration
-//! around `bootloader.rs`'s protocol implementation: fetching ArduPilot's
-//! published board/version catalog, downloading a chosen `.apj`, and
-//! running the flash on a background thread with progress reported through
-//! events (mirrors `link::connect_link`'s shape, not `logs::download_log`'s,
-//! since the actual serial I/O here is blocking rather than tokio-async).
+//! Tauri commands for ArduPilot firmware flashing — the orchestration around
+//! `bootloader.rs`'s protocol: fetching ArduPilot's board/version catalog,
+//! downloading a chosen `.apj`, and running the flash on a background thread
+//! with progress reported through events (blocking serial I/O, so this takes
+//! `link::connect_link`'s thread-plus-events shape, not the tokio-async one).
 
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -23,16 +22,13 @@ const MANIFEST_URL: &str = "https://firmware.ardupilot.org/manifest.json.gz";
 const BOOTLOADER_BAUD: u32 = 115_200;
 const READ_TIMEOUT: Duration = Duration::from_secs(2);
 const FIND_BOOTLOADER_TIMEOUT: Duration = Duration::from_secs(20);
-/// Pause after asking a board to reboot, before scanning again — the sum of
-/// the two sleeps `uploader.py` uses around the same step (0.25s after
-/// sending, 0.3s after closing the port), both of which its comments
-/// attribute to serial I/O errors that appear without them.
+/// Pause after asking a board to reboot, before scanning again — the sum of the
+/// two sleeps `uploader.py` uses here (0.25s after sending, 0.3s after closing
+/// the port), which its comments attribute to serial I/O errors.
 const REBOOT_SETTLE: Duration = Duration::from_millis(550);
-/// Read timeout while *scanning* for a bootloader. Deliberately short: a
-/// board that's been told to reboot holds in its bootloader for only a few
-/// seconds before jumping to its application, and every silent port on the
-/// machine costs one of these before the next is tried. The handle that
-/// finds the bootloader is promoted to `READ_TIMEOUT` for the flash itself.
+/// Read timeout while *scanning* for a bootloader — deliberately short: a board
+/// holds in its bootloader only a few seconds, and every silent port costs one
+/// of these. The handle that finds it is promoted to `READ_TIMEOUT` to flash.
 const PROBE_TIMEOUT: Duration = Duration::from_millis(300);
 
 #[derive(Deserialize)]
@@ -41,27 +37,23 @@ struct ManifestEntry {
     platform: String,
     format: String,
     url: String,
-    /// `"Copter"` vs `"HELICOPTER"` vs `"FIXED_WING"` — the *only* field
-    /// separating a board's multirotor build from its traditional-helicopter
-    /// one. Both are published under the same `platform` and the same
-    /// version string, and both carry the same `board_id`, so without this
-    /// they're indistinguishable in the picker *and* to `upload`'s
-    /// board-ID check.
+    /// `"Copter"` vs `"HELICOPTER"` vs `"FIXED_WING"` — the only field separating
+    /// a board's multirotor build from its heli one: both share the same
+    /// `platform`, version, and `board_id`, so without it they're
+    /// indistinguishable in the picker and to `upload`'s board-ID check.
     #[serde(rename = "mav-type")]
     mav_type: String,
     #[serde(rename = "mav-firmware-version-type")]
     version_type: String,
     #[serde(rename = "mav-firmware-version-str")]
     version_str: String,
-    /// USB vendor/product IDs this build's board enumerates as, as
-    /// `["0x3162/0x0053", ...]`. Present on every `.apj` entry but absent
-    /// from the `hex`/`elf`/`abin` rows in the same array, so it has to
-    /// default — a non-defaulting field here fails the whole 91k-row parse.
+    /// USB vendor/product IDs the board enumerates as (`["0x3162/0x0053", ...]`).
+    /// Absent from the `hex`/`elf`/`abin` rows, so it must default or the whole
+    /// parse fails.
     #[serde(rename = "USBID", default)]
     usbid: Vec<String>,
-    /// Ground truth for "is this firmware for this board" — the same number
-    /// `upload` checks against the bootloader's `INFO_BOARD_ID`. Also only
-    /// present on `.apj` rows.
+    /// The same number `upload` checks against the bootloader's `INFO_BOARD_ID`.
+    /// Only present on `.apj` rows, so it must default.
     #[serde(default)]
     board_id: Option<u32>,
     #[serde(default)]
@@ -104,16 +96,11 @@ fn version_type_rank(version_type: &str) -> u8 {
     }
 }
 
-/// ArduPilot's own published board/version catalog
-/// (<https://firmware.ardupilot.org/manifest.json.gz>) — around 90k entries
-/// across every vehicle type, firmware format, and version ever released.
-/// Narrowed to `.apj` builds for `vehicletype` (the manifest's own field —
-/// `"Copter"`/`"Plane"`/etc, not this app's `VehicleKind`), and to each
-/// board's current recommended build (`"OFFICIAL"`) or its bleeding-edge one
-/// (`latest == 1`). The full version history behind that is tens of
-/// thousands of rows per vehicle type — not something worth shipping to a
-/// firmware picker; a "show older versions" mode would need a second,
-/// separately-filtered command rather than sending everything up front.
+/// Fetches ArduPilot's published board/version catalog
+/// (<https://firmware.ardupilot.org/manifest.json.gz>, ~90k entries across every
+/// vehicle type, format, and version) and narrows it to `.apj` builds for
+/// `vehicletype` that are each board's recommended (`"OFFICIAL"`) or
+/// bleeding-edge (`latest == 1`) build — the full history is too much for a picker.
 #[tauri::command]
 pub async fn flash_fetch_manifest(vehicletype: String) -> Result<Vec<FirmwareOption>, String> {
     let compressed = reqwest::get(MANIFEST_URL)
@@ -174,36 +161,29 @@ pub struct ApjSummary {
     pub image_size: u64,
 }
 
-/// One downloaded `.apj`, tagged with the URL it came from.
 struct PreparedFirmware {
     url: String,
     firmware: ApjFirmware,
 }
 
 /// Holds the most recently downloaded `.apj` between `flash_prepare` and
-/// `flash_start`. Kept server-side rather than round-tripped through the
-/// frontend — firmware images run to a few MB, and the frontend only ever
-/// needs `ApjSummary` to show a confirmation before flashing.
+/// `flash_start`, server-side — images run to a few MB and the frontend only
+/// needs `ApjSummary`.
 #[derive(Default)]
 pub struct FlashState {
-    /// Tagged with its source URL so `flash_start` can refuse to write an
-    /// image the operator wasn't looking at. `flash_prepare` calls can
-    /// overlap and finish out of order (clicking board A then board B while
-    /// A is still downloading), which would otherwise leave A's firmware
-    /// here under B's confirmation screen.
+    /// Tagged with its source URL so `flash_start` can refuse to flash an image
+    /// the operator wasn't looking at — overlapping `flash_prepare` calls can
+    /// finish out of order.
     prepared: Mutex<Option<PreparedFirmware>>,
-    /// Set for the entire lifetime of a flash thread. A chip erase followed
-    /// by two interleaved `PROG_MULTI` streams on one port is the worst
-    /// outcome this module can produce, and the frontend's own "is it
-    /// flashing" state resets whenever the Firmware page unmounts — so the
-    /// interlock has to live here, not in React.
+    /// Set for the whole lifetime of a flash thread. Two interleaved
+    /// `PROG_MULTI` streams on one port is the worst thing this module can do,
+    /// and the frontend's flashing state resets when the page unmounts, so the
+    /// interlock lives here, not in React.
     busy: Arc<AtomicBool>,
 }
 
-/// Downloads one `.apj` file (a JSON header plus a compressed firmware
-/// image, typically a few hundred KB to a few MB) and parses it, ready for
-/// `flash_start`. Returns just enough to show the operator a confirmation —
-/// board ID, revision, and size — before anything touches a serial port.
+/// Downloads and parses one `.apj`, returning just the `ApjSummary` needed to
+/// confirm with the operator before anything touches a serial port.
 #[tauri::command]
 pub async fn flash_prepare(url: String, state: State<'_, FlashState>) -> Result<ApjSummary, String> {
     let bytes = reqwest::get(&url)
@@ -249,29 +229,9 @@ fn stage_event(stage: UploadStage, done: usize, total: usize) -> FlashProgress {
     }
 }
 
-/// Flashes whatever `flash_prepare` most recently downloaded onto `port`
-/// (a bare port name like `COM5`, from `ScannedLink::port_name` — not a
-/// MAVLink `serial:PORT:BAUD` address, since flashing always talks the
-/// bootloader's own baud rate regardless of what the board's flight
-/// firmware uses for telemetry).
-///
-/// `port` must already be sitting in bootloader mode, or be about to (the
-/// operator plugging it in right now, or having just triggered
-/// `RebootToBootloader` on an already-connected vehicle and disconnected
-/// that link) — this polls for up to `FIND_BOOTLOADER_TIMEOUT` before
-/// giving up rather than trying to coax a running vehicle into rebooting
-/// itself.
-///
-/// Runs on its own thread — the protocol in `bootloader.rs` is blocking
-/// serial I/O, unlike the rest of this app's MAVLink-over-channels code —
-/// and reports back purely through `flash-progress`/`flash-result` events,
-/// the same "kick off a background thread, deliver status via events" shape
-/// `connect_link` uses, rather than holding the calling `invoke()` open for
-/// the whole flash.
-/// Releases the busy interlock however the flash thread ends, and
-/// guarantees the frontend sees a terminal `flash-result` even if the thread
-/// unwinds — a UI stuck on "Erasing flash…" with no result and no way to
-/// retry is the one failure mode worse than a reported error.
+/// Releases the busy interlock however the flash thread ends, and guarantees the
+/// frontend sees a terminal `flash-result` even if the thread unwinds — a UI
+/// stuck on "Erasing flash…" with no result is worse than a reported error.
 struct FlashGuard {
     app: AppHandle,
     busy: Arc<AtomicBool>,
@@ -346,13 +306,10 @@ fn usb_ports() -> Vec<serialport::SerialPortInfo> {
         .collect()
 }
 
-/// Every port belonging to the same physical USB device as `port_name`.
-///
-/// A flight controller typically exposes more than one CDC interface (a
-/// Pixhawk 6C enumerates `MI_00` and `MI_02` as two COM ports), and only one
-/// of them speaks MAVLink — which is usually *not* the one the operator
-/// happened to pick. Matching on vendor/product/serial keeps the reboot
-/// request aimed at that one board, rather than every board plugged in.
+/// Every port on the same physical USB device as `port_name`. A flight
+/// controller exposes several CDC interfaces (a Pixhawk 6C shows two COM ports),
+/// only one of which speaks MAVLink — matching on vendor/product/serial aims the
+/// reboot at that board rather than every board plugged in.
 fn same_device_ports(port_name: &str) -> Vec<String> {
     let ports = usb_ports();
     let identity = ports.iter().find(|p| p.port_name == port_name).and_then(|p| match &p.port_type {
@@ -377,23 +334,13 @@ fn same_device_ports(port_name: &str) -> Vec<String> {
     }
 }
 
-/// Asks a *running* board to reboot into its bootloader, by writing a
-/// `COMMAND_LONG`/`PREFLIGHT_REBOOT_SHUTDOWN` with `param1 = 3` straight to
-/// the serial port.
-///
-/// This is what makes flashing work on a board that isn't already in its
-/// bootloader — the overwhelmingly common case, since a board only sits in
-/// its bootloader for a few seconds after power-up. It deliberately does
-/// *not* go through `link`/`vehicle_command`: those need an established
-/// MAVLink connection, and the whole point here is to reach a board nothing
-/// is connected to. ArduPilot's own `uploader.py` does the same thing, with
-/// pre-baked reboot packets.
-///
-/// Sent as both MAVLink v1 and v2, to both the usual target
-/// (system 1, component 1) and the broadcast-ish (0, 0), because we have no
-/// heartbeat to learn the board's real IDs from. Every failure is ignored:
-/// the board may already be in its bootloader, in which case there's nothing
-/// to reboot and nothing listening.
+/// Asks a *running* board to reboot into its bootloader (`COMMAND_LONG` /
+/// `PREFLIGHT_REBOOT_SHUTDOWN`, `param1 = 3`) written straight to the port.
+/// Deliberately not via `link`/`vehicle_command`, which need an established
+/// MAVLink connection — the whole point is to reach a board nothing is connected
+/// to (as `uploader.py`'s pre-baked reboot packets do). Sent as both MAVLink v1
+/// and v2, to (system 1, component 1) and (0, 0), since we have no heartbeat to
+/// learn the board's real IDs; every failure is ignored.
 fn request_reboot_to_bootloader(port_name: &str) {
     let header = MavHeader { system_id: 255, component_id: 0, sequence: 0 };
 
@@ -421,11 +368,9 @@ fn request_reboot_to_bootloader(port_name: &str) {
             let _ = mavlink::write_v1_msg(&mut port, header, &message);
         }
 
-        // Then the NSH console fallback, exactly as `uploader.py`'s
-        // `send_reboot` does after its MAVLink attempt: three carriage
-        // returns to wake a console prompt, then `reboot -b` (reboot to
-        // bootloader), then a plain `reboot` for firmware that doesn't
-        // understand `-b`.
+        // NSH console fallback, as `uploader.py`'s `send_reboot` does after its
+        // MAVLink attempt: three carriage returns to wake a prompt, `reboot -b`
+        // (to bootloader), then plain `reboot` for firmware without `-b`.
         let _ = std::io::Write::write_all(&mut port, b"\r\r\r");
         let _ = std::io::Write::write_all(&mut port, b"reboot -b\n");
         let _ = std::io::Write::write_all(&mut port, b"\r\r\r");
@@ -435,14 +380,11 @@ fn request_reboot_to_bootloader(port_name: &str) {
     }
 }
 
-/// Finds a board in bootloader mode and returns a transport ready to flash
-/// it, along with the port it was found on.
-///
-/// Scans *every* USB port rather than only `preferred`, because a board in
-/// bootloader mode is a different USB device from the same board running its
-/// firmware — different product ID, so typically a different COM port
-/// entirely. Targeting the port the operator selected (which is by
-/// definition the *application's* port) can never find it.
+/// Finds a board in bootloader mode and returns a transport ready to flash it,
+/// with the port it was found on. Scans *every* USB port, not just `preferred`:
+/// a board in bootloader mode is a different USB device (different product ID,
+/// usually a different COM port) from the same board running firmware, so the
+/// operator's selected port can never find it.
 fn connect_to_bootloader(
     preferred: &str,
     deadline: Instant,
@@ -450,13 +392,10 @@ fn connect_to_bootloader(
     let mut last_error: Option<String> = None;
 
     while Instant::now() < deadline {
-        // Probe before rebooting, mirroring `uploader.py`'s
-        // `find_bootloader`: open, try to identify, and only ask for a
-        // reboot if nothing answered. A board already sitting in its
-        // bootloader must not be sent MAVLink and NSH noise first.
-        //
-        // `preferred` leads so an operator who put the board in bootloader
-        // mode by hand gets the fast path.
+        // Probe before rebooting, as `uploader.py`'s `find_bootloader` does:
+        // identify first, ask for a reboot only if nothing answered (a board
+        // already in its bootloader must not get MAVLink/NSH noise). `preferred`
+        // leads so a hand-placed board gets the fast path.
         let mut candidates = vec![preferred.to_string()];
         candidates.extend(usb_ports().into_iter().map(|p| p.port_name).filter(|n| n != preferred));
 
@@ -483,11 +422,10 @@ fn connect_to_bootloader(
             break;
         }
 
-        // Nothing answered anywhere, so the board is presumably still
-        // running its firmware — ask it to reboot, then let it settle.
-        // `uploader.py` sleeps 0.25s after sending and another 0.3s after
-        // closing the port, with comments naming the serial I/O errors that
-        // appear without them; the same pauses are kept here.
+        // Nothing answered, so the board is presumably still running firmware —
+        // reboot it, then let it settle. `uploader.py` sleeps 0.25s after sending
+        // and 0.3s after closing the port (naming the serial I/O errors that
+        // appear without them); kept here as one pause.
         request_reboot_to_bootloader(preferred);
         std::thread::sleep(REBOOT_SETTLE);
     }
@@ -505,16 +443,12 @@ fn connect_to_bootloader(
 fn run_flash(app: &AppHandle, port: &str, fw: &ApjFirmware, force: bool) -> Result<(), String> {
     let _ = app.emit("flash-progress", FlashProgress::WaitingForBootloader);
 
-    // Finds the board wherever it turns up — including asking it to reboot
-    // into its bootloader, which is what makes this work on a board that's
-    // currently running firmware.
     let (mut transport, _found_on) = connect_to_bootloader(port, Instant::now() + FIND_BOOTLOADER_TIMEOUT)?;
 
-    // A 1.6 MB image is ~6,500 PROG_MULTI chunks, and the callback fires on
-    // every one. Emitting a Tauri event per chunk means ~6,500 JSON
-    // serializations and React renders during the phase that's already
-    // holding the serial port flat out, so only whole-percent changes (and
-    // the final chunk) cross the IPC boundary.
+    // A ~1.6 MB image is ~6,500 PROG_MULTI chunks; emitting a Tauri event per
+    // chunk would mean ~6,500 JSON serializations and React renders during the
+    // phase already holding the serial port flat out, so only whole-percent
+    // changes (and the final chunk) cross the IPC boundary.
     let mut last_percent: Option<usize> = None;
 
     bootloader::upload(&mut transport, fw, force, |stage, done, total| {
