@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use mavlink::{
     error::MessageReadError,
-    dialects::ardupilotmega::{MavCmd, MavMessage},
+    dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavCmd, MavMessage, MavType},
     MavConnection,
 };
 
@@ -105,6 +105,25 @@ pub struct LinkState {
     pub last_heartbeat_ms: AtomicU64,
 }
 
+/// True only for the aircraft's own HEARTBEAT, not one from another GCS,
+/// companion computer or peripheral sharing the link.
+///
+/// `sim_vehicle.py` starts a MAVProxy that holds SITL's SERIAL0, and
+/// ArduPilot's MAVLink router forwards that MAVProxy's broadcast heartbeat
+/// (sys 255, comp 230, `MAV_TYPE_GCS`) back out of the other serial ports. So
+/// a GCS connected to 5762 receives two heartbeats carrying two different
+/// source IDs, only one of which is the vehicle. The forwarding only starts
+/// once this end transmits, which is why a passive listener on the same port
+/// never sees the second one.
+///
+/// `MAV_AUTOPILOT_INVALID` is the spec's own marker for "this component is not
+/// a flight controller", and every non-autopilot is required to send it — so
+/// this catches gimbals and companion computers too, not just the MAVProxy
+/// that prompted it.
+fn is_vehicle_heartbeat(data: &HEARTBEAT_DATA) -> bool {
+    data.autopilot != MavAutopilot::MAV_AUTOPILOT_INVALID && data.mavtype != MavType::MAV_TYPE_GCS
+}
+
 /// Read messages until asked to stop. Emission is throttled because SITL sends
 /// roughly fifty messages a second and the UI cannot use that rate — it would
 /// just be re-rendering faster than a human can read.
@@ -132,50 +151,72 @@ fn read_loop(
             Ok((header, message)) => {
                 let state = app.state::<LinkState>();
 
-                if matches!(message, MavMessage::HEARTBEAT(_)) {
-                    let first_heartbeat = last_heartbeat.is_none();
-                    last_heartbeat = Some(Instant::now());
-                    state.last_heartbeat_ms.store(
-                        SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
-                        Ordering::SeqCst,
-                    );
-                    *state.target.lock().unwrap_or_else(|e| e.into_inner()) =
-                        Some((header.system_id, header.component_id));
-
-                    if first_heartbeat {
-                        request_data_streams(&app, header.system_id, header.component_id, telem_interval_us);
-                        request_autopilot_version(&app, header.system_id, header.component_id);
+                // A heartbeat from anything that isn't our vehicle is dropped
+                // before it can touch the target, the snapshot or link liveness
+                // — see `is_vehicle_heartbeat`. Once a vehicle is locked in, a
+                // heartbeat carrying any other source ID is ignored for the rest
+                // of the link's life, so a second autopilot appearing on a
+                // shared link can't take over the session mid-flight.
+                //
+                // Everything that isn't a heartbeat still routes as before;
+                // `set_status` at the bottom of the loop is deliberately left
+                // outside this guard so a link carrying nothing but foreign
+                // heartbeats still ages into `Losing`.
+                let foreign_heartbeat = match &message {
+                    MavMessage::HEARTBEAT(data) => {
+                        let id = (header.system_id, header.component_id);
+                        let locked = *state.target.lock().unwrap_or_else(|e| e.into_inner());
+                        !is_vehicle_heartbeat(data) || locked.is_some_and(|target| target != id)
                     }
-                }
+                    _ => false,
+                };
 
-                let mut snapshot = state.snapshot.lock().unwrap_or_else(|e| e.into_inner());
-                dispatch::route(&app, &mut snapshot, &message);
-                snapshot.since_heartbeat_ms = last_heartbeat.map(|at| at.elapsed().as_millis() as u64);
+                if !foreign_heartbeat {
+                    if matches!(message, MavMessage::HEARTBEAT(_)) {
+                        let first_heartbeat = last_heartbeat.is_none();
+                        last_heartbeat = Some(Instant::now());
+                        state.last_heartbeat_ms.store(
+                            SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
+                            Ordering::SeqCst,
+                        );
+                        *state.target.lock().unwrap_or_else(|e| e.into_inner()) =
+                            Some((header.system_id, header.component_id));
 
-                let current_prearm_pass = snapshot.prearm_pass;
-
-                if last_emit.elapsed() >= Duration::from_millis(50) {
-                    last_emit = Instant::now();
-                    let payload = snapshot.clone();
-                    drop(snapshot);
-                    let _ = app.emit("vehicle", payload);
-
-                    if let Some(batch) = params::drain_batch(&app) {
-                        let _ = app.emit("param-values", batch);
+                        if first_heartbeat {
+                            request_data_streams(&app, header.system_id, header.component_id, telem_interval_us);
+                            request_autopilot_version(&app, header.system_id, header.component_id);
+                        }
                     }
-                }
 
-                // Fire an immediate prearm check on every passing → failing
-                // transition, regardless of where the periodic poll timer sits.
-                // This keeps the reasons list current whenever the vehicle
-                // starts oscillating between states — the periodic loop still
-                // runs its normal keep-alive rhythm in parallel.
-                if last_prearm_pass == Some(true) && current_prearm_pass == Some(false) {
-                    if let Some(target) = *state.target.lock().unwrap_or_else(|e| e.into_inner()) {
-                        let _ = commands::send_async(&app, MavCmd::MAV_CMD_RUN_PREARM_CHECKS, [0.0; 7], target);
+                    let mut snapshot = state.snapshot.lock().unwrap_or_else(|e| e.into_inner());
+                    dispatch::route(&app, &mut snapshot, &message);
+                    snapshot.since_heartbeat_ms = last_heartbeat.map(|at| at.elapsed().as_millis() as u64);
+
+                    let current_prearm_pass = snapshot.prearm_pass;
+
+                    if last_emit.elapsed() >= Duration::from_millis(50) {
+                        last_emit = Instant::now();
+                        let payload = snapshot.clone();
+                        drop(snapshot);
+                        let _ = app.emit("vehicle", payload);
+
+                        if let Some(batch) = params::drain_batch(&app) {
+                            let _ = app.emit("param-values", batch);
+                        }
                     }
+
+                    // Fire an immediate prearm check on every passing → failing
+                    // transition, regardless of where the periodic poll timer sits.
+                    // This keeps the reasons list current whenever the vehicle
+                    // starts oscillating between states — the periodic loop still
+                    // runs its normal keep-alive rhythm in parallel.
+                    if last_prearm_pass == Some(true) && current_prearm_pass == Some(false) {
+                        if let Some(target) = *state.target.lock().unwrap_or_else(|e| e.into_inner()) {
+                            let _ = commands::send_async(&app, MavCmd::MAV_CMD_RUN_PREARM_CHECKS, [0.0; 7], target);
+                        }
+                    }
+                    last_prearm_pass = current_prearm_pass;
                 }
-                last_prearm_pass = current_prearm_pass;
             }
             Err(MessageReadError::Parse(_)) => continue,
             Err(MessageReadError::Io(error)) => {
