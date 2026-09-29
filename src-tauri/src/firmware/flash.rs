@@ -166,6 +166,13 @@ struct PreparedFirmware {
     firmware: ApjFirmware,
 }
 
+/// Whether a flash is writing to a port right now. The link manager checks
+/// this before auto-connecting, so it never opens a port the flasher owns.
+pub fn is_busy(app: &AppHandle) -> bool {
+    use tauri::Manager;
+    app.state::<FlashState>().busy.load(Ordering::SeqCst)
+}
+
 /// Holds the most recently downloaded `.apj` between `flash_prepare` and
 /// `flash_start`, server-side — images run to a few MB and the frontend only
 /// needs `ApjSummary`.

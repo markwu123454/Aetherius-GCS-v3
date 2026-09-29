@@ -85,7 +85,13 @@ pub fn get_board_profile(app: AppHandle, uid: String) -> Result<VehicleProfile, 
 pub fn set_board_profile(app: AppHandle, uid: String, profile: VehicleProfile) -> Result<(), String> {
     let path = profile_path_for_uid(&app, &uid)?;
     let content = serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?;
-    fs::write(&path, content).map_err(|e| e.to_string())
+    fs::write(&path, content).map_err(|e| e.to_string())?;
+    // Turning auto-connect on should take effect now, not stay suppressed by
+    // an earlier manual disconnect of this board this session.
+    if profile.auto_connect {
+        crate::link::unmute(&app, &uid);
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]

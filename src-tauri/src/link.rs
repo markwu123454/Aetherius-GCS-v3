@@ -7,7 +7,7 @@ use mavlink::{
 };
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::ErrorKind,
     net::{SocketAddr, TcpStream, ToSocketAddrs},
     sync::{
@@ -130,6 +130,33 @@ pub struct LinkState {
     /// that window is the reboot happening, not a lost link, so `read_loop`
     /// leaves the status alone and the loop reconnects.
     pub reconnecting: AtomicBool,
+    /// What the last scan found — see the link manager below.
+    pub available: Mutex<Vec<ScannedLink>>,
+    /// Boards (their UID, or the bare address when no UID is known) the
+    /// operator disconnected by hand this session, which auto-connect leaves
+    /// alone. Cleared per board by a deliberate connect to it, or by turning
+    /// its auto-connect on; everything clears on restart.
+    pub muted: Mutex<HashSet<String>>,
+    /// What's connected or being connected to: the address, plus the board
+    /// UID the scan matched it to. Read back on disconnect to know what to mute.
+    pub identity: Mutex<Option<LinkIdentity>>,
+    /// Why the last attempt failed (transport wouldn't open, reboot refused),
+    /// until the next attempt starts.
+    pub error: Mutex<Option<String>>,
+}
+
+#[derive(Clone)]
+pub struct LinkIdentity {
+    address: String,
+    candidate_uid: Option<String>,
+}
+
+impl LinkIdentity {
+    /// The key muting uses: the board's UID when the scan knew it (so it
+    /// follows the board across COM port renumbering), else the address.
+    fn mute_key(&self) -> String {
+        self.candidate_uid.clone().unwrap_or_else(|| self.address.clone())
+    }
 }
 
 /// Opens the transport for `endpoint`, bounding the part of it the OS would
@@ -476,6 +503,8 @@ fn set_status(app: &AppHandle, status: LinkStatus) {
     }
     *current = Some(status);
     let _ = app.emit("link-status", status);
+    drop(current);
+    publish(app);
 }
 
 /// `rename_all` is deliberately `serialize`-only: the frontend wants
@@ -539,7 +568,7 @@ fn board_baud(class: UsbBoardClass) -> u32 {
 /// passed to `connect_link` if this entry is picked — kept separate so a
 /// recognized board can show a friendly name *and* the literal connect
 /// string it resolves to, rather than hiding one behind the other.
-#[derive(Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScannedLink {
     pub label: String,
@@ -642,12 +671,10 @@ fn primary_interface_only(ports: Vec<serialport::SerialPortInfo>) -> Vec<serialp
     ports.into_iter().zip(keep).filter_map(|(port, keep)| keep.then_some(port)).collect()
 }
 
-/// `async` only for where it runs, not for what it does: enumerating serial
-/// ports and probing SITL both block, and this runs on a three-second timer
-/// for as long as the app is disconnected. A plain `#[tauri::command]` would
-/// do that on the main thread.
-#[tauri::command(async)]
-pub fn scan_links() -> Vec<ScannedLink> {
+/// One scan: recognized USB boards plus SITL if it's listening. Blocks
+/// (enumerating ports, probing SITL), so it only runs on the link manager's
+/// scanner thread or inside the async `refresh_links` command.
+fn scan_links() -> Vec<ScannedLink> {
     let mut found = Vec::new();
 
     if let Ok(ports) = serialport::available_ports().map(primary_interface_only) {
@@ -690,32 +717,162 @@ pub fn scan_links() -> Vec<ScannedLink> {
     found
 }
 
-/// Starts connecting. Returns as soon as the attempt is handed to a worker
-/// thread, so the outcome arrives as events rather than as this call's return
-/// value: `link-status` for the transition, and `link-error` carrying the
-/// message when the transport can't be opened at all.
+/*
+ * ── Link manager ────────────────────────────────────────────────────────
+ *
+ * Everything about *which* link exists lives here, not in the frontend:
+ * scanning for boards, auto-connecting a saved one, remembering which the
+ * operator deliberately disconnected, and the last error. The frontend sends
+ * intents (connect, disconnect, reboot, rescan) and renders one published
+ * snapshot. This used to live in a React hook, and every component that
+ * called it ran its own copy — its own scan timer, auto-connect and muted
+ * list — so disconnecting from the top bar muted a board in one copy while
+ * another reconnected it.
+ */
+
+/// How often the scanner runs while disconnected.
+const SCAN_INTERVAL: Duration = Duration::from_secs(3);
+
+/// Everything the frontend shows about the link, published as `link-state`
+/// on every change and returned by `link_state` for components that mount
+/// later.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkSnapshot {
+    status: LinkStatus,
+    endpoint: Option<String>,
+    error: Option<String>,
+    available: Vec<ScannedLink>,
+}
+
+fn snapshot_of(app: &AppHandle) -> LinkSnapshot {
+    let state = app.state::<LinkState>();
+    let status = state.status.lock().unwrap_or_else(|e| e.into_inner()).unwrap_or(LinkStatus::Disconnected);
+    let endpoint = state.endpoint.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let error = state.error.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let available = state.available.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    LinkSnapshot {status, endpoint, error, available}
+}
+
+/// Sends the current snapshot. Always the whole thing, read fresh, so two
+/// publishes racing each other can only ever leave the frontend on a real
+/// current state, never a half-updated one.
+fn publish(app: &AppHandle) {
+    let _ = app.emit("link-state", snapshot_of(app));
+}
+
+fn set_error(app: &AppHandle, error: Option<String>) {
+    *app.state::<LinkState>().error.lock().unwrap_or_else(|e| e.into_inner()) = error;
+    publish(app);
+}
+
+fn is_idle(app: &AppHandle) -> bool {
+    matches!(
+        *app.state::<LinkState>().status.lock().unwrap_or_else(|e| e.into_inner()),
+        None | Some(LinkStatus::Disconnected)
+    )
+}
+
+/// Runs a scan and publishes it if anything changed.
+fn rescan(app: &AppHandle) -> Vec<ScannedLink> {
+    let found = scan_links();
+    let state = app.state::<LinkState>();
+    let changed = {
+        let mut available = state.available.lock().unwrap_or_else(|e| e.into_inner());
+        let changed = *available != found;
+        *available = found.clone();
+        changed
+    };
+    if changed {
+        publish(app);
+    }
+    found
+}
+
+/// Connects to the one scanned board saved with auto-connect, if there is
+/// exactly one and nothing rules it out. More than one does nothing rather
+/// than guess which the operator meant — the same reasoning
+/// `identify_usb_board` uses for an unrecognized VID/PID: a wrong guess that
+/// looks like a real choice is worse than no choice at all. Never while a
+/// flash owns a port.
+fn try_auto_connect(app: &AppHandle) {
+    if crate::firmware::flash::is_busy(app) || !is_idle(app) {
+        return;
+    }
+    let state = app.state::<LinkState>();
+    let candidates: Vec<String> = {
+        let available = state.available.lock().unwrap_or_else(|e| e.into_inner());
+        let muted = state.muted.lock().unwrap_or_else(|e| e.into_inner());
+        available
+            .iter()
+            .filter(|link| {
+                let Some(uid) = &link.candidate_uid else { return false };
+                !muted.contains(uid)
+                    && crate::vehicle_profile::get_board_profile(app.clone(), uid.clone()).is_ok_and(|p| p.auto_connect)
+            })
+            .map(|link| link.address.clone())
+            .collect()
+    };
+    if let [address] = candidates.as_slice() {
+        begin_connect(app, address.clone());
+    }
+}
+
+/// Starts the scanner: while cleanly disconnected, scan every few seconds
+/// and auto-connect a saved board. Only while "disconnected" — a live or
+/// tearing-down link shouldn't have a port it might be using probed out from
+/// under it, and "lost"/"error" mean something was just tried and didn't
+/// work; connecting again there would fight whatever the operator is looking
+/// at. Called once from `lib.rs` at startup.
+pub fn start_link_manager(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        if is_idle(&app) {
+            rescan(&app);
+            try_auto_connect(&app);
+        }
+        std::thread::sleep(SCAN_INTERVAL);
+    });
+}
+
+/// Starts a connection attempt — the one path every connect goes through,
+/// by hand or automatic. A deliberate connect to a board un-mutes it.
 ///
-/// A `#[tauri::command]` that isn't `async` runs inline on the main thread, so
-/// blocking here — which is what opening a transport does — wedges the IPC
-/// queue: the Cancel button's own `disconnect_link` couldn't be dispatched
-/// until the connect had already given up on its own.
-#[tauri::command]
-pub fn connect_link(endpoint: String, app: AppHandle, state: State<LinkState>) {
+/// Returns as soon as the attempt is handed to a worker thread; the outcome
+/// arrives in the published snapshot (status, and `error` when the
+/// transport can't be opened at all).
+fn begin_connect(app: &AppHandle, endpoint: String) {
+    let state = app.state::<LinkState>();
     // Ending the previous epoch has to happen here, in order, before anything
     // can observe a half-old link — only the blocking open goes to the worker.
     let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
-    reset_link_state(&app, None);
+    reset_link_state(app, None);
+
+    let candidate_uid = state
+        .available
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .find(|link| link.address == endpoint)
+        .and_then(|link| link.candidate_uid.clone());
+    let identity = LinkIdentity {address: endpoint.clone(), candidate_uid};
+    state.muted.lock().unwrap_or_else(|e| e.into_inner()).remove(&identity.mute_key());
+    *state.identity.lock().unwrap_or_else(|e| e.into_inner()) = Some(identity);
     *state.endpoint.lock().unwrap_or_else(|e| e.into_inner()) = Some(endpoint.clone());
-    set_status(&app, LinkStatus::Connecting);
+    *state.error.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    set_status(app, LinkStatus::Connecting);
+    publish(app);
 
     let handle = app.clone();
     std::thread::spawn(move || {
         let connection = match open_connection(&endpoint) {
             Ok(connection) => connection,
             Err(error) => {
-                if handle.state::<LinkState>().generation.load(Ordering::SeqCst) == generation {
-                    let _ = handle.emit("link-error", error);
+                let state = handle.state::<LinkState>();
+                if state.generation.load(Ordering::SeqCst) == generation {
+                    *state.identity.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                    *state.error.lock().unwrap_or_else(|e| e.into_inner()) = Some(error);
                     set_status(&handle, LinkStatus::Error);
+                    publish(&handle);
                 }
                 return;
             }
@@ -727,21 +884,50 @@ pub fn connect_link(endpoint: String, app: AppHandle, state: State<LinkState>) {
     });
 }
 
+/// Starts connecting to `endpoint`. A plain (non-async) command is fine:
+/// the blocking open is on a worker thread, see `begin_connect`.
 #[tauri::command]
-pub fn link_status(state: State<LinkState>) -> Option<LinkStatus> {
-    *state.status.lock().unwrap_or_else(|e| e.into_inner())
+pub fn connect_link(endpoint: String, app: AppHandle) {
+    begin_connect(&app, endpoint);
 }
 
-/// Ends the current epoch. Bumping the generation before the reset is what
-/// makes this instant even with a connect still in flight: the worker's
+/// The current link snapshot — for a component that mounts after the last
+/// `link-state` event.
+#[tauri::command]
+pub fn link_state(app: AppHandle) -> LinkSnapshot {
+    snapshot_of(&app)
+}
+
+/// Rescans now instead of waiting for the next tick (the connect dropdown
+/// opening). Also returns what it found, for the firmware page's port picker.
+#[tauri::command(async)]
+pub fn refresh_links(app: AppHandle) -> Vec<ScannedLink> {
+    rescan(&app)
+}
+
+/// Un-mutes a board so auto-connect can pick it up again — called when the
+/// operator turns its auto-connect on, which should take effect now, not
+/// stay silently suppressed by an earlier manual disconnect.
+pub fn unmute(app: &AppHandle, uid: &str) {
+    app.state::<LinkState>().muted.lock().unwrap_or_else(|e| e.into_inner()).remove(uid);
+}
+
+/// Ends the current epoch, and mutes what was connected so auto-connect
+/// doesn't put it straight back. Bumping the generation before the reset is
+/// what makes this instant even with a connect still in flight: the worker's
 /// `install_link` sees the new generation and drops what it opened.
 #[tauri::command]
 pub fn disconnect_link(app: AppHandle, state: State<LinkState>) {
     set_status(&app, LinkStatus::Disconnecting);
     state.generation.fetch_add(1, Ordering::SeqCst);
     reset_link_state(&app, None);
+    if let Some(identity) = state.identity.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        state.muted.lock().unwrap_or_else(|e| e.into_inner()).insert(identity.mute_key());
+    }
     *state.endpoint.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *state.error.lock().unwrap_or_else(|e| e.into_inner()) = None;
     set_status(&app, LinkStatus::Disconnected);
+    publish(&app);
 }
 
 #[cfg(test)]
@@ -1022,23 +1208,28 @@ pub async fn reboot_link(force: bool, app: AppHandle) -> Result<(), String> {
     )
     .await;
 
-    match outcome {
-        Ok(AckOrSilence::Ack(MavResult::MAV_RESULT_ACCEPTED)) | Ok(AckOrSilence::Silent) => {}
+    let refused = match outcome {
+        Ok(AckOrSilence::Ack(MavResult::MAV_RESULT_ACCEPTED)) | Ok(AckOrSilence::Silent) => None,
         Ok(AckOrSilence::Ack(MavResult::MAV_RESULT_FAILED)) => {
             let armed = state.snapshot.lock().unwrap_or_else(|e| e.into_inner()).armed == Some(true);
-            return Err(if armed {
+            Some(if armed {
                 "The vehicle refused to reboot because it's armed.".to_string()
             } else {
                 "The vehicle refused to reboot.".to_string()
-            });
+            })
         }
-        Ok(AckOrSilence::Ack(other)) => return Err(format!("The vehicle refused to reboot ({other:?}).")),
+        Ok(AckOrSilence::Ack(other)) => Some(format!("The vehicle refused to reboot ({other:?}).")),
         Err(CommandError::Timeout) => {
-            return Err("No answer from the vehicle, so it didn't reboot. Check the link and try again.".to_string())
+            Some("No answer from the vehicle, so it didn't reboot. Check the link and try again.".to_string())
         }
-        Err(CommandError::NotConnected) => return Err("not connected".to_string()),
-        Err(CommandError::LinkReset) => return Err("The link changed before the vehicle answered.".to_string()),
+        Err(CommandError::NotConnected) => Some("not connected".to_string()),
+        Err(CommandError::LinkReset) => Some("The link changed before the vehicle answered.".to_string()),
+    };
+    if let Some(reason) = refused {
+        set_error(&app, Some(reason.clone()));
+        return Err(reason);
     }
+    set_error(&app, None);
 
     let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
     state.reconnecting.store(true, Ordering::SeqCst);

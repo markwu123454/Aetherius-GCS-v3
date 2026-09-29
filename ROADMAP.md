@@ -88,3 +88,22 @@ later. Nothing under Potential Features is scoped, prioritized, or promised.
 
 ### Core / Infrastructure
 * Multi-vehicle / swarm support.
+* Optional hardware / node list — what's attached to the vehicle beyond the
+  flight controller (e.g. CAN/DroneCAN nodes, peripherals). Not designed yet;
+  needs thinking through before scoping.
+
+## Known Issues
+
+* **Reboot didn't fully reboot / did nothing from the Compass page.** Fixed,
+  not yet tested on hardware. Causes were: the ack was never checked (a
+  refused or lost reboot still showed a reboot-and-reconnect), the armed
+  override was never sent, the reconnect gave up once the port opened, and
+  page reboot buttons were silent no-ops because only the top bar's
+  `useConnection` copy knew the endpoint. The calibration pages also now
+  reset when the link reboots or drops.
+* **Every `useConnection()` call was a separate copy of the connection
+  state** — each ran its own scan timer, auto-connect and muted list, so a
+  board disconnected from the top bar could be auto-connected again by
+  another copy. Fixed, not yet tested on hardware: the backend link manager
+  (link.rs) now owns scanning, auto-connect, muting, endpoint and errors and
+  publishes one `link-state` snapshot; `useConnection()` just reads it.

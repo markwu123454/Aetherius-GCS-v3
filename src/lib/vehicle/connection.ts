@@ -146,7 +146,9 @@ export interface ScannedLink {
  */
 export function scanLinks(): Promise<ScannedLink[]> {
     requireBackend();
-    return invoke<ScannedLink[]>("scan_links");
+    // Through the backend's link manager, so the result also updates the
+    // shared snapshot every `useConnection()` reads.
+    return invoke<ScannedLink[]>("refresh_links");
 }
 
 /**

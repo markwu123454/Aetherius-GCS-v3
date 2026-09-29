@@ -1,15 +1,8 @@
-import {useCallback, useEffect, useRef, useState} from "react";
+import {useCallback, useState, useSyncExternalStore} from "react";
 import {invoke} from "@tauri-apps/api/core";
-import {useTauriEvent} from "@/lib/tauriEvent.ts";
-import {ConnectionStatus, loadHistory, rebootVehicle, saveHistory, scanLinks, ScannedLink, withAttempt, withoutAttempt} from "./connection.ts";
+import {listen} from "@tauri-apps/api/event";
+import {ConnectionStatus, loadHistory, rebootVehicle, saveHistory, ScannedLink, withAttempt, withoutAttempt} from "./connection.ts";
 import {KnownBoard, listKnownBoards, updateBoardProfile} from "./boards.ts";
-
-/** How often the background scan re-runs while disconnected — the same
- * cadence `ConnectControl` used to run itself only while its dropdown was
- * open; scanning now needs to keep going with the dropdown closed too, so a
- * board saved with auto-connect is noticed as soon as it's plugged in, not
- * just the next time someone opens the dropdown. */
-const SCAN_INTERVAL_MS = 3_000;
 
 export interface Connection {
     /** The address currently typed into the connect field, not yet submitted. */
@@ -18,11 +11,11 @@ export interface Connection {
     /** Recently attempted addresses, most recent first — deeper than what's shown. */
     history: string[];
     removeFromHistory: (endpoint: string) => void;
-    /** Endpoints found by the last scan, in whatever order the backend returned them. */
+    /** Endpoints found by the backend's last scan. */
     available: ScannedLink[];
-    /** Re-runs the scan on demand (e.g. the dropdown opening) — the same
-     * scan also runs on its own timer whenever disconnected, so this exists
-     * for "make it fresh right now" rather than being the only trigger. */
+    /** Asks the backend to rescan now (e.g. the dropdown opening). It also
+     * scans on its own every few seconds while disconnected, so this is
+     * "make it fresh right now", not the only trigger. */
     scan: () => Promise<void>;
     status: ConnectionStatus;
     /** The address the transport was asked to open. */
@@ -54,245 +47,173 @@ function message(error: unknown): string {
     return typeof error === "string" ? error : "Connection failed";
 }
 
+/** The backend's `link-state` snapshot (`LinkSnapshot` in link.rs). */
+interface LinkSnapshot {
+    status: ConnectionStatus;
+    endpoint: string | null;
+    error: string | null;
+    available: ScannedLink[];
+}
+
+interface Shared {
+    link: LinkSnapshot;
+    /** An error from this side — an empty address, or no backend — shown
+     * until the next action. The backend's own `error` covers the rest. */
+    localError: string | null;
+    history: string[];
+    knownBoards: KnownBoard[];
+}
+
+/*
+ * One store for the whole app, fed by the backend. The backend's link
+ * manager (link.rs) owns everything about the link — scanning, auto-connect,
+ * which boards the operator disconnected, the last error — and publishes it
+ * as one `link-state` snapshot. This only mirrors it and forwards intents.
+ *
+ * It used to be per-hook state, so each of the ~18 components calling
+ * `useConnection()` ran its own scan timer and auto-connect with its own
+ * idea of which boards were muted.
+ */
+let shared: Shared = {
+    link: {status: "disconnected", endpoint: null, error: null, available: []},
+    localError: null,
+    history: loadHistory(),
+    knownBoards: [],
+};
+const listeners = new Set<() => void>();
+let started = false;
+
+function update(patch: Partial<Shared>) {
+    shared = {...shared, ...patch};
+    for (const listener of listeners) listener();
+}
+
+async function refreshKnownBoards() {
+    try {
+        update({knownBoards: await listKnownBoards()});
+    } catch {
+        update({knownBoards: []});
+    }
+}
+
+function applyLink(link: LinkSnapshot) {
+    const patch: Partial<Shared> = {link};
+    // Every connect lands in the recent list, whether typed, picked, or the
+    // backend's own auto-connect — they all show up here as a new endpoint.
+    if (link.endpoint && link.endpoint !== shared.link.endpoint) {
+        patch.history = withAttempt(shared.history, link.endpoint);
+        saveHistory(patch.history);
+    }
+    // A board connected for the first time gets a profile directory, so the
+    // known list can grow on connect.
+    if (link.status === "connected" && shared.link.status !== "connected") {
+        void refreshKnownBoards();
+    }
+    update(patch);
+}
+
+function start() {
+    if (started) return;
+    started = true;
+    listen<LinkSnapshot>("link-state", (event) => applyLink(event.payload)).catch(() => {
+        // No Tauri backend (plain browser dev) — stays "disconnected".
+    });
+    // Fills in whatever is already true for a store created after the last
+    // event, rather than assuming nothing has happened yet.
+    invoke<LinkSnapshot>("link_state").then(applyLink).catch(() => {});
+    void refreshKnownBoards();
+}
+
+function subscribe(listener: () => void) {
+    start();
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+}
+
+function getSnapshot() {
+    return shared;
+}
+
+async function connect(address: string) {
+    const trimmed = address.trim();
+    if (!trimmed) {
+        update({localError: "Enter an address to connect to."});
+        return;
+    }
+    update({localError: null});
+    try {
+        // Resolves once the attempt is handed to the backend's worker, not
+        // once it succeeds — the outcome arrives in the next snapshot.
+        await invoke("connect_link", {endpoint: trimmed});
+    } catch (cause) {
+        update({localError: message(cause)});
+    }
+}
+
+async function disconnect() {
+    update({localError: null});
+    try {
+        await invoke("disconnect_link");
+    } catch (cause) {
+        update({localError: message(cause)});
+    }
+}
+
+async function reboot(force = false) {
+    update({localError: null});
+    try {
+        await rebootVehicle(force);
+    } catch {
+        // The backend puts the reason in the snapshot's `error`.
+    }
+}
+
+async function scan() {
+    try {
+        await invoke("refresh_links");
+    } catch {
+        // No backend, or the scan itself failed — the snapshot stays as it was.
+    }
+}
+
+function removeFromHistory(address: string) {
+    const history = withoutAttempt(shared.history, address);
+    saveHistory(history);
+    update({history});
+}
+
+async function saveBoard(uid: string, patch: {displayName?: string | null; autoConnect?: boolean}) {
+    // The backend un-mutes the board when auto-connect is turned on.
+    await updateBoardProfile(uid, patch);
+    await refreshKnownBoards();
+}
+
 /**
- * Reflects the link. It does not decide anything about it — except one
- * thing it does decide entirely on this side: whether to auto-connect a
- * saved board. That's a local preference about this app's own behavior, not
- * a fact about the vehicle or the link, so unlike everything else here it
- * doesn't wait on the backend to tell it what to do.
+ * The link as the backend reports it, plus the actions an operator can take
+ * on it. Decides nothing itself: scanning, auto-connect and muting all
+ * happen in the backend (link.rs). Only the address being typed is local to
+ * each caller.
  */
 export function useConnection(): Connection {
-    const [history, setHistory] = useState<string[]>(loadHistory);
-    const [draft, setDraftState] = useState<string>(() => history[0] ?? "");
-    const [available, setAvailable] = useState<ScannedLink[]>([]);
-    const [status, setStatus] = useState<ConnectionStatus>("disconnected");
-    const [endpoint, setEndpoint] = useState<string | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [knownBoards, setKnownBoards] = useState<KnownBoard[]>([]);
+    const state = useSyncExternalStore(subscribe, getSnapshot);
+    const [draft, setDraft] = useState<string>(() => shared.history[0] ?? "");
 
-    useEffect(() => {
-        saveHistory(history);
-    }, [history]);
-
-    // A component can mount well after the link already changed state — this
-    // hook's own default of "disconnected" is only a placeholder until the
-    // *next* transition, since `link-status` is an event, not a subscribable
-    // current value. This fills in whatever is already true instead of
-    // assuming nothing has happened yet.
-    useEffect(() => {
-        invoke<ConnectionStatus | null>("link_status")
-            .then((current) => {
-                if (current) {
-                    setStatus(current);
-                }
-            })
-            .catch(() => {});
-    }, []);
-
-    const scan = useCallback(async () => {
-        try {
-            setAvailable(await scanLinks());
-        } catch {
-            // No backend, or the probe itself failed — either way, nothing found.
-            setAvailable([]);
-        }
-    }, []);
-
-    const refreshKnownBoards = useCallback(async () => {
-        try {
-            setKnownBoards(await listKnownBoards());
-        } catch {
-            setKnownBoards([]);
-        }
-    }, []);
-
-    useEffect(() => {
-        void refreshKnownBoards();
-    }, [refreshKnownBoards]);
-
-    // Background scan, independent of any panel being open — the only way a
-    // board plugged in later (not just one already there at launch) gets
-    // noticed for auto-connect without the operator opening the dropdown
-    // first. Only runs while cleanly disconnected: a live/tearing-down link
-    // shouldn't have a port it might be using probed out from under it, and
-    // "lost"/"error" are states where something was already tried and didn't
-    // work — auto-connecting again there would be fighting whatever the
-    // operator is looking at, not helping it.
-    useEffect(() => {
-        if (status !== "disconnected") {
-            return;
-        }
-        void scan();
-        const interval = window.setInterval(() => void scan(), SCAN_INTERVAL_MS);
-        return () => window.clearInterval(interval);
-    }, [status, scan]);
-
-    useTauriEvent<ConnectionStatus>("link-status", setStatus);
-
-    const setDraft = useCallback((value: string) => {
-        setDraftState(value);
-    }, []);
-
-    const removeFromHistory = useCallback((address: string) => {
-        setHistory((prev) => withoutAttempt(prev, address));
-    }, []);
-
-    // Mirrors `available` for `connect`/`disconnect` below, which need
-    // whatever the latest scan found without taking on `available` as a
-    // dependency — same reasoning as the `xRef` mirrors in `useFence`/`useRally`.
-    const availableRef = useRef<ScannedLink[]>([]);
-    useEffect(() => {
-        availableRef.current = available;
-    }, [available]);
-
-    // The identity (address + candidate UID, if any) of whatever's
-    // currently connected or being connected to — set in `connect`, read
-    // back in `disconnect` to know what to mute. `null` whenever nothing is
-    // live.
-    const connectedIdentityRef = useRef<{address: string; candidateUid?: string} | null>(null);
-
-    // UIDs (or bare addresses, for entries with no derivable UID) the
-    // operator has manually disconnected this session — excluded from
-    // auto-connect until either they connect that exact board again by hand
-    // (see `connect` below) or the app restarts. Without this, a board
-    // saved with auto-connect that the operator deliberately disconnects
-    // would just reconnect itself on the very next scan tick.
-    const mutedRef = useRef<Set<string>>(new Set());
-
-    // Guards against the auto-connect effect below firing a second time
-    // while its own `connect()` call is still in flight — `status` doesn't
-    // leave "disconnected" until the backend's first `link-status` event
-    // arrives, which is a real round trip, not instant.
-    const autoConnectingRef = useRef(false);
-
-    // `connect_link` hands the blocking open to a worker thread and returns
-    // before it finishes, so a transport that can't be opened is reported
-    // here rather than by rejecting that invoke. It always arrives alongside
-    // the `error` status, so this only supplies the text.
-    useTauriEvent<string>("link-error", (text) => {
-        setError(text);
-        connectedIdentityRef.current = null;
-    });
-
-    const connect = useCallback(async (explicitAddress?: string) => {
-        setError(null);
-
-        const address = (explicitAddress ?? draft).trim();
-        if (!address) {
-            setError("Enter an address to connect to.");
-            return;
-        }
-
-        const matched = availableRef.current.find((entry) => entry.address === address);
-        const identityKey = matched?.candidateUid ?? address;
-        // A deliberate connect — auto-triggered or by hand, both reach here
-        // — is exactly the signal that un-suppresses this board.
-        mutedRef.current.delete(identityKey);
-        connectedIdentityRef.current = {address, candidateUid: matched?.candidateUid};
-
-        setEndpoint(address);
-        setHistory((prev) => withAttempt(prev, address));
-
-        // Show the status the backend is about to publish, so the button reacts
-        // to the click rather than to the IPC round trip. This is a cache of an
-        // imminent value, not a second opinion — the next `link-status` event
-        // overwrites it either way, including with `error`.
-        setStatus("connecting");
-
-        try {
-            // Resolves once the attempt is handed to a worker thread, not
-            // once it succeeds — so this only catches the call itself failing
-            // (no backend). Failing to open the transport arrives as
-            // `link-error` above.
-            await invoke("connect_link", {endpoint: address});
-        } catch (cause) {
-            setError(message(cause));
-            connectedIdentityRef.current = null;
-        }
-    }, [draft]);
-
-    const disconnect = useCallback(async () => {
-        // Same reasoning: covers the round trip, and is superseded on arrival.
-        setStatus("disconnecting");
-
-        const identity = connectedIdentityRef.current;
-        if (identity) {
-            mutedRef.current.add(identity.candidateUid ?? identity.address);
-        }
-
-        try {
-            await invoke("disconnect_link");
-        } catch (cause) {
-            setError(message(cause));
-        } finally {
-            setEndpoint(null);
-            connectedIdentityRef.current = null;
-        }
-    }, []);
-
-    // The one piece of behavior this hook decides on its own rather than
-    // just reflecting: connect to a saved auto-connect board the moment it's
-    // both scanned and disconnected. Ambiguous (more than one auto-connect
-    // board plugged in at once) does nothing rather than guess which one the
-    // operator meant — same reasoning `identify_usb_board` on the backend
-    // uses for an unrecognized VID/PID: a wrong guess that looks like a real
-    // choice is worse than no choice at all.
-    useEffect(() => {
-        if (status !== "disconnected" || autoConnectingRef.current) {
-            return;
-        }
-        const candidates = available.filter((entry) => {
-            if (!entry.candidateUid || mutedRef.current.has(entry.candidateUid)) {
-                return false;
-            }
-            return knownBoards.some((board) => board.uid === entry.candidateUid && board.autoConnect);
-        });
-        if (candidates.length !== 1) {
-            return;
-        }
-        autoConnectingRef.current = true;
-        void connect(candidates[0]!.address).finally(() => {
-            autoConnectingRef.current = false;
-        });
-    }, [available, knownBoards, status, connect]);
-
-    // No optimistic "rebooting" here, unlike connect: until the vehicle
-    // accepts, nothing is rebooting, and the backend publishes the status the
-    // moment it does.
-    const reboot = useCallback(async (force = false) => {
-        setError(null);
-        try {
-            await rebootVehicle(force);
-        } catch (cause) {
-            setError(message(cause));
-        }
-    }, []);
-
-    const saveBoard = useCallback(async (uid: string, patch: {displayName?: string | null; autoConnect?: boolean}) => {
-        // Toggling auto-connect on for a board already muted from an earlier
-        // manual disconnect this session should take effect now, not stay
-        // silently suppressed until the next restart.
-        if (patch.autoConnect) {
-            mutedRef.current.delete(uid);
-        }
-        await updateBoardProfile(uid, patch);
-        await refreshKnownBoards();
-    }, [refreshKnownBoards]);
+    const connectTo = useCallback((address?: string) => connect(address ?? draft), [draft]);
 
     return {
         draft,
         setDraft,
-        history,
+        history: state.history,
         removeFromHistory,
-        available,
+        available: state.link.available,
         scan,
-        status,
-        endpoint,
-        error,
-        connect,
+        status: state.link.status,
+        endpoint: state.link.endpoint,
+        error: state.localError ?? state.link.error,
+        connect: connectTo,
         disconnect,
         reboot,
-        knownBoards,
+        knownBoards: state.knownBoards,
         saveBoard,
     };
 }

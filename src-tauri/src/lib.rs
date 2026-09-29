@@ -48,6 +48,9 @@ pub fn run() {
             // folders existed (see `vehicle_profile.rs`) — a no-op on
             // every run after the first.
             vehicle_profile::migrate_legacy_logs(app.handle());
+            // Scanning and auto-connect run in the backend from launch, not
+            // from whichever React component happens to be mounted.
+            link::start_link_manager(app.handle().clone());
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
@@ -73,8 +76,8 @@ pub fn run() {
             close_splash,
             link::connect_link,
             link::disconnect_link,
-            link::scan_links,
-            link::link_status,
+            link::link_state,
+            link::refresh_links,
             link::reboot_link,
             vehicle_command::send_vehicle_command,
             vehicle_command::send_rc_override,
