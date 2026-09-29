@@ -1,0 +1,3250 @@
+{
+ "source": [
+  "https://raw.githubusercontent.com/ArduPilot/ardupilot_wiki/master/scripts/motor_diagram_data/AP_Motors_test.json (AP_Motors library test ver 1.2)",
+  "https://raw.githubusercontent.com/ArduPilot/ardupilot_wiki/master/scripts/motor_diagram_data/AP_Motors_display.json",
+  "data/frames/*.svg (stacking order, validation)"
+ ],
+ "fetchedAt": "2026-09-29",
+ "defaultTypeClasses": [
+  5,
+  7,
+  8,
+  9
+ ],
+ "layouts": [
+  {
+   "cls": 1,
+   "type": 0,
+   "typeName": "PLUS",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0,
+     "spin": "CCW",
+     "testOrder": 2
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0,
+     "spin": "CCW",
+     "testOrder": 4
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 1
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 3
+    }
+   ]
+  },
+  {
+   "cls": 1,
+   "type": 1,
+   "typeName": "X",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 3
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 4
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 2
+    }
+   ]
+  },
+  {
+   "cls": 1,
+   "type": 2,
+   "typeName": "V",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.55,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.35,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 3
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.55,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 4
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.35,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 2
+    }
+   ]
+  },
+  {
+   "cls": 1,
+   "type": 3,
+   "typeName": "H",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 3
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 4
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 2
+    }
+   ],
+   "frameLines": [
+    [
+     0,
+     0.5,
+     0,
+     -0.5
+    ],
+    [
+     0.5,
+     0.5,
+     -0.5,
+     0.5
+    ],
+    [
+     -0.5,
+     -0.5,
+     0.5,
+     -0.5
+    ]
+   ]
+  },
+  {
+   "cls": 1,
+   "type": 4,
+   "typeName": "V TAIL",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.266,
+     "spin": "Either",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 3,
+     "cant": [
+      1,
+      1
+     ]
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.266,
+     "spin": "Either",
+     "testOrder": 4
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 2,
+     "cant": [
+      1,
+      -1
+     ]
+    }
+   ],
+   "frameLines": [
+    [
+     0,
+     0,
+     0.5,
+     0.266
+    ],
+    [
+     0,
+     0,
+     -0.5,
+     0.266
+    ],
+    [
+     0,
+     0,
+     0,
+     -0.55
+    ],
+    [
+     0.008,
+     -0.55,
+     -0.4,
+     -0.33
+    ],
+    [
+     -0.008,
+     -0.55,
+     0.4,
+     -0.33
+    ]
+   ]
+  },
+  {
+   "cls": 1,
+   "type": 5,
+   "typeName": "A TAIL",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.266,
+     "spin": "Either",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.3,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 3,
+     "cant": [
+      -1,
+      1
+     ]
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.266,
+     "spin": "Either",
+     "testOrder": 4
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.3,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 2,
+     "cant": [
+      1,
+      1
+     ]
+    }
+   ],
+   "frameLines": [
+    [
+     0,
+     0,
+     0.5,
+     0.266
+    ],
+    [
+     0,
+     0,
+     -0.5,
+     0.266
+    ],
+    [
+     0,
+     0,
+     0,
+     -0.3
+    ],
+    [
+     0.008,
+     -0.3,
+     -0.4,
+     -0.5
+    ],
+    [
+     -0.008,
+     -0.3,
+     0.4,
+     -0.5
+    ]
+   ]
+  },
+  {
+   "cls": 1,
+   "type": 6,
+   "typeName": "PLUS (REVERSED)",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0,
+     "spin": "CW",
+     "testOrder": 2
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0,
+     "spin": "CW",
+     "testOrder": 4
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 3
+    }
+   ]
+  },
+  {
+   "cls": 1,
+   "type": 12,
+   "typeName": "X (BETAFLIGHT)",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 2
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 3
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 4
+    }
+   ]
+  },
+  {
+   "cls": 1,
+   "type": 13,
+   "typeName": "X (DJI)",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 4
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 3
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 2
+    }
+   ]
+  },
+  {
+   "cls": 1,
+   "type": 14,
+   "typeName": "X (CLOCKWISE)",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 2
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 3
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 4
+    }
+   ]
+  },
+  {
+   "cls": 1,
+   "type": 16,
+   "typeName": "PLUS (NO YAW TORQUE)",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0,
+     "spin": "Either",
+     "testOrder": 2
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0,
+     "spin": "Either",
+     "testOrder": 4
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0,
+     "y": 0.5,
+     "spin": "Either",
+     "testOrder": 1
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.5,
+     "spin": "Either",
+     "testOrder": 3
+    }
+   ]
+  },
+  {
+   "cls": 1,
+   "type": 17,
+   "typeName": "X (NO YAW TORQUE)",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "Either",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "Either",
+     "testOrder": 3
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "Either",
+     "testOrder": 4
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "Either",
+     "testOrder": 2
+    }
+   ]
+  },
+  {
+   "cls": 1,
+   "type": 18,
+   "typeName": "X (BF REVERSED)",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 2
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 1
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 3
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 4
+    }
+   ]
+  },
+  {
+   "cls": 1,
+   "type": 19,
+   "typeName": "Y4A",
+   "source": "AP_Motors_display.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.45,
+     "y": 0.266,
+     "spin": "CCW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.66,
+     "spin": "CW",
+     "testOrder": 2,
+     "stack": "top"
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.66,
+     "spin": "CCW",
+     "testOrder": 3,
+     "stack": "bottom"
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": -0.45,
+     "y": 0.266,
+     "spin": "CW",
+     "testOrder": 4
+    }
+   ]
+  },
+  {
+   "cls": 2,
+   "type": 0,
+   "typeName": "PLUS",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 4
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.25,
+     "spin": "CW",
+     "testOrder": 5
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.25,
+     "spin": "CCW",
+     "testOrder": 2
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.25,
+     "spin": "CCW",
+     "testOrder": 6
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.25,
+     "spin": "CW",
+     "testOrder": 3
+    }
+   ]
+  },
+  {
+   "cls": 2,
+   "type": 1,
+   "typeName": "X",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0,
+     "spin": "CW",
+     "testOrder": 2
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0,
+     "spin": "CCW",
+     "testOrder": 5
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.25,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 6
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.25,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 3
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": 0.25,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": -0.25,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 4
+    }
+   ]
+  },
+  {
+   "cls": 2,
+   "type": 3,
+   "typeName": "H",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0,
+     "spin": "CW",
+     "testOrder": 2
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0,
+     "spin": "CCW",
+     "testOrder": 5
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 6
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 3
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 4
+    }
+   ]
+  },
+  {
+   "cls": 2,
+   "type": 13,
+   "typeName": "X (DJI)",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.25,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.25,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 6
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0,
+     "spin": "CCW",
+     "testOrder": 5
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": -0.25,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 4
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": 0.25,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 3
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0,
+     "spin": "CW",
+     "testOrder": 2
+    }
+   ]
+  },
+  {
+   "cls": 2,
+   "type": 14,
+   "typeName": "X (CLOCKWISE)",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.25,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0,
+     "spin": "CW",
+     "testOrder": 2
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0.25,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 3
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": -0.25,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 4
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0,
+     "spin": "CCW",
+     "testOrder": 5
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": -0.25,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 6
+    }
+   ]
+  },
+  {
+   "cls": 3,
+   "type": 0,
+   "typeName": "PLUS",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 5
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0.354,
+     "y": 0.354,
+     "spin": "CCW",
+     "testOrder": 2
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.354,
+     "y": -0.353,
+     "spin": "CCW",
+     "testOrder": 4
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": -0.353,
+     "y": 0.354,
+     "spin": "CCW",
+     "testOrder": 8
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": -0.353,
+     "y": -0.353,
+     "spin": "CCW",
+     "testOrder": 6
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0,
+     "spin": "CW",
+     "testOrder": 7
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0,
+     "spin": "CW",
+     "testOrder": 3
+    }
+   ]
+  },
+  {
+   "cls": 3,
+   "type": 1,
+   "typeName": "X",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.207,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.207,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 5
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.207,
+     "spin": "CCW",
+     "testOrder": 2
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.207,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 4
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": -0.207,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 8
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.207,
+     "spin": "CCW",
+     "testOrder": 6
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.207,
+     "spin": "CW",
+     "testOrder": 7
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.207,
+     "spin": "CW",
+     "testOrder": 3
+    }
+   ]
+  },
+  {
+   "cls": 3,
+   "type": 2,
+   "typeName": "V",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": -0.415,
+     "y": 0.17,
+     "spin": "CW",
+     "testOrder": 7
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0.335,
+     "y": -0.16,
+     "spin": "CW",
+     "testOrder": 3
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.335,
+     "y": -0.16,
+     "spin": "CCW",
+     "testOrder": 6
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.25,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 4
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 8
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": 0.415,
+     "y": 0.17,
+     "spin": "CCW",
+     "testOrder": 2
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 1
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": -0.25,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 5
+    }
+   ],
+   "frameLines": [
+    [
+     0,
+     0,
+     -0.415,
+     0.17
+    ],
+    [
+     0,
+     0,
+     0.335,
+     -0.16
+    ],
+    [
+     0,
+     0,
+     -0.335,
+     -0.16
+    ],
+    [
+     0,
+     0,
+     0.415,
+     0.17
+    ],
+    [
+     0.25,
+     -0.5,
+     0.5,
+     0.5
+    ],
+    [
+     -0.5,
+     0.5,
+     -0.25,
+     -0.5
+    ]
+   ]
+  },
+  {
+   "cls": 3,
+   "type": 3,
+   "typeName": "H",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 5
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.167,
+     "spin": "CCW",
+     "testOrder": 2
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 4
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 8
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.166,
+     "spin": "CCW",
+     "testOrder": 6
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.167,
+     "spin": "CW",
+     "testOrder": 7
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.166,
+     "spin": "CW",
+     "testOrder": 3
+    }
+   ],
+   "frameLines": [
+    [
+     0,
+     0,
+     0.5,
+     0.167
+    ],
+    [
+     0,
+     0,
+     -0.5,
+     -0.166
+    ],
+    [
+     0,
+     0,
+     -0.5,
+     0.167
+    ],
+    [
+     0,
+     0,
+     0.5,
+     -0.166
+    ],
+    [
+     0.5,
+     0.5,
+     0.5,
+     -0.5
+    ],
+    [
+     -0.5,
+     -0.5,
+     -0.5,
+     0.5
+    ]
+   ]
+  },
+  {
+   "cls": 3,
+   "type": 13,
+   "typeName": "X (DJI)",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.207,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.207,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 8
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.207,
+     "spin": "CCW",
+     "testOrder": 7
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.207,
+     "spin": "CW",
+     "testOrder": 6
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": -0.207,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 5
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": 0.207,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 4
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.207,
+     "spin": "CCW",
+     "testOrder": 3
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.207,
+     "spin": "CW",
+     "testOrder": 2
+    }
+   ]
+  },
+  {
+   "cls": 3,
+   "type": 14,
+   "typeName": "X (CLOCKWISE)",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.207,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.207,
+     "spin": "CW",
+     "testOrder": 2
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.207,
+     "spin": "CCW",
+     "testOrder": 3
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.207,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 4
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": -0.207,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 5
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.207,
+     "spin": "CW",
+     "testOrder": 6
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.207,
+     "spin": "CCW",
+     "testOrder": 7
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": -0.207,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 8
+    }
+   ]
+  },
+  {
+   "cls": 3,
+   "type": 15,
+   "typeName": "I",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": -0.166,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 5
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0.167,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 1
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 6
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": -0.166,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 8
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": 0.167,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 4
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 2
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 3
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 7
+    }
+   ],
+   "frameLines": [
+    [
+     0,
+     0,
+     -0.166,
+     -0.5
+    ],
+    [
+     0,
+     0,
+     0.167,
+     0.5
+    ],
+    [
+     0,
+     0,
+     -0.166,
+     0.5
+    ],
+    [
+     0,
+     0,
+     0.167,
+     -0.5
+    ],
+    [
+     -0.5,
+     -0.5,
+     0.5,
+     -0.5
+    ],
+    [
+     0.5,
+     0.5,
+     -0.5,
+     0.5
+    ]
+   ]
+  },
+  {
+   "cls": 4,
+   "type": 0,
+   "typeName": "PLUS",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0,
+     "y": 0.65,
+     "spin": "CCW",
+     "testOrder": 1,
+     "stack": "top"
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.55,
+     "y": 0,
+     "spin": "CW",
+     "testOrder": 7,
+     "stack": "top"
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.65,
+     "spin": "CCW",
+     "testOrder": 5,
+     "stack": "top"
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.55,
+     "y": 0,
+     "spin": "CW",
+     "testOrder": 3,
+     "stack": "top"
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": -0.55,
+     "y": 0,
+     "spin": "CCW",
+     "testOrder": 8,
+     "stack": "bottom"
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": 0,
+     "y": 0.65,
+     "spin": "CW",
+     "testOrder": 2,
+     "stack": "bottom"
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": 0.55,
+     "y": 0,
+     "spin": "CCW",
+     "testOrder": 4,
+     "stack": "bottom"
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.65,
+     "spin": "CW",
+     "testOrder": 6,
+     "stack": "bottom"
+    }
+   ]
+  },
+  {
+   "cls": 4,
+   "type": 1,
+   "typeName": "X",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1,
+     "stack": "top"
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 7,
+     "stack": "top"
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 5,
+     "stack": "top"
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 3,
+     "stack": "top"
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 8,
+     "stack": "bottom"
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 2,
+     "stack": "bottom"
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 4,
+     "stack": "bottom"
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 6,
+     "stack": "bottom"
+    }
+   ]
+  },
+  {
+   "cls": 4,
+   "type": 2,
+   "typeName": "V",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1,
+     "stack": "top"
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 7,
+     "stack": "top"
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.35,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 5,
+     "stack": "top"
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.35,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 3,
+     "stack": "top"
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 8,
+     "stack": "bottom"
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 2,
+     "stack": "bottom"
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": 0.35,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 4,
+     "stack": "bottom"
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": -0.35,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 6,
+     "stack": "bottom"
+    }
+   ]
+  },
+  {
+   "cls": 4,
+   "type": 3,
+   "typeName": "H",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 1,
+     "stack": "top"
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 7,
+     "stack": "top"
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 5,
+     "stack": "top"
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 3,
+     "stack": "top"
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 8,
+     "stack": "bottom"
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 2,
+     "stack": "bottom"
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 4,
+     "stack": "bottom"
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 6,
+     "stack": "bottom"
+    }
+   ],
+   "frameLines": [
+    [
+     0,
+     -0.5,
+     0,
+     0.5
+    ],
+    [
+     -0.5,
+     0.5,
+     0.5,
+     0.5
+    ],
+    [
+     0.5,
+     -0.5,
+     -0.5,
+     -0.5
+    ]
+   ]
+  },
+  {
+   "cls": 4,
+   "type": 12,
+   "typeName": "X (BETAFLIGHT)",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 3,
+     "stack": "top"
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1,
+     "stack": "top"
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 5,
+     "stack": "top"
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 7,
+     "stack": "top"
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 4,
+     "stack": "bottom"
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 2,
+     "stack": "bottom"
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 6,
+     "stack": "bottom"
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 8,
+     "stack": "bottom"
+    }
+   ]
+  },
+  {
+   "cls": 4,
+   "type": 14,
+   "typeName": "X (CLOCKWISE)",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1,
+     "stack": "top"
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 2,
+     "stack": "bottom"
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 3,
+     "stack": "top"
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 4,
+     "stack": "bottom"
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 5,
+     "stack": "top"
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 6,
+     "stack": "bottom"
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 7,
+     "stack": "top"
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 8,
+     "stack": "bottom"
+    }
+   ]
+  },
+  {
+   "cls": 4,
+   "type": 18,
+   "typeName": "X (BF REVERSED)",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 3,
+     "stack": "top"
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 1,
+     "stack": "top"
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 5,
+     "stack": "top"
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 7,
+     "stack": "top"
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 4,
+     "stack": "bottom"
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 2,
+     "stack": "bottom"
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 6,
+     "stack": "bottom"
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 8,
+     "stack": "bottom"
+    }
+   ]
+  },
+  {
+   "cls": 5,
+   "type": 0,
+   "typeName": "A",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.25,
+     "spin": "CCW",
+     "testOrder": 2,
+     "stack": "bottom"
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.25,
+     "spin": "CW",
+     "testOrder": 5,
+     "stack": "top"
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.25,
+     "spin": "CCW",
+     "testOrder": 6,
+     "stack": "bottom"
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 4,
+     "stack": "bottom"
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.25,
+     "spin": "CW",
+     "testOrder": 1,
+     "stack": "top"
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 3,
+     "stack": "top"
+    }
+   ]
+  },
+  {
+   "cls": 5,
+   "type": 10,
+   "typeName": "B",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.25,
+     "spin": "CW",
+     "testOrder": 1,
+     "stack": "top"
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.25,
+     "spin": "CCW",
+     "testOrder": 2,
+     "stack": "bottom"
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 3,
+     "stack": "top"
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 4,
+     "stack": "bottom"
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.25,
+     "spin": "CW",
+     "testOrder": 5,
+     "stack": "top"
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.25,
+     "spin": "CCW",
+     "testOrder": 6,
+     "stack": "bottom"
+    }
+   ]
+  },
+  {
+   "cls": 5,
+   "type": 11,
+   "typeName": "F",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 3,
+     "stack": "top"
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.25,
+     "spin": "CCW",
+     "testOrder": 1,
+     "stack": "top"
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.25,
+     "spin": "CCW",
+     "testOrder": 5,
+     "stack": "top"
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 4,
+     "stack": "bottom"
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.25,
+     "spin": "CW",
+     "testOrder": 2,
+     "stack": "bottom"
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.25,
+     "spin": "CW",
+     "testOrder": 6,
+     "stack": "bottom"
+    }
+   ]
+  },
+  {
+   "cls": 7,
+   "type": 0,
+   "typeName": "default",
+   "source": "AP_Motors_display.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.25,
+     "spin": "Either",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.25,
+     "spin": "Either",
+     "testOrder": 4
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.55,
+     "spin": "Either",
+     "testOrder": 2
+    },
+    {
+     "number": 7,
+     "kind": "servo",
+     "x": 0.1,
+     "y": -0.26,
+     "spin": null,
+     "testOrder": 3
+    }
+   ],
+   "frameLines": [
+    [
+     0,
+     0,
+     0.5,
+     0.25
+    ],
+    [
+     0,
+     0,
+     -0.5,
+     0.25
+    ],
+    [
+     0,
+     0,
+     0,
+     -0.55
+    ]
+   ]
+  },
+  {
+   "cls": 7,
+   "type": 6,
+   "typeName": "pitch-reversed",
+   "source": "AP_Motors_display.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.25,
+     "spin": "Either",
+     "testOrder": 3
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.25,
+     "spin": "Either",
+     "testOrder": 4
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0,
+     "y": 0.55,
+     "spin": "Either",
+     "testOrder": 1
+    },
+    {
+     "number": 7,
+     "kind": "servo",
+     "x": 0.1,
+     "y": 0.26,
+     "spin": null,
+     "testOrder": 2
+    }
+   ],
+   "frameLines": [
+    [
+     0,
+     0,
+     -0.5,
+     -0.25
+    ],
+    [
+     0,
+     0,
+     0.5,
+     -0.25
+    ],
+    [
+     0,
+     0,
+     0,
+     0.55
+    ]
+   ]
+  },
+  {
+   "cls": 8,
+   "type": 0,
+   "typeName": "",
+   "source": "AP_MotorsSingle.cpp",
+   "frameLines": [
+    [
+     0,
+     0,
+     0,
+     0.62
+    ],
+    [
+     0,
+     0,
+     0.62,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     -0.62
+    ],
+    [
+     0,
+     0,
+     -0.62,
+     0
+    ]
+   ],
+   "motors": [
+    {
+     "number": 1,
+     "kind": "servo",
+     "name": "Front fin",
+     "x": 0,
+     "y": 0.62,
+     "spin": null,
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "servo",
+     "name": "Right fin",
+     "x": 0.62,
+     "y": 0,
+     "spin": null,
+     "testOrder": 2
+    },
+    {
+     "number": 3,
+     "kind": "servo",
+     "name": "Rear fin",
+     "x": 0,
+     "y": -0.62,
+     "spin": null,
+     "testOrder": 3
+    },
+    {
+     "number": 4,
+     "kind": "servo",
+     "name": "Left fin",
+     "x": -0.62,
+     "y": 0,
+     "spin": null,
+     "testOrder": 4
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "name": "Main motor",
+     "x": 0,
+     "y": 0,
+     "spin": "Either",
+     "testOrder": 5
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "name": "Main motor",
+     "x": 0,
+     "y": 0,
+     "spin": "Either",
+     "testOrder": 6,
+     "sameAs": 5
+    }
+   ]
+  },
+  {
+   "cls": 9,
+   "type": 0,
+   "typeName": "",
+   "source": "AP_MotorsCoax.cpp",
+   "frameLines": [
+    [
+     0,
+     0,
+     0,
+     0.62
+    ],
+    [
+     0,
+     0,
+     0.62,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     -0.62
+    ],
+    [
+     0,
+     0,
+     -0.62,
+     0
+    ]
+   ],
+   "motors": [
+    {
+     "number": 1,
+     "kind": "servo",
+     "name": "Front fin",
+     "x": 0,
+     "y": 0.62,
+     "spin": null,
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "servo",
+     "name": "Right fin",
+     "x": 0.62,
+     "y": 0,
+     "spin": null,
+     "testOrder": 2
+    },
+    {
+     "number": 3,
+     "kind": "servo",
+     "name": "Rear fin",
+     "x": 0,
+     "y": -0.62,
+     "spin": null,
+     "testOrder": 3
+    },
+    {
+     "number": 4,
+     "kind": "servo",
+     "name": "Left fin",
+     "x": -0.62,
+     "y": 0,
+     "spin": null,
+     "testOrder": 4
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "name": "Coaxial motor",
+     "x": 0,
+     "y": 0,
+     "spin": "CCW",
+     "testOrder": 5
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "name": "Coaxial motor",
+     "x": 0,
+     "y": 0,
+     "spin": "CW",
+     "testOrder": 6
+    }
+   ]
+  },
+  {
+   "cls": 12,
+   "type": 0,
+   "typeName": "PLUS",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1,
+     "stack": "top"
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 2,
+     "stack": "bottom"
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.25,
+     "spin": "CW",
+     "testOrder": 3,
+     "stack": "top"
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.25,
+     "spin": "CCW",
+     "testOrder": 4,
+     "stack": "bottom"
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.25,
+     "spin": "CCW",
+     "testOrder": 5,
+     "stack": "top"
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.25,
+     "spin": "CW",
+     "testOrder": 6,
+     "stack": "bottom"
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 7,
+     "stack": "top"
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 8,
+     "stack": "bottom"
+    },
+    {
+     "number": 9,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.25,
+     "spin": "CCW",
+     "testOrder": 9,
+     "stack": "top"
+    },
+    {
+     "number": 10,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.25,
+     "spin": "CW",
+     "testOrder": 10,
+     "stack": "bottom"
+    },
+    {
+     "number": 11,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.25,
+     "spin": "CW",
+     "testOrder": 11,
+     "stack": "top"
+    },
+    {
+     "number": 12,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.25,
+     "spin": "CCW",
+     "testOrder": 12,
+     "stack": "bottom"
+    }
+   ]
+  },
+  {
+   "cls": 12,
+   "type": 1,
+   "typeName": "X",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.25,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1,
+     "stack": "top"
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0.25,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 2,
+     "stack": "bottom"
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0,
+     "spin": "CW",
+     "testOrder": 3,
+     "stack": "top"
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0,
+     "spin": "CCW",
+     "testOrder": 4,
+     "stack": "bottom"
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": 0.25,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 5,
+     "stack": "top"
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": 0.25,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 6,
+     "stack": "bottom"
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": -0.25,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 7,
+     "stack": "top"
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": -0.25,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 8,
+     "stack": "bottom"
+    },
+    {
+     "number": 9,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0,
+     "spin": "CCW",
+     "testOrder": 9,
+     "stack": "top"
+    },
+    {
+     "number": 10,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0,
+     "spin": "CW",
+     "testOrder": 10,
+     "stack": "bottom"
+    },
+    {
+     "number": 11,
+     "kind": "motor",
+     "x": -0.25,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 11,
+     "stack": "top"
+    },
+    {
+     "number": 12,
+     "kind": "motor",
+     "x": -0.25,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 12,
+     "stack": "bottom"
+    }
+   ]
+  },
+  {
+   "cls": 14,
+   "type": 0,
+   "typeName": "PLUS",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0.309,
+     "y": 0.405,
+     "spin": "CW",
+     "testOrder": 2
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0.155,
+     "spin": "CCW",
+     "testOrder": 3
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.5,
+     "y": -0.154,
+     "spin": "CW",
+     "testOrder": 4
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": 0.309,
+     "y": -0.404,
+     "spin": "CCW",
+     "testOrder": 5
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": 0,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 6
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": -0.309,
+     "y": -0.404,
+     "spin": "CCW",
+     "testOrder": 7
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": -0.5,
+     "y": -0.154,
+     "spin": "CW",
+     "testOrder": 8
+    },
+    {
+     "number": 9,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0.155,
+     "spin": "CCW",
+     "testOrder": 9
+    },
+    {
+     "number": 10,
+     "kind": "motor",
+     "x": -0.309,
+     "y": 0.405,
+     "spin": "CW",
+     "testOrder": 10
+    }
+   ]
+  },
+  {
+   "cls": 14,
+   "type": 1,
+   "typeName": "X (and  CW X)",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.155,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0.405,
+     "y": 0.309,
+     "spin": "CW",
+     "testOrder": 2
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0,
+     "spin": "CCW",
+     "testOrder": 3
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.405,
+     "y": -0.309,
+     "spin": "CW",
+     "testOrder": 4
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": 0.155,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 5
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": -0.154,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 6
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": -0.404,
+     "y": -0.309,
+     "spin": "CCW",
+     "testOrder": 7
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0,
+     "spin": "CW",
+     "testOrder": 8
+    },
+    {
+     "number": 9,
+     "kind": "motor",
+     "x": -0.404,
+     "y": 0.309,
+     "spin": "CCW",
+     "testOrder": 9
+    },
+    {
+     "number": 10,
+     "kind": "motor",
+     "x": -0.154,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 10
+    }
+   ]
+  },
+  {
+   "cls": 14,
+   "type": 14,
+   "typeName": "X (CLOCKWISE)",
+   "source": "AP_Motors_test.json",
+   "motors": [
+    {
+     "number": 1,
+     "kind": "motor",
+     "x": 0.155,
+     "y": 0.5,
+     "spin": "CCW",
+     "testOrder": 1
+    },
+    {
+     "number": 2,
+     "kind": "motor",
+     "x": 0.405,
+     "y": 0.309,
+     "spin": "CW",
+     "testOrder": 2
+    },
+    {
+     "number": 3,
+     "kind": "motor",
+     "x": 0.5,
+     "y": 0,
+     "spin": "CCW",
+     "testOrder": 3
+    },
+    {
+     "number": 4,
+     "kind": "motor",
+     "x": 0.405,
+     "y": -0.309,
+     "spin": "CW",
+     "testOrder": 4
+    },
+    {
+     "number": 5,
+     "kind": "motor",
+     "x": 0.155,
+     "y": -0.5,
+     "spin": "CCW",
+     "testOrder": 5
+    },
+    {
+     "number": 6,
+     "kind": "motor",
+     "x": -0.154,
+     "y": -0.5,
+     "spin": "CW",
+     "testOrder": 6
+    },
+    {
+     "number": 7,
+     "kind": "motor",
+     "x": -0.404,
+     "y": -0.309,
+     "spin": "CCW",
+     "testOrder": 7
+    },
+    {
+     "number": 8,
+     "kind": "motor",
+     "x": -0.5,
+     "y": 0,
+     "spin": "CW",
+     "testOrder": 8
+    },
+    {
+     "number": 9,
+     "kind": "motor",
+     "x": -0.404,
+     "y": 0.309,
+     "spin": "CCW",
+     "testOrder": 9
+    },
+    {
+     "number": 10,
+     "kind": "motor",
+     "x": -0.154,
+     "y": 0.5,
+     "spin": "CW",
+     "testOrder": 10
+    }
+   ]
+  }
+ ],
+ "schematics": [
+  {
+   "cls": 10,
+   "typeName": "BiCopter",
+   "source": "AP_Motors_display.json",
+   "marks": [
+    {
+     "kind": "motor",
+     "label": "L",
+     "x": -0.5,
+     "y": 0,
+     "spin": "CCW"
+    },
+    {
+     "kind": "motor",
+     "label": "R",
+     "x": 0.5,
+     "y": 0,
+     "spin": "CW"
+    }
+   ]
+  },
+  {
+   "cls": 6,
+   "typeName": "Heli",
+   "source": "schematic",
+   "frameLines": [
+    [
+     0,
+     0,
+     0,
+     -0.7
+    ]
+   ],
+   "marks": [
+    {
+     "kind": "rotor",
+     "x": 0,
+     "y": 0,
+     "size": 0.5,
+     "spin": null
+    },
+    {
+     "kind": "motor",
+     "x": 0,
+     "y": -0.7,
+     "spin": "Either"
+    }
+   ]
+  },
+  {
+   "cls": 11,
+   "typeName": "Heli_Dual",
+   "source": "schematic",
+   "frameLines": [
+    [
+     0,
+     0.4,
+     0,
+     -0.4
+    ]
+   ],
+   "marks": [
+    {
+     "kind": "rotor",
+     "x": 0,
+     "y": 0.4,
+     "size": 0.36,
+     "spin": null
+    },
+    {
+     "kind": "rotor",
+     "x": 0,
+     "y": -0.4,
+     "size": 0.36,
+     "spin": null
+    }
+   ]
+  },
+  {
+   "cls": 13,
+   "typeName": "HeliQuad",
+   "source": "schematic",
+   "marks": [
+    {
+     "kind": "rotor",
+     "x": 0.5,
+     "y": 0.5,
+     "size": 0.24,
+     "spin": null
+    },
+    {
+     "kind": "rotor",
+     "x": -0.5,
+     "y": 0.5,
+     "size": 0.24,
+     "spin": null
+    },
+    {
+     "kind": "rotor",
+     "x": -0.5,
+     "y": -0.5,
+     "size": 0.24,
+     "spin": null
+    },
+    {
+     "kind": "rotor",
+     "x": 0.5,
+     "y": -0.5,
+     "size": 0.24,
+     "spin": null
+    }
+   ]
+  }
+ ]
+}
