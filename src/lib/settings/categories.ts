@@ -7,6 +7,7 @@ export interface SettingsCategory {
  * entry in `categoryComponents.tsx` — nothing else needs to know about it. */
 export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     {id: "connection", label: "Connection"},
+    {id: "flight", label: "Flight"},
     {id: "display", label: "Display"},
     {id: "panels", label: "Panels"},
 ];

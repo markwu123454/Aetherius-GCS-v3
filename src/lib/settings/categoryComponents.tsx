@@ -14,6 +14,7 @@ import {
     MIN_MAP_CACHE_MB,
     MIN_MAP_CACHE_ZOOM,
     MAX_MAP_CACHE_ZOOM,
+    RcOverrideMatch,
 } from "./settings.ts";
 import {SettingsApi} from "./useSettings.ts";
 import {AIRSPACE_CLASSES, type AirspaceClass, type AirspaceClassSettings} from "@/lib/airspace/classes.ts";
@@ -687,8 +688,50 @@ function PanelsSettings({settings}: {settings: SettingsApi}) {
     );
 }
 
+const RC_OVERRIDE_MATCH_MODES: {value: RcOverrideMatch; label: string; description: string}[] = [
+    {value: "none", label: "Don't match", description: "Sticks start centered, throttle at minimum"},
+    {value: "throttle", label: "Match throttle", description: "Throttle starts where the transmitter's is, other sticks centered"},
+    {value: "all", label: "Match all", description: "Every stick starts where the transmitter's is"},
+];
+
+function FlightSettings({settings}: {settings: SettingsApi}) {
+    return (
+        <div className="flex flex-col gap-8">
+            <section className="flex flex-col gap-2">
+                <h2 className="text-heading text-text-primary">Manual control</h2>
+                <p className="text-label text-text-helper">
+                    While not clicked into, the manual-control sticks follow the live RC input. This
+                    sets which of those positions the RC override starts from when you click in.
+                </p>
+                <div className="flex flex-col gap-1" role="radiogroup" aria-label="RC override starting position">
+                    {RC_OVERRIDE_MATCH_MODES.map((mode) => (
+                        <label key={mode.value} className="flex items-start gap-2 text-body text-text-secondary">
+                            <input
+                                type="radio"
+                                name="rc-override-match"
+                                className="mt-0.5"
+                                checked={settings.rcOverrideMatch === mode.value}
+                                onChange={() => settings.set("rcOverrideMatch", mode.value)}
+                            />
+                            <span>
+                                {mode.label}
+                                <span className="ml-2 text-label text-text-helper">{mode.description}</span>
+                            </span>
+                        </label>
+                    ))}
+                </div>
+                <p className="text-label text-text-helper">
+                    While armed, throttle always starts at what the vehicle is currently flying on,
+                    whichever option is picked. If that isn't known, the override won't engage.
+                </p>
+            </section>
+        </div>
+    );
+}
+
 const CATEGORY_COMPONENTS: Record<string, SettingsCategoryComponent> = {
     connection: ConnectionSettings,
+    flight: FlightSettings,
     display: DisplaySettings,
     panels: PanelsSettings,
 };

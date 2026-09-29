@@ -9,7 +9,7 @@ use mavlink::{
 use std::{
     collections::HashMap,
     io::ErrorKind,
-    net::{SocketAddr, TcpStream},
+    net::{SocketAddr, TcpStream, ToSocketAddrs},
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc, Mutex,
@@ -28,6 +28,11 @@ use crate::params;
 
 const LOSING_AFTER: Duration = Duration::from_millis(2_500);
 const SCAN_PROBE_TIMEOUT: Duration = Duration::from_millis(250);
+/// How long `open_connection` will wait for a TCP peer to answer. The OS's
+/// own limit is the alternative, and on Windows that's ~21 seconds of SYN
+/// retries — long enough that an operator who mistyped an address assumes
+/// the app has hung.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -63,12 +68,26 @@ fn to_mavlink_address(endpoint: &str) -> String {
 /// messages that actually need to feel smooth are sped up — battery, GPS
 /// status and the rest stay at their own default rate, since asking for
 /// those at 20 Hz would just be discarded bandwidth.
+///
+/// SERVO_OUTPUT_RAW is asked for explicitly too, at a fixed 10 Hz: whether a
+/// port streams it unprompted depends on that port's `SRx_RC_CHAN` rate, which
+/// SITL's TCP port has set but a serial telemetry port usually doesn't — the
+/// Servo Outputs panel would otherwise sit empty on real hardware. 10 Hz is
+/// plenty for a bar display and cheap on a 57600 radio link.
 fn request_data_streams(app: &AppHandle, target_system: u8, target_component: u8, interval_us: f32) {
-    for message_id in [30.0, 33.0, 74.0, 65.0] {
+    const SERVO_OUTPUT_RAW_INTERVAL_US: f32 = 100_000.0;
+
+    for (message_id, interval) in [
+        (30.0, interval_us),
+        (33.0, interval_us),
+        (74.0, interval_us),
+        (65.0, interval_us),
+        (36.0, SERVO_OUTPUT_RAW_INTERVAL_US),
+    ] {
         let _ = commands::send_async(
             app,
             MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
-            [message_id, interval_us, 0.0, 0.0, 0.0, 0.0, 0.0],
+            [message_id, interval, 0.0, 0.0, 0.0, 0.0, 0.0],
             (target_system, target_component),
         );
     }
@@ -103,6 +122,146 @@ pub struct LinkState {
     /// returned recently — a physically unplugged serial port can block
     /// that call forever.
     pub last_heartbeat_ms: AtomicU64,
+}
+
+/// Opens the transport for `endpoint`, bounding the part of it the OS would
+/// otherwise stretch to its own limit.
+///
+/// `mavlink`'s `tcpout` is a bare `TcpStream::connect` with no timeout, so an
+/// address that nothing answers blocks for the whole SYN-retry budget. Probing
+/// first with an explicit deadline — the same thing `scan_links` does for SITL
+/// — bounds that, which is also what bounds how long a cancelled attempt's
+/// thread can linger before it notices the epoch moved on.
+///
+/// Every resolved address is tried, not just the first, the same way
+/// `TcpStream::connect` itself does: on Windows `localhost` resolves to `::1`
+/// ahead of `127.0.0.1`, and SITL only listens on IPv4, so probing the first
+/// address alone would refuse a host that `tcpout` would have reached fine.
+fn open_connection(endpoint: &str) -> Result<Arc<dyn MavConnection<MavMessage> + Send + Sync>, String> {
+    if let Some(rest) = endpoint.strip_prefix("tcp:") {
+        let addresses: Vec<SocketAddr> = rest
+            .to_socket_addrs()
+            .map_err(|error| format!("{rest} is not a valid host:port: {error}"))?
+            .collect();
+        if addresses.is_empty() {
+            return Err(format!("{rest} did not resolve to any address"));
+        }
+
+        let mut last_error = None;
+        let reached = addresses.iter().any(|address| match TcpStream::connect_timeout(address, CONNECT_TIMEOUT) {
+            Ok(_) => true,
+            Err(error) => {
+                last_error = Some(error);
+                false
+            }
+        });
+        if !reached {
+            let error = last_error.map(|e| e.to_string()).unwrap_or_default();
+            return Err(format!("could not reach {rest}: {error}"));
+        }
+    }
+
+    let address = to_mavlink_address(endpoint);
+    mavlink::connect::<MavMessage>(&address)
+        .map(|connection| Arc::new(connection) as Arc<dyn MavConnection<MavMessage> + Send + Sync>)
+        .map_err(|error| format!("could not open {address}: {error}"))
+}
+
+/// Puts everything an epoch owns back to "no vehicle": the transport, the
+/// target, the telemetry snapshot, heartbeat liveness and the parameter cache.
+/// Every lifecycle transition goes through here rather than clearing its own
+/// subset, because a field one path forgets is a field that survives into the
+/// next vehicle — a stale `target` in particular makes `read_loop` treat every
+/// heartbeat of the next vehicle as foreign.
+///
+/// `only_if_generation` is the epoch the caller believes it still owns. The
+/// lifecycle commands pass `None`: they are themselves what defines the next
+/// epoch, so they always win. A background thread passes its own lease, so a
+/// teardown racing a fresh `connect_link` can't wipe the link that replaced
+/// it. Returns whether the reset actually happened.
+fn reset_link_state(app: &AppHandle, only_if_generation: Option<u64>) -> bool {
+    let state = app.state::<LinkState>();
+
+    // Locked in the order `read_loop` takes them — snapshot, then target, then
+    // connection — because it can hold the snapshot while its prearm-edge
+    // branch reaches for the target and then, inside `send_async`, for the
+    // connection. Any other order here is a deadlock against that path.
+    let reset = {
+        let mut snapshot = state.snapshot.lock().unwrap_or_else(|e| e.into_inner());
+        let mut target = state.target.lock().unwrap_or_else(|e| e.into_inner());
+        let mut connection = state.connection.lock().unwrap_or_else(|e| e.into_inner());
+
+        match only_if_generation {
+            Some(generation) if state.generation.load(Ordering::SeqCst) != generation => false,
+            _ => {
+                *snapshot = VehicleSnapshot::default();
+                *target = None;
+                *connection = None;
+                state.last_heartbeat_ms.store(0, Ordering::SeqCst);
+                true
+            }
+        }
+    };
+
+    // Outside the locks above: `params` has its own, and there is no reason to
+    // hold four at once.
+    if reset {
+        params::clear(app);
+    }
+    reset
+}
+
+/// Makes `connection` the live link for `generation` and starts the three
+/// threads that serve it, each holding that generation as its lease.
+///
+/// Returns false if the epoch moved on while the caller was opening the
+/// transport — that's a cancel taking effect, and dropping `connection` on the
+/// way out is what closes the socket nobody asked for any more.
+fn install_link(app: &AppHandle, connection: Arc<dyn MavConnection<MavMessage> + Send + Sync>, generation: u64) -> bool {
+    let state = app.state::<LinkState>();
+
+    {
+        // Checked under the same lock `reset_link_state` clears under, so a
+        // disconnect that lands during the blocking open can't be overwritten
+        // by the very attempt it cancelled.
+        let mut slot = state.connection.lock().unwrap_or_else(|e| e.into_inner());
+        if state.generation.load(Ordering::SeqCst) != generation {
+            return false;
+        }
+        *slot = Some(connection.clone());
+        state.last_heartbeat_ms.store(0, Ordering::SeqCst);
+    }
+
+    let store = app.store("settings.json").ok();
+    let settings = store.as_ref().and_then(|s| s.get("settings"));
+
+    let prearm_interval_secs = settings
+        .as_ref()
+        .and_then(|s| s.get("prearmCheckInterval"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(3)
+        .max(1);
+
+    let telem_rate_hz = settings
+        .as_ref()
+        .and_then(|s| s.get("telemRateHz"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(20)
+        .clamp(1, 20) as u32;
+
+    let telem_interval_us = 1_000_000.0 / telem_rate_hz as f32;
+    let prearm_interval = Duration::from_secs(prearm_interval_secs);
+
+    let handle = app.clone();
+    std::thread::spawn(move || read_loop(handle, connection, generation, telem_interval_us));
+
+    let watchdog_handle = app.clone();
+    std::thread::spawn(move || watchdog_loop(watchdog_handle, generation));
+
+    let prearm_handle = app.clone();
+    std::thread::spawn(move || prearm_check_loop(prearm_handle, generation, prearm_interval));
+
+    true
 }
 
 /// True only for the aircraft's own HEARTBEAT, not one from another GCS,
@@ -240,7 +399,12 @@ fn read_loop(
         );
     }
 
-    if app.state::<LinkState>().generation.load(Ordering::SeqCst) == generation {
+    // The transport is finished, so tear the epoch down rather than leaving a
+    // dead connection installed: a send against it would otherwise look like
+    // it succeeded, and `send_sync` would wait out its full timeout instead of
+    // reporting `NotConnected`. Guarded by our own generation so a connect
+    // that raced us keeps the link it just installed.
+    if reset_link_state(&app, Some(generation)) {
         set_status(&app, LinkStatus::Lost);
     }
 }
@@ -470,7 +634,11 @@ fn primary_interface_only(ports: Vec<serialport::SerialPortInfo>) -> Vec<serialp
     ports.into_iter().zip(keep).filter_map(|(port, keep)| keep.then_some(port)).collect()
 }
 
-#[tauri::command]
+/// `async` only for where it runs, not for what it does: enumerating serial
+/// ports and probing SITL both block, and this runs on a three-second timer
+/// for as long as the app is disconnected. A plain `#[tauri::command]` would
+/// do that on the main thread.
+#[tauri::command(async)]
 pub fn scan_links() -> Vec<ScannedLink> {
     let mut found = Vec::new();
 
@@ -514,63 +682,40 @@ pub fn scan_links() -> Vec<ScannedLink> {
     found
 }
 
+/// Starts connecting. Returns as soon as the attempt is handed to a worker
+/// thread, so the outcome arrives as events rather than as this call's return
+/// value: `link-status` for the transition, and `link-error` carrying the
+/// message when the transport can't be opened at all.
+///
+/// A `#[tauri::command]` that isn't `async` runs inline on the main thread, so
+/// blocking here — which is what opening a transport does — wedges the IPC
+/// queue: the Cancel button's own `disconnect_link` couldn't be dispatched
+/// until the connect had already given up on its own.
 #[tauri::command]
-pub fn connect_link(endpoint: String, app: AppHandle, state: State<LinkState>) -> Result<(), String> {
+pub fn connect_link(endpoint: String, app: AppHandle, state: State<LinkState>) {
+    // Ending the previous epoch has to happen here, in order, before anything
+    // can observe a half-old link — only the blocking open goes to the worker.
     let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
-    state.last_heartbeat_ms.store(0, Ordering::SeqCst);
+    reset_link_state(&app, None);
     set_status(&app, LinkStatus::Connecting);
 
-    let address = to_mavlink_address(&endpoint);
-    let connection = match mavlink::connect::<MavMessage>(&address) {
-        Ok(connection) => Arc::new(connection) as Arc<dyn MavConnection<MavMessage> + Send + Sync>,
-        Err(error) => {
-            if state.generation.load(Ordering::SeqCst) == generation {
-                set_status(&app, LinkStatus::Error);
-            }
-            return Err(format!("could not open {address}: {error}"));
-        }
-    };
-
-    // The connect above blocks, and the user may have canceled while it did.
-    // Not storing or spawning here is the cancel actually taking effect.
-    if state.generation.load(Ordering::SeqCst) != generation {
-        return Ok(());
-    }
-
-    *state.connection.lock().unwrap_or_else(|e| e.into_inner()) = Some(connection.clone());
-
-    let store = app.store("settings.json").ok();
-    let settings = store
-        .as_ref()
-        .and_then(|s| s.get("settings"));
-
-    let prearm_interval_secs = settings
-        .as_ref()
-        .and_then(|s| s.get("prearmCheckInterval"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(3)
-        .max(1);
-
-    let telem_rate_hz = settings
-        .as_ref()
-        .and_then(|s| s.get("telemRateHz"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(20)
-        .clamp(1, 20) as u32;
-
-    let telem_interval_us = 1_000_000.0 / telem_rate_hz as f32;
-    let prearm_interval = Duration::from_secs(prearm_interval_secs);
-
     let handle = app.clone();
-    std::thread::spawn(move || read_loop(handle, connection, generation, telem_interval_us));
+    std::thread::spawn(move || {
+        let connection = match open_connection(&endpoint) {
+            Ok(connection) => connection,
+            Err(error) => {
+                if handle.state::<LinkState>().generation.load(Ordering::SeqCst) == generation {
+                    let _ = handle.emit("link-error", error);
+                    set_status(&handle, LinkStatus::Error);
+                }
+                return;
+            }
+        };
 
-    let watchdog_handle = app.clone();
-    std::thread::spawn(move || watchdog_loop(watchdog_handle, generation));
-
-    let prearm_handle = app.clone();
-    std::thread::spawn(move || prearm_check_loop(prearm_handle, generation, prearm_interval));
-
-    Ok(())
+        // A false return is a cancel that landed while the open above blocked
+        // — `install_link` drops the connection and nothing else is touched.
+        install_link(&handle, connection, generation);
+    });
 }
 
 #[tauri::command]
@@ -578,14 +723,14 @@ pub fn link_status(state: State<LinkState>) -> Option<LinkStatus> {
     *state.status.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Ends the current epoch. Bumping the generation before the reset is what
+/// makes this instant even with a connect still in flight: the worker's
+/// `install_link` sees the new generation and drops what it opened.
 #[tauri::command]
 pub fn disconnect_link(app: AppHandle, state: State<LinkState>) {
     set_status(&app, LinkStatus::Disconnecting);
     state.generation.fetch_add(1, Ordering::SeqCst);
-    *state.connection.lock().unwrap_or_else(|e| e.into_inner()) = None;
-    *state.target.lock().unwrap_or_else(|e| e.into_inner()) = None;
-    state.last_heartbeat_ms.store(0, Ordering::SeqCst);
-    params::clear(&app);
+    reset_link_state(&app, None);
     set_status(&app, LinkStatus::Disconnected);
 }
 
@@ -763,52 +908,35 @@ fn reboot_reconnect_loop(app: AppHandle, endpoint: String, generation: u64) {
             return;
         }
 
-        let address = to_mavlink_address(&endpoint);
-        let connection = match mavlink::connect::<MavMessage>(&address) {
-            Ok(c) => Arc::new(c) as Arc<dyn MavConnection<MavMessage> + Send + Sync>,
-            Err(_) => continue,
+        // Bounded by `open_connection` rather than by the OS, so a board that
+        // hasn't finished rebooting costs one attempt — not a stall that runs
+        // past the deadline above and ignores a disconnect while it does.
+        let Ok(connection) = open_connection(&endpoint) else {
+            continue;
         };
 
-        // Another caller may have raced us during the blocking connect above.
-        if state.generation.load(Ordering::SeqCst) != generation {
+        // Claiming the next epoch with a compare-exchange is what lets a
+        // disconnect that landed during the open above win: if the generation
+        // moved at all, this fails and the connection is dropped unused.
+        if state
+            .generation
+            .compare_exchange(generation, generation + 1, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
             return;
         }
 
-        let new_generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        state.last_heartbeat_ms.store(0, Ordering::SeqCst);
-        *state.connection.lock().unwrap_or_else(|e| e.into_inner()) = Some(connection.clone());
-
-        let store = app.store("settings.json").ok();
-        let settings = store.as_ref().and_then(|s| s.get("settings"));
-
-        let prearm_interval_secs = settings
-            .as_ref()
-            .and_then(|s| s.get("prearmCheckInterval"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(3)
-            .max(1);
-
-        let telem_rate_hz = settings
-            .as_ref()
-            .and_then(|s| s.get("telemRateHz"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(20)
-            .clamp(1, 20) as u32;
-
-        let telem_interval_us = 1_000_000.0 / telem_rate_hz as f32;
-        let prearm_interval = Duration::from_secs(prearm_interval_secs);
-
-        set_status(&app, LinkStatus::Connecting);
-
-        let handle = app.clone();
-        std::thread::spawn(move || read_loop(handle, connection, new_generation, telem_interval_us));
-
-        let watchdog_handle = app.clone();
-        std::thread::spawn(move || watchdog_loop(watchdog_handle, new_generation));
-
-        let prearm_handle = app.clone();
-        std::thread::spawn(move || prearm_check_loop(prearm_handle, new_generation, prearm_interval));
-
+        // Status last, and only while the epoch is still the one just
+        // claimed: a disconnect landing in here has already published
+        // `Disconnected`, and overwriting that with `Connecting` would leave
+        // the UI waiting on a link nobody is holding. The opposite order is
+        // self-correcting — `read_loop` republishes within one recv — so this
+        // is the direction worth guarding.
+        if install_link(&app, connection, generation + 1)
+            && state.generation.load(Ordering::SeqCst) == generation + 1
+        {
+            set_status(&app, LinkStatus::Connecting);
+        }
         return;
     }
 }
@@ -826,10 +954,7 @@ pub fn reboot_link(endpoint: String, app: AppHandle, state: State<LinkState>) ->
     let _ = commands::send_async(&app, MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], target);
 
     let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
-    *state.connection.lock().unwrap_or_else(|e| e.into_inner()) = None;
-    *state.target.lock().unwrap_or_else(|e| e.into_inner()) = None;
-    state.last_heartbeat_ms.store(0, Ordering::SeqCst);
-    params::clear(&app);
+    reset_link_state(&app, None);
     set_status(&app, LinkStatus::Rebooting);
 
     let handle = app.clone();

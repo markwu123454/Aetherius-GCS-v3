@@ -18,7 +18,7 @@ import JoystickInput from "./JoystickInput.tsx";
 export default function RcOverridePanel() {
     return (
         <div className="flex h-full min-h-0 w-full items-stretch justify-center-safe overflow-auto bg-background p-3">
-            <div className="grid grid-cols-1 grid-rows-1">
+            <div className="grid min-w-0 flex-1 grid-cols-1 grid-rows-1">
                 <JoystickInput/>
             </div>
         </div>

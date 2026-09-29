@@ -64,6 +64,22 @@ export const DEFAULT_MAP_CACHE_PROVIDERS: MapCacheProviders = {
 };
 
 /**
+ * Where the manual-control widget's sticks start when it's clicked into and
+ * takes over as an RC override. While unfocused the widget always mirrors the
+ * live RC input; this decides how much of that mirror carries over.
+ *
+ * - `"none"`: roll/pitch/yaw centered, throttle at minimum.
+ * - `"throttle"`: throttle picks up wherever the transmitter's throttle is;
+ *   roll/pitch/yaw centered. A friction-lever throttle has no center to
+ *   snap back to, so this is the usual choice.
+ * - `"all"`: every stick picks up wherever the transmitter's is.
+ *
+ * Whatever the mode, an armed vehicle's throttle is never started at minimum —
+ * see `seedSticks` in `JoystickInput.tsx`.
+ */
+export type RcOverrideMatch = "none" | "throttle" | "all";
+
+/**
  * App preferences — how the operator wants the GCS to behave. Distinct from
  * vehicle parameters: these never touch the wire, and the vehicle has no
  * opinion about them.
@@ -140,6 +156,9 @@ export interface Settings {
     /** Per-source opt-out — caching stays off for a source even in
      * `readWrite` mode if its entry here is `false`. */
     mapCacheProviders: MapCacheProviders;
+    /** Where the manual-control sticks start when it takes over. See
+     * `RcOverrideMatch`. */
+    rcOverrideMatch: RcOverrideMatch;
 }
 
 /** Below this, there's nothing left to collapse — the first occurrence of a
@@ -182,4 +201,5 @@ export const DEFAULT_SETTINGS: Settings = {
     mapCacheMinZoom: MIN_MAP_CACHE_ZOOM,
     mapCacheMaxZoom: 18,
     mapCacheProviders: DEFAULT_MAP_CACHE_PROVIDERS,
+    rcOverrideMatch: "throttle",
 };

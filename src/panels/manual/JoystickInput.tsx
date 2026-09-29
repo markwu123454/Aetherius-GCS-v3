@@ -1,12 +1,16 @@
 import {type KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState} from "react";
-import StickBall from "./StickBall.tsx";
+import StickPair from "./StickPair.tsx";
 import FitBox from "./FitBox.tsx";
 import {useRcChannels} from "@/lib/calibration/useRcChannels.ts";
 import {useLiveParams} from "@/lib/params/useLiveParams.ts";
 import {RC_CHANNEL_UNUSED} from "@/lib/calibration/rcChannels.ts";
 import {StickFunction} from "@/lib/calibration/useRadioCalibration.ts";
 import {sendRcOverride} from "@/lib/vehicle/commands.ts";
+import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
+import {useSettings} from "@/lib/settings/useSettings.ts";
+import type {RcOverrideMatch} from "@/lib/settings/settings.ts";
 import {
+    axisFromRaw,
     type ChannelCalibration,
     LEFT_STICK,
     RIGHT_STICK,
@@ -133,32 +137,36 @@ function overrideChannels(axes: Record<StickFunction, number>, cal: Record<Stick
  * this field". */
 const RELEASE_CHANNEL = 0;
 
+/** Throttle lever all the way down. */
+const THROTTLE_MIN = -1;
+
 /**
  * Keyboard-driven manual control. While unfocused, both sticks mirror the
  * real RC input verbatim — this widget IS the RC monitor when nobody's
- * driving it. The moment it's focused, both sticks freeze exactly where the
- * mirror left them and switch to commanding an `RC_CHANNELS_OVERRIDE`
- * instead: from that instant on, this — not the transmitter — is what the
- * vehicle listens to, even before any key is touched. WASD/arrows then ramp
- * from there like a friction lever, same as before `r` snaps roll/pitch/yaw
- * back to center but leaves throttle alone, since a real lever has no center
- * to return to.
+ * driving it. The moment it's focused, it switches to commanding an
+ * `RC_CHANNELS_OVERRIDE`: from that instant on, this — not the transmitter —
+ * is what the vehicle listens to, even before any key is touched. See
+ * `seedSticks` for where the sticks start. WASD/arrows then ramp from there
+ * like a friction lever; `r` snaps roll/pitch/yaw back to center but leaves
+ * throttle alone, since a real lever has no center to return to.
  *
  * Losing focus releases roll/pitch/yaw back to the real transmitter — same
  * as `r`, but as MAVLink's own release sentinel rather than a commanded
  * center, so whatever the transmitter's sticks are actually doing takes over
- * immediately. Throttle is the one exception: it stays overridden, latched
- * at wherever it was left, since there's no equivalent "let go and it
- * returns to a sensible value" for a lever with no center. No further
- * commands go out after that one release message — this is genuinely off,
- * not idling.
+ * immediately. Throttle is sent once more at wherever it was left rather
+ * than released, since there's no equivalent "let go and it returns to a
+ * sensible value" for a lever with no center. No further commands go out
+ * after that one message — this is genuinely off, not idling — so ArduPilot
+ * drops that throttle override too once `RC_OVERRIDE_TIME` passes without it
+ * being re-sent.
  */
-interface MirroredSticks {
-    left: {x: number | null; y: number | null};
-    right: {x: number | null; y: number | null};
-}
-
-function useManualControl(focused: boolean, mirrored: MirroredSticks, calibrations: Calibrations) {
+function useManualControl(
+    focused: boolean,
+    calibrations: Calibrations,
+    rawChannels: number[] | null,
+    armed: boolean,
+    match: RcOverrideMatch,
+) {
     const [held, setHeld] = useState<ReadonlySet<string>>(new Set());
     const heldRef = useRef(held);
     heldRef.current = held;
@@ -170,10 +178,21 @@ function useManualControl(focused: boolean, mirrored: MirroredSticks, calibratio
     const rightRef = useRef(right);
     rightRef.current = right;
 
-    const mirroredRef = useRef(mirrored);
-    mirroredRef.current = mirrored;
     const calibrationsRef = useRef(calibrations);
     calibrationsRef.current = calibrations;
+    const rawChannelsRef = useRef(rawChannels);
+    rawChannelsRef.current = rawChannels;
+    const armedRef = useRef(armed);
+    armedRef.current = armed;
+    const matchRef = useRef(match);
+    matchRef.current = match;
+
+    // Set for a focus session that couldn't be seeded safely — see
+    // `seedSticks`. Nothing is sent for the rest of that session; clicking
+    // back in once there's a throttle reading tries again.
+    const [blocked, setBlocked] = useState(false);
+    const blockedRef = useRef(blocked);
+    blockedRef.current = blocked;
 
     // Whether this "focus session" ever actually sent an override — a blur
     // with this still false means either the widget was never really
@@ -181,18 +200,101 @@ function useManualControl(focused: boolean, mirrored: MirroredSticks, calibratio
     // `focused === false`, neither of which should trigger a release.
     const engagedRef = useRef(false);
     const lastSendRef = useRef(0);
+    // The last real value this widget commanded on each channel, ignoring
+    // the "ignore" and "release" sentinels. Kept across focus sessions:
+    // RC_CHANNELS reports overridden values, not just the receiver, and after
+    // a release with no receiver fitted ArduPilot keeps reporting the last
+    // deflection it was given — so this is what tells `seedSticks` "that's
+    // our own echo" apart from "that's where the transmitter is".
+    const lastCommandedRef = useRef<(number | null)[]>(new Array(8).fill(null));
+
+    const transmit = (channels: number[]) => {
+        channels.forEach((value, index) => {
+            if (value !== RC_CHANNEL_UNUSED && value !== RELEASE_CHANNEL) {
+                lastCommandedRef.current[index] = value;
+            }
+        });
+        try {
+            void sendRcOverride(channels).catch(() => {});
+        } catch {
+            // No Tauri backend (plain browser dev) — nothing to send to.
+        }
+    };
 
     const send = (l: StickValue, r: StickValue) => {
         const cal = calibrationsRef.current;
-        if (!fullyEngageable(cal)) {
+        if (blockedRef.current || !fullyEngageable(cal)) {
             return;
         }
         engagedRef.current = true;
         lastSendRef.current = performance.now();
-        try {
-            void sendRcOverride(overrideChannels(axesFromSticks(l, r), cal)).catch(() => {});
-        } catch {
-            // No Tauri backend (plain browser dev) — nothing to send to.
+        transmit(overrideChannels(axesFromSticks(l, r), cal));
+    };
+
+    // One channel's live reading as a stick axis, or null when there's
+    // nothing trustworthy there: no reading, a sentinel, or — unless
+    // `allowEcho` — just this widget's own last command reflected back.
+    const reading = (fn: StickFunction, allowEcho: boolean): number | null => {
+        const cal = calibrationsRef.current[fn];
+        if (!cal) {
+            return null;
+        }
+        const raw = rawChannelsRef.current?.[cal.channel - 1];
+        if (raw === undefined || raw === RC_CHANNEL_UNUSED || raw === RELEASE_CHANNEL) {
+            return null;
+        }
+        if (!allowEcho && raw === lastCommandedRef.current[cal.channel - 1]) {
+            return null;
+        }
+        return axisFromRaw(fn, raw, cal);
+    };
+
+    // Where the sticks start when a focus session begins, per the
+    // `rcOverrideMatch` setting: each stick that's matched picks up the
+    // transmitter's live position, and anything unmatched (or with no
+    // trustworthy reading) starts centered, throttle at minimum.
+    //
+    // Armed overrides that for throttle regardless of the setting: it starts
+    // at whatever the vehicle is currently flying on — RC_CHANNELS, echo
+    // included since an echo is exactly what it's flying on, then this
+    // widget's own last command. Snapping to minimum mid-air is the one thing
+    // worse than a stale value, and so is guessing, so with neither available
+    // this returns null and the session doesn't engage at all.
+    const seedSticks = (): {left: StickValue; right: StickValue} | null => {
+        const match = matchRef.current;
+        const stick = (fn: StickFunction) => (match === "all" ? reading(fn, false) ?? 0 : 0);
+
+        let throttle: number | null;
+        if (armedRef.current) {
+            const cal = calibrationsRef.current.throttle;
+            const commanded = cal ? lastCommandedRef.current[cal.channel - 1] : null;
+            throttle = reading("throttle", true) ?? (cal && commanded != null ? axisFromRaw("throttle", commanded, cal) : null);
+            if (throttle === null) {
+                return null;
+            }
+        } else {
+            throttle = match === "none" ? THROTTLE_MIN : reading("throttle", false) ?? THROTTLE_MIN;
+        }
+
+        return {
+            left: {x: stick(LEFT_STICK.horizontal), y: throttle},
+            right: {x: stick(RIGHT_STICK.horizontal), y: stick(RIGHT_STICK.vertical)},
+        };
+    };
+
+    // Called from the focus *event*, alongside `setFocused(true)`, so the
+    // seeded sticks land in the same render that switches the display over
+    // to them. Seeding from an effect instead left one committed frame
+    // showing the previous session's sticks before the seed replaced them.
+    // `blocked` is written here too and read through its ref, which the
+    // focus effect sees after that same render commits.
+    const beginSession = () => {
+        const seed = seedSticks();
+        setHeld(new Set());
+        setBlocked(seed === null);
+        if (seed) {
+            setLeft(seed.left);
+            setRight(seed.right);
         }
     };
 
@@ -211,27 +313,21 @@ function useManualControl(focused: boolean, mirrored: MirroredSticks, calibratio
         channels[cal.yaw.channel - 1] = RELEASE_CHANNEL;
         channels[cal.throttle.channel - 1] = rawFromAxis("throttle", l.y, cal.throttle);
         engagedRef.current = false;
-        try {
-            void sendRcOverride(channels).catch(() => {});
-        } catch {
-            // No Tauri backend (plain browser dev) — nothing to send to.
-        }
+        transmit(channels);
     };
 
-    // Focus is the "press in": freeze both sticks at whatever the mirror was
-    // just showing and immediately latch that in as the override. Blur is
-    // the release, described on `release` above.
+    // Focus is the "press in": latch the sticks `beginSession` already seeded
+    // in as the override. By the time this runs, the render that set
+    // `focused` has also committed the seed, so the refs hold it — not the
+    // previous session's values. Blur is the release, described on `release`
+    // above.
     useEffect(() => {
         if (!focused) {
             setHeld(new Set());
             release(leftRef.current);
             return;
         }
-        const seedLeft = {x: mirroredRef.current.left.x ?? 0, y: mirroredRef.current.left.y ?? 0};
-        const seedRight = {x: mirroredRef.current.right.x ?? 0, y: mirroredRef.current.right.y ?? 0};
-        setLeft(seedLeft);
-        setRight(seedRight);
-        send(seedLeft, seedRight);
+        send(leftRef.current, rightRef.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [focused]);
 
@@ -363,7 +459,7 @@ function useManualControl(focused: boolean, mirrored: MirroredSticks, calibratio
         return () => cancelAnimationFrame(frame);
     }, []);
 
-    return {left, right};
+    return {left, right, blocked, beginSession};
 }
 
 export default function JoystickInput() {
@@ -388,9 +484,19 @@ export default function JoystickInput() {
         [live, boolScheme],
     );
 
-    const {left: controlledLeft, right: controlledRight} = useManualControl(focused, mirrored, calibrations);
-    const left = focused ? controlledLeft : mirrored.left;
-    const right = focused ? controlledRight : mirrored.right;
+    const {armed} = useVehicle();
+    const {rcOverrideMatch} = useSettings();
+    const {
+        left: controlledLeft,
+        right: controlledRight,
+        blocked,
+        beginSession,
+    } = useManualControl(focused, calibrations, channels, armed, rcOverrideMatch);
+    // A blocked session sends nothing, so it keeps showing the live input
+    // rather than sticks that aren't commanding anything.
+    const commanding = focused && !blocked;
+    const left = commanding ? controlledLeft : mirrored.left;
+    const right = commanding ? controlledRight : mirrored.right;
 
     // Escape is the explicit "move out" — Tab and click-away already blur
     // the element on their own, this just gives keyboard-only users a way to
@@ -402,14 +508,22 @@ export default function JoystickInput() {
         }
     };
 
-    const sending = focused && fullyEngageable(calibrations);
+    const sending = commanding && fullyEngageable(calibrations);
 
     return (
         <FitBox
             ref={containerRef}
             ratio={RATIO}
             tabIndex={0}
-            onFocus={() => setFocused(true)}
+            onFocus={() => {
+                // Both updates batch into one render — see `beginSession`.
+                // Guarded because a focus event can arrive while already
+                // focused, and re-seeding then would yank the sticks.
+                if (!focused) {
+                    beginSession();
+                    setFocused(true);
+                }
+            }}
             onBlur={() => setFocused(false)}
             onKeyDown={onKeyDown}
             className={`flex flex-col items-center gap-2 border p-2 ${focused ? "border-state-info bg-layer-hover-01" : "border-transparent"}`}
@@ -418,23 +532,12 @@ export default function JoystickInput() {
                 {focused
                     ? sending
                         ? "Sending — Esc or click away to release"
-                        : "RC overriding — not connected, not sending"
+                        : blocked
+                            ? "Armed with no throttle reading — not sending"
+                            : "RC overriding — not connected, not sending"
                     : "Click to enable RC override"}
             </span>
-            <div className="flex min-h-0 flex-1 gap-4">
-                <div className="flex min-h-0 min-w-0 flex-col items-center gap-1">
-                    <div className="aspect-square w-auto min-h-0 flex-1">
-                        <StickBall x={left.x} y={left.y}/>
-                    </div>
-                    <span className="text-micro text-text-helper">W A S D</span>
-                </div>
-                <div className="flex min-h-0 min-w-0 flex-col items-center gap-1">
-                    <div className="aspect-square w-auto min-h-0 flex-1">
-                        <StickBall x={right.x} y={right.y}/>
-                    </div>
-                    <span className="text-micro text-text-helper">Arrow keys</span>
-                </div>
-            </div>
+            <StickPair left={left} right={right} leftLabel="W A S D" rightLabel="Arrow keys"/>
             <span className="text-micro text-text-helper">R resets roll/pitch/yaw</span>
         </FitBox>
     );

@@ -165,6 +165,15 @@ export function useConnection(): Connection {
     // arrives, which is a real round trip, not instant.
     const autoConnectingRef = useRef(false);
 
+    // `connect_link` hands the blocking open to a worker thread and returns
+    // before it finishes, so a transport that can't be opened is reported
+    // here rather than by rejecting that invoke. It always arrives alongside
+    // the `error` status, so this only supplies the text.
+    useTauriEvent<string>("link-error", (text) => {
+        setError(text);
+        connectedIdentityRef.current = null;
+    });
+
     const connect = useCallback(async (explicitAddress?: string) => {
         setError(null);
 
@@ -191,6 +200,10 @@ export function useConnection(): Connection {
         setStatus("connecting");
 
         try {
+            // Resolves once the attempt is handed to a worker thread, not
+            // once it succeeds — so this only catches the call itself failing
+            // (no backend). Failing to open the transport arrives as
+            // `link-error` above.
             await invoke("connect_link", {endpoint: address});
         } catch (cause) {
             setError(message(cause));
