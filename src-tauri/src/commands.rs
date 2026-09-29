@@ -106,6 +106,89 @@ pub async fn send_sync(
     outcome
 }
 
+/// How a command ended that, if it succeeds, can take the vehicle off the
+/// air before its ack gets back.
+pub enum AckOrSilence {
+    Ack(MavResult),
+    /// No ack, but the vehicle stopped sending heartbeats — it acted on the
+    /// command (a reboot) and the ack was lost on the way out.
+    Silent,
+}
+
+/// `send_sync` for a command whose success silences the vehicle (reboot).
+/// Between attempts, a vehicle that has stopped sending heartbeats counts
+/// as having acted on it rather than as a reason to retry: a retry then
+/// would land on the freshly booted vehicle and reboot it a second time.
+pub async fn send_expecting_silence(
+    app: &AppHandle,
+    command: MavCmd,
+    params: [f32; 7],
+    target: (u8, u8),
+    attempts: u8,
+    silence: Duration,
+) -> Result<AckOrSilence, CommandError> {
+    let command_id = command
+        .to_u32()
+        .expect("MavCmd is #[repr(u32)] and always converts");
+
+    let link = app.state::<LinkState>();
+    let generation = link.generation.load(Ordering::SeqCst);
+
+    let connection = link
+        .connection
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+        .ok_or(CommandError::NotConnected)?;
+
+    let (tx, mut rx) = oneshot::channel();
+    app.state::<CommandState>()
+        .pending
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(command_id, tx);
+
+    let heartbeat_silent = || {
+        let last = link.last_heartbeat_ms.load(Ordering::SeqCst);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        last != 0 && now.saturating_sub(last) > silence.as_millis() as u64
+    };
+
+    let mut outcome = Err(CommandError::Timeout);
+    for confirmation in 0..attempts {
+        let data = build_command_long(command, params, target, confirmation);
+        let _ = connection.send_default(&MavMessage::COMMAND_LONG(data));
+
+        match tokio::time::timeout(Duration::from_secs(1), &mut rx).await {
+            Ok(Ok(result)) => {
+                outcome = Ok(AckOrSilence::Ack(result));
+                break;
+            }
+            Ok(Err(_)) => break,
+            Err(_) => {}
+        }
+        if link.generation.load(Ordering::SeqCst) != generation {
+            outcome = Err(CommandError::LinkReset);
+            break;
+        }
+        if heartbeat_silent() {
+            outcome = Ok(AckOrSilence::Silent);
+            break;
+        }
+    }
+
+    app.state::<CommandState>()
+        .pending
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&command_id);
+
+    outcome
+}
+
 pub fn send_async(
     app: &AppHandle,
     command: MavCmd,

@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "build:airspace": "node scripts/build-airspace.mjs",
+    "build:motor-layouts": "node scripts/build-motor-layouts.mjs",
     "sync-version": "node scripts/sync-version.mjs"
   },
   "dependencies": {

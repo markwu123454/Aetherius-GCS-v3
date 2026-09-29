@@ -1,6 +1,7 @@
 import {useCallback, useRef, useState} from "react";
 import {sendVehicleCommand} from "@/lib/vehicle/commands.ts";
 import {useTauriEvent} from "@/lib/tauriEvent.ts";
+import type {ConnectionStatus} from "@/lib/vehicle/connection.ts";
 import {COMPASS_CAL_SECTION_COUNT, sectionCovered} from "./compassCalGrid.ts";
 
 /** ArduPilot's `MagCalStatus::MAG_CAL_SUCCESS`. */
@@ -132,6 +133,18 @@ export function useCompassCalibration() {
         if (expected.length > 0 && expected.every((id) => next.has(id))) {
             setCalibrating(false);
         }
+    });
+
+    // A reboot (the panel's "Reboot Vehicle" after a successful run) or a
+    // lost link ends this calibration on the vehicle's side, and a reboot is
+    // what applies it — so go back to the start screen rather than keep
+    // showing "Reboot the vehicle" after it already happened.
+    useTauriEvent<ConnectionStatus>("link-status", (status) => {
+        if (status !== "rebooting" && status !== "lost" && status !== "disconnected" && status !== "error") return;
+        setCalibrating(false);
+        setProgress(new Map());
+        setReports(new Map());
+        setError(null);
     });
 
     return {calibrating, progress, reports, error, start, cancel, stallCancel};

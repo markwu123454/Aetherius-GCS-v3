@@ -150,6 +150,24 @@ export function scanLinks(): Promise<ScannedLink[]> {
 }
 
 /**
+ * Reboots the vehicle; the backend then reconnects to it on its own (status
+ * "rebooting" → "connecting" → "connected"). Resolves once the vehicle has
+ * accepted. Rejects with the reason when it refuses or doesn't answer — the
+ * link stays up then, since nothing rebooted.
+ *
+ * A plain function rather than part of `useConnection`: every component
+ * gets its own copy of that hook's state, and only the top bar's knows the
+ * endpoint. The backend keeps the endpoint itself, so any page can call this.
+ *
+ * `force` overrides ArduPilot's refuse-while-armed check. Only pass it after
+ * the operator has explicitly confirmed rebooting an armed vehicle.
+ */
+export function rebootVehicle(force = false): Promise<void> {
+    requireBackend();
+    return invoke<void>("reboot_link", {force});
+}
+
+/**
  * Endpoints are typed in the same address syntax `connect_link` accepts —
  * `tcp:host:port`, `udp:bindhost:port`, `serial:PORT:BAUD` — and passed
  * through unchanged. There is no per-kind structure on this side to keep in

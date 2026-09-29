@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use mavlink::{
     error::MessageReadError,
-    dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavCmd, MavMessage, MavType},
+    dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavCmd, MavMessage, MavResult, MavType},
     MavConnection,
 };
 
@@ -11,7 +11,7 @@ use std::{
     io::ErrorKind,
     net::{SocketAddr, TcpStream, ToSocketAddrs},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -23,7 +23,7 @@ use tauri_plugin_store::StoreExt;
 
 use crate::dispatch;
 use crate::telemetry::VehicleSnapshot;
-use crate::commands;
+use crate::commands::{self, AckOrSilence, CommandError};
 use crate::params;
 
 const LOSING_AFTER: Duration = Duration::from_millis(2_500);
@@ -122,6 +122,14 @@ pub struct LinkState {
     /// returned recently — a physically unplugged serial port can block
     /// that call forever.
     pub last_heartbeat_ms: AtomicU64,
+    /// The endpoint the current link was opened to — what a reboot
+    /// reconnects to. Kept here rather than asked of the frontend, because
+    /// any page can ask for a reboot, not just the one that connected.
+    pub endpoint: Mutex<Option<String>>,
+    /// Set while `reboot_reconnect_loop` owns the link. A transport dying in
+    /// that window is the reboot happening, not a lost link, so `read_loop`
+    /// leaves the status alone and the loop reconnects.
+    pub reconnecting: AtomicBool,
 }
 
 /// Opens the transport for `endpoint`, bounding the part of it the OS would
@@ -404,7 +412,7 @@ fn read_loop(
     // it succeeded, and `send_sync` would wait out its full timeout instead of
     // reporting `NotConnected`. Guarded by our own generation so a connect
     // that raced us keeps the link it just installed.
-    if reset_link_state(&app, Some(generation)) {
+    if reset_link_state(&app, Some(generation)) && !app.state::<LinkState>().reconnecting.load(Ordering::SeqCst) {
         set_status(&app, LinkStatus::Lost);
     }
 }
@@ -697,6 +705,7 @@ pub fn connect_link(endpoint: String, app: AppHandle, state: State<LinkState>) {
     // can observe a half-old link — only the blocking open goes to the worker.
     let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
     reset_link_state(&app, None);
+    *state.endpoint.lock().unwrap_or_else(|e| e.into_inner()) = Some(endpoint.clone());
     set_status(&app, LinkStatus::Connecting);
 
     let handle = app.clone();
@@ -731,6 +740,7 @@ pub fn disconnect_link(app: AppHandle, state: State<LinkState>) {
     set_status(&app, LinkStatus::Disconnecting);
     state.generation.fetch_add(1, Ordering::SeqCst);
     reset_link_state(&app, None);
+    *state.endpoint.lock().unwrap_or_else(|e| e.into_inner()) = None;
     set_status(&app, LinkStatus::Disconnected);
 }
 
@@ -888,24 +898,34 @@ mod tests {
     }
 }
 
-fn reboot_reconnect_loop(app: AppHandle, endpoint: String, generation: u64) {
-    let deadline = Instant::now() + Duration::from_secs(20);
+/// How long a reboot has to bring the vehicle back before giving up.
+const REBOOT_DEADLINE: Duration = Duration::from_secs(20);
+/// ArduPilot's own override for its refuse-while-armed check on
+/// `PREFLIGHT_REBOOT_SHUTDOWN` (param 6, `handle_preflight_reboot` in
+/// GCS_Common.cpp). Only sent after the operator confirms rebooting armed.
+const FORCE_REBOOT_MAGIC: f32 = 20190226.0;
 
-    loop {
+/// Reopens the link after a reboot until the vehicle is heard from again.
+///
+/// Reboot is only done when a HEARTBEAT arrives, not when the port opens: a
+/// port can open while the vehicle is still coming up and then drop again
+/// (USB re-enumerating), and that has to mean "keep trying", not "lost". So
+/// each opened link is watched until it either hears a heartbeat (done) or
+/// dies (reopen), all inside one deadline. `reconnecting` stays set for the
+/// whole loop so `read_loop` doesn't report those deaths as a lost link.
+fn reboot_reconnect_loop(app: AppHandle, endpoint: String, mut generation: u64) {
+    let deadline = Instant::now() + REBOOT_DEADLINE;
+    let state = app.state::<LinkState>();
+
+    let outcome = 'outer: loop {
         std::thread::sleep(Duration::from_secs(2));
-
-        let state = app.state::<LinkState>();
 
         // A connect_link or disconnect_link call superseded us.
         if state.generation.load(Ordering::SeqCst) != generation {
-            return;
+            break None;
         }
-
         if Instant::now() >= deadline {
-            if state.generation.load(Ordering::SeqCst) == generation {
-                set_status(&app, LinkStatus::Lost);
-            }
-            return;
+            break Some(LinkStatus::Lost);
         }
 
         // Bounded by `open_connection` rather than by the OS, so a board that
@@ -923,37 +943,105 @@ fn reboot_reconnect_loop(app: AppHandle, endpoint: String, generation: u64) {
             .compare_exchange(generation, generation + 1, Ordering::SeqCst, Ordering::SeqCst)
             .is_err()
         {
-            return;
+            break None;
+        }
+        generation += 1;
+        if !install_link(&app, connection, generation) {
+            break None;
         }
 
-        // Status last, and only while the epoch is still the one just
-        // claimed: a disconnect landing in here has already published
-        // `Disconnected`, and overwriting that with `Connecting` would leave
-        // the UI waiting on a link nobody is holding. The opposite order is
-        // self-correcting — `read_loop` republishes within one recv — so this
-        // is the direction worth guarding.
-        if install_link(&app, connection, generation + 1)
-            && state.generation.load(Ordering::SeqCst) == generation + 1
-        {
-            set_status(&app, LinkStatus::Connecting);
+        // Watch this link until the vehicle speaks or the link dies.
+        loop {
+            std::thread::sleep(Duration::from_millis(250));
+            if state.generation.load(Ordering::SeqCst) != generation {
+                break 'outer None;
+            }
+            if state.last_heartbeat_ms.load(Ordering::SeqCst) != 0 {
+                break 'outer None; // back: read_loop has already published Connected
+            }
+            let alive = state.connection.lock().unwrap_or_else(|e| e.into_inner()).is_some();
+            if !alive {
+                // The transport died before the vehicle was heard: still
+                // coming up. Put the status back and reopen.
+                set_status(&app, LinkStatus::Rebooting);
+                continue 'outer;
+            }
+            if Instant::now() >= deadline {
+                // Open but silent — leave it; read_loop keeps listening and
+                // publishes Connected if the vehicle does turn up.
+                break 'outer None;
+            }
         }
-        return;
+    };
+
+    state.reconnecting.store(false, Ordering::SeqCst);
+    if let Some(status) = outcome {
+        if state.generation.load(Ordering::SeqCst) == generation {
+            set_status(&app, status);
+        }
     }
 }
 
+/// Reboots the vehicle, then reconnects to it.
+///
+/// Waits for the vehicle to accept first: ArduPilot acks
+/// `PREFLIGHT_REBOOT_SHUTDOWN` before restarting, and refuses it while armed
+/// unless forced. Going to "rebooting" without that answer (as this used to)
+/// meant a refused or lost command still showed a full reboot-and-reconnect
+/// while the vehicle carried on unchanged. A vehicle that goes silent
+/// without acking counts as rebooting — its ack was lost on the way out.
+///
+/// The endpoint comes from `LinkState`, not the caller: any page can ask for
+/// a reboot, and only the one that connected ever knew the address.
+///
+/// `force` sends ArduPilot's armed override; the frontend only sets it after
+/// the operator confirms rebooting an armed vehicle.
 #[tauri::command]
-pub fn reboot_link(endpoint: String, app: AppHandle, state: State<LinkState>) -> Result<(), String> {
+pub async fn reboot_link(force: bool, app: AppHandle) -> Result<(), String> {
+    let state = app.state::<LinkState>();
     let target = state
         .target
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .ok_or_else(|| "no vehicle has been heard from yet".to_string())?;
+    let endpoint = state
+        .endpoint
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+        .ok_or_else(|| "not connected".to_string())?;
 
-    // Fire-and-forget — the vehicle will reboot before it can ack,
-    // so there is nothing useful to wait for.
-    let _ = commands::send_async(&app, MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], target);
+    let params = [1.0, 0.0, 0.0, 0.0, 0.0, if force { FORCE_REBOOT_MAGIC } else { 0.0 }, 0.0];
+    let outcome = commands::send_expecting_silence(
+        &app,
+        MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+        params,
+        target,
+        3,
+        Duration::from_millis(1500),
+    )
+    .await;
+
+    match outcome {
+        Ok(AckOrSilence::Ack(MavResult::MAV_RESULT_ACCEPTED)) | Ok(AckOrSilence::Silent) => {}
+        Ok(AckOrSilence::Ack(MavResult::MAV_RESULT_FAILED)) => {
+            let armed = state.snapshot.lock().unwrap_or_else(|e| e.into_inner()).armed == Some(true);
+            return Err(if armed {
+                "The vehicle refused to reboot because it's armed.".to_string()
+            } else {
+                "The vehicle refused to reboot.".to_string()
+            });
+        }
+        Ok(AckOrSilence::Ack(other)) => return Err(format!("The vehicle refused to reboot ({other:?}).")),
+        Err(CommandError::Timeout) => {
+            return Err("No answer from the vehicle, so it didn't reboot. Check the link and try again.".to_string())
+        }
+        Err(CommandError::NotConnected) => return Err("not connected".to_string()),
+        Err(CommandError::LinkReset) => return Err("The link changed before the vehicle answered.".to_string()),
+    }
 
     let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
+    state.reconnecting.store(true, Ordering::SeqCst);
     reset_link_state(&app, None);
     set_status(&app, LinkStatus::Rebooting);
 

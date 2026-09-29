@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useRef} from "react";
 import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
-import {useConnection} from "@/lib/vehicle/useConnection.ts";
+import {useReboot} from "@/lib/vehicle/useReboot.ts";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {useCompassCalibration} from "@/lib/calibration/useCompassCalibration.ts";
 import {COMPASS_CAL_SECTION_COUNT} from "@/lib/calibration/compassCalGrid.ts";
@@ -101,7 +101,7 @@ function isExternal(live: Map<string, LiveParamEntry>, compassId: number): boole
  */
 export default function CompassCalibrationPanel({live}: CompassCalibrationPanelProps) {
     const vehicle = useVehicle();
-    const connection = useConnection();
+    const reboot = useReboot();
     const calibration = useCompassCalibration();
 
     const rotationDeg = {
@@ -231,12 +231,14 @@ export default function CompassCalibrationPanel({live}: CompassCalibrationPanelP
                         {allSucceeded && (
                             <button
                                 type="button"
-                                onClick={() => void connection.reboot()}
-                                className="h-control-sm w-fit bg-blue-60 px-3 text-label text-text-on-color hover:enabled:bg-blue-50"
+                                disabled={reboot.pending}
+                                onClick={() => void reboot.reboot()}
+                                className="h-control-sm w-fit bg-blue-60 px-3 text-label text-text-on-color hover:enabled:bg-blue-50 disabled:opacity-50"
                             >
-                                Reboot Vehicle
+                                {reboot.pending ? "Waiting for the vehicle…" : "Reboot Vehicle"}
                             </button>
                         )}
+                        {reboot.error && <p className="text-label text-state-danger">{reboot.error}</p>}
                     </div>
                 )}
 

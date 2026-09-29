@@ -1,9 +1,10 @@
 import {useEffect, useMemo, useState} from "react";
-import {useConnection} from "@/lib/vehicle/useConnection.ts";
+import {useReboot} from "@/lib/vehicle/useReboot.ts";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {useParamSheet} from "@/lib/params/useParamSheet.ts";
 import {ParamDef, ParamOption, VehicleFirmware} from "@/lib/params/paramSheet.ts";
 import SERVO_FUNCTION_PRIORITY from "@/lib/params/servoFunctionPriority.json";
+import MotorMappingSection from "./MotorMappingSection.tsx";
 
 /**
  * ArduPilot's own pdef lists `SERVOx_FUNCTION` alphabetically by label, which
@@ -258,11 +259,12 @@ function ServoRow({channel, live, onSet, functionOptions, range, onFunctionChang
  * "Set" button, unlike `ParametersPage`'s general-purpose control.
  */
 export default function ServoSetupPanel({live, onSet, firmware}: ServoSetupPanelProps) {
-    const connection = useConnection();
+    const reboot = useReboot();
     const sheetState = useParamSheet(firmware);
     const [rebootNeeded, setRebootNeeded] = useState(false);
 
     const functionParam = sheetState.status === "ready" ? findParam(sheetState.sheet.groups, "SERVO1_FUNCTION") : null;
+    const frameClassParam = sheetState.status === "ready" ? findParam(sheetState.sheet.groups, "FRAME_CLASS") : null;
     const minParam = sheetState.status === "ready" ? findParam(sheetState.sheet.groups, "SERVO1_MIN") : null;
     const functionOptions = useMemo(() => sortFunctionOptions(functionParam?.values ?? []), [functionParam]);
     const range: [number, number] = minParam?.range ?? DEFAULT_RANGE;
@@ -285,12 +287,25 @@ export default function ServoSetupPanel({live, onSet, firmware}: ServoSetupPanel
                     <span className="text-state-warn">A function change only takes effect after a reboot.</span>
                     <button
                         type="button"
-                        onClick={() => void connection.reboot()}
-                        className="text-state-info underline"
+                        onClick={() => void reboot.reboot()}
+                        disabled={reboot.pending}
+                        className="text-state-info underline disabled:text-text-disabled"
                     >
-                        Reboot the vehicle
+                        {reboot.pending ? "Rebooting…" : "Reboot the vehicle"}
                     </button>
+                    {reboot.error && <span className="text-state-danger">{reboot.error}</span>}
                 </div>
+            )}
+
+            {firmware === "ArduCopter" && (
+                <MotorMappingSection
+                    live={live}
+                    onSet={onSet}
+                    functionValues={functionParam?.values ?? []}
+                    frameClassValues={frameClassParam?.values ?? []}
+                    outputCount={SERVO_COUNT}
+                    onFunctionChanged={() => setRebootNeeded(true)}
+                />
             )}
 
             <div className={`grid ${ROW_GRID} gap-3 px-2 text-micro text-text-helper uppercase`}>

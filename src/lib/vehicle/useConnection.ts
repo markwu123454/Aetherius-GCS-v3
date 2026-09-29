@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useRef, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
 import {useTauriEvent} from "@/lib/tauriEvent.ts";
-import {ConnectionStatus, loadHistory, saveHistory, scanLinks, ScannedLink, withAttempt, withoutAttempt} from "./connection.ts";
+import {ConnectionStatus, loadHistory, rebootVehicle, saveHistory, scanLinks, ScannedLink, withAttempt, withoutAttempt} from "./connection.ts";
 import {KnownBoard, listKnownBoards, updateBoardProfile} from "./boards.ts";
 
 /** How often the background scan re-runs while disconnected — the same
@@ -34,10 +34,10 @@ export interface Connection {
      * since typed into the address field. */
     connect: (address?: string) => Promise<void>;
     disconnect: () => Promise<void>;
-    /** Sends a reboot command and hands reconnect management to the backend.
-     *  Status transitions to "rebooting" immediately; the backend polls until
-     *  the vehicle comes back (→ "connecting" → "connected") or times out (→ "lost"). */
-    reboot: () => Promise<void>;
+    /** Reboots the vehicle (see `rebootVehicle`). Status only moves to
+     *  "rebooting" once the vehicle accepts; a refusal or no answer lands in
+     *  `error` instead and the link stays up. `force` is the armed override. */
+    reboot: (force?: boolean) => Promise<void>;
     /** Boards this app has ever stored anything for, however scan_links's
      * `candidateUid` (or the vehicle's own real `board_uid` after a first
      * connect) matches them up — display name and auto-connect preference. */
@@ -256,18 +256,17 @@ export function useConnection(): Connection {
         });
     }, [available, knownBoards, status, connect]);
 
-    const reboot = useCallback(async () => {
-        if (!endpoint) {
-            return;
-        }
+    // No optimistic "rebooting" here, unlike connect: until the vehicle
+    // accepts, nothing is rebooting, and the backend publishes the status the
+    // moment it does.
+    const reboot = useCallback(async (force = false) => {
         setError(null);
-        setStatus("rebooting");
         try {
-            await invoke("reboot_link", {endpoint});
+            await rebootVehicle(force);
         } catch (cause) {
             setError(message(cause));
         }
-    }, [endpoint]);
+    }, []);
 
     const saveBoard = useCallback(async (uid: string, patch: {displayName?: string | null; autoConnect?: boolean}) => {
         // Toggling auto-connect on for a board already muted from an earlier

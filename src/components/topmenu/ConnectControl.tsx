@@ -140,6 +140,7 @@ export default function ConnectControl({connection, armed, confirmDisconnectWhen
     const [open, setOpen] = useState(false);
     const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
     const [confirmingReboot, setConfirmingReboot] = useState(false);
+    const [rebootPending, setRebootPending] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -238,7 +239,14 @@ export default function ConnectControl({connection, armed, confirmDisconnectWhen
             return;
         }
         setConfirmingReboot(false);
-        await reboot();
+        // Armed and confirmed: ArduPilot refuses an armed reboot unless it's
+        // forced, so the confirmation is what sends the override.
+        setRebootPending(true);
+        try {
+            await reboot(armed);
+        } finally {
+            setRebootPending(false);
+        }
     };
 
     return (
@@ -360,6 +368,7 @@ export default function ConnectControl({connection, armed, confirmDisconnectWhen
                                 )}
                                 <button
                                     type="button"
+                                    disabled={rebootPending}
                                     onClick={() => void handleReboot()}
                                     className={[
                                         "h-control-sm w-full text-label",
@@ -368,7 +377,7 @@ export default function ConnectControl({connection, armed, confirmDisconnectWhen
                                             : "bg-layer-02 text-text-primary hover:bg-layer-hover-02",
                                     ].join(" ")}
                                 >
-                                    {confirmingReboot ? "Confirm Reboot" : "Reboot Vehicle"}
+                                    {rebootPending ? "Waiting for the vehicle…" : confirmingReboot ? "Confirm Reboot" : "Reboot Vehicle"}
                                 </button>
                             </div>
                         )}

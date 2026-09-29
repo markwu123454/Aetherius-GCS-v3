@@ -1,6 +1,6 @@
 import {useState} from "react";
 import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
-import {useConnection} from "@/lib/vehicle/useConnection.ts";
+import {useReboot} from "@/lib/vehicle/useReboot.ts";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {useAccelCalibration} from "@/lib/calibration/useAccelCalibration.ts";
 import {ACCEL_CAL_STEPS} from "@/lib/calibration/accelCalSteps.ts";
@@ -37,7 +37,7 @@ const LEVEL_ROTATION = {roll: 0, pitch: 0};
  */
 export default function AccelCalibrationPanel({live}: AccelCalibrationPanelProps) {
     const vehicle = useVehicle();
-    const connection = useConnection();
+    const reboot = useReboot();
     const calibration = useAccelCalibration();
     const [viewYaw, setViewYaw] = useState(0);
 
@@ -157,13 +157,15 @@ export default function AccelCalibrationPanel({live}: AccelCalibrationPanelProps
                         There's no way to cancel this once started — finish all six positions, or{" "}
                         <button
                             type="button"
-                            onClick={() => void connection.reboot()}
-                            className="text-state-info underline"
+                            onClick={() => void reboot.reboot()}
+                            disabled={reboot.pending}
+                            className="text-state-info underline disabled:text-text-disabled"
                         >
                             reboot the vehicle
                         </button>{" "}
                         if you need to stop. It won't arm again until then.
                     </p>
+                    {reboot.error && <p className="text-label text-state-danger">{reboot.error}</p>}
                 </div>
             )}
 

@@ -43,6 +43,8 @@
     --color-orange-40: #ff832b;
     --color-green-40: #42be65;
     --color-green-50: #24a148;
+    --color-purple-40: #be95ff;
+    --color-cyan-40: #33b1ff;
 
     /* Semantic surface / text tokens, read from `@carbon/themes` g100 rather
        than transcribed by eye. Layer hovers are solid; background-hover is

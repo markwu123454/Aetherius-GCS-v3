@@ -1,12 +1,14 @@
 import {useState} from "react";
 import type {ReactNode} from "react";
 import {Code} from "@carbon/icons-react";
-import {useConnection} from "@/lib/vehicle/useConnection.ts";
+import {useReboot} from "@/lib/vehicle/useReboot.ts";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {useParamSheet} from "@/lib/params/useParamSheet.ts";
 import {ParamDef} from "@/lib/params/paramSheet.ts";
 import {paramDefaultStatus, ParamDefaultStatus} from "@/lib/calibration/paramDefaultStatus.ts";
-import {FRAME_CLASS_DIAGRAMS, FRAME_TYPE_APPLIES_FOR} from "./frameDiagrams.ts";
+import {findFrameDrawing, frameTypesFor} from "@/lib/frames/motorLayouts.ts";
+import FrameDiagram from "@/components/FrameDiagram.tsx";
+import {FRAME_TYPE_APPLIES_FOR, SCRIPTED_FRAME_CLASSES} from "./frameDiagrams.ts";
 
 interface FrameSetupPanelProps {
     live: Map<string, LiveParamEntry>;
@@ -33,32 +35,31 @@ function findParam(groups: {params: ParamDef[]}[], name: string): ParamDef | nul
     return null;
 }
 
-/** What a tile or the big preview renders for one `FRAME_CLASS` value — the
- * three `FrameClassDiagram` kinds each need different markup. */
-function DiagramContent({classValue, typeValue}: {classValue: number | null; typeValue: number | null}) {
+/** What a tile or the big preview draws for one class/type: the frame from
+ * its layout data, spin rings on; numbers only in the preview, where there's
+ * room to read them. Scripted classes have no geometry, so they get the Code
+ * icon. `typeValue` null is the class's own tile. */
+function DiagramContent({classValue, typeValue, numbers = false}: {classValue: number | null; typeValue: number | null; numbers?: boolean}) {
     if (classValue === null) return null;
-    const diagram = FRAME_CLASS_DIAGRAMS[classValue];
-    if (!diagram) return null;
-    if (diagram.kind === "scripted") {
+    if (SCRIPTED_FRAME_CLASSES.has(classValue)) {
         return <Code size={32} className="text-text-helper" />;
     }
-    if (diagram.kind === "custom") {
-        const Icon = diagram.Icon;
-        return <Icon />;
-    }
-    const src = (typeValue !== null ? diagram.types?.[typeValue] : undefined) ?? diagram.classImage;
-    return <img src={src} alt="" className="h-full w-full" />;
+    const frame = findFrameDrawing(classValue, typeValue);
+    if (!frame) return null;
+    return <FrameDiagram frame={frame} spin numbers={numbers} className="h-full w-full" />;
 }
 
 interface TileProps {
     label: string;
     selected: boolean;
     disabled?: boolean;
+    /** `sm` for the type row inside the preview card. */
+    size?: "md" | "sm";
     onClick: () => void;
     children: ReactNode;
 }
 
-function Tile({label, selected, disabled, onClick, children}: TileProps) {
+function Tile({label, selected, disabled, size = "md", onClick, children}: TileProps) {
     return (
         <button
             type="button"
@@ -71,7 +72,7 @@ function Tile({label, selected, disabled, onClick, children}: TileProps) {
                     : "border-border-subtle bg-layer-01 hover:bg-layer-hover-01",
             ].join(" ")}
         >
-            <div className="flex h-24 w-24 items-center justify-center">{children}</div>
+            <div className={`flex items-center justify-center ${size === "sm" ? "h-16 w-16" : "h-24 w-24"}`}>{children}</div>
             <span className="text-label leading-tight text-text-secondary">{label}</span>
         </button>
     );
@@ -81,10 +82,11 @@ function Tile({label, selected, disabled, onClick, children}: TileProps) {
  * `FRAME_CLASS` (motor count/family) and `FRAME_TYPE` (X/plus/V/... layout)
  * — ArduCopter's equivalent of PX4's airframe picker, shown the way
  * QGroundControl's Frame Setup does: pictures instead of bare enum labels.
- * Class images are ArduPilot's own published diagrams (bundled locally,
- * `frameDiagrams.ts` has attribution details); the handful of classes with no
- * usable official diagram get a hand-drawn stand-in, and the 3 script-defined
- * classes get the Code icon since they have no fixed geometry to draw.
+ * Every frame is drawn by `FrameDiagram` from ArduPilot's own layout data
+ * (checked against its official diagrams at build time, see
+ * scripts/build-motor-layouts.mjs), the same drawing the Servo page uses;
+ * the 3 script-defined classes get the Code icon since they have no fixed
+ * geometry to draw.
  *
  * Both params are `rebootRequired`, and every class/type tile only stages a
  * selection — nothing is written until the shared `Set Frame` button in the
@@ -94,7 +96,7 @@ function Tile({label, selected, disabled, onClick, children}: TileProps) {
  * never leaves a stale type from a previous class in place.
  */
 export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
-    const connection = useConnection();
+    const reboot = useReboot();
     const sheetState = useParamSheet("ArduCopter");
 
     const classLiveEntry = live.get("FRAME_CLASS");
@@ -167,8 +169,15 @@ export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
     const classLabel = frameClass?.values?.find((v) => v.value === effectiveClass)?.label ?? null;
     const typeLabel =
         showTypeGrid && effectiveType !== null ? (frameType?.values?.find((v) => v.value === effectiveType)?.label ?? null) : null;
-    const previewDiagram = effectiveClass !== null ? FRAME_CLASS_DIAGRAMS[effectiveClass] : null;
-    const typeOptions = previewDiagram?.kind === "image" ? Object.keys(previewDiagram.types ?? {}).map(Number) : [];
+    const scripted = effectiveClass !== null && SCRIPTED_FRAME_CLASSES.has(effectiveClass);
+    // Types this class has a layout for that FRAME_TYPE actually documents —
+    // e.g. Y6B/Y6F only under Y6, BetaflightX/DJIX only where ArduPilot mixes
+    // them. The undocumented Quad values in the layout data aren't offered.
+    const typeOptions =
+        showTypeGrid && effectiveClass !== null
+            ? frameTypesFor(effectiveClass).filter((t) => frameType?.values?.some((v) => v.value === t))
+            : [];
+    const missingType = stagedNeedsType && stagedType === "";
 
     return (
         <div className="flex w-full flex-col gap-4">
@@ -199,26 +208,57 @@ export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
             {sheetState.status === "error" && <p className="text-label text-state-danger">{sheetState.message}</p>}
 
             {frameClass && (
-                <div className="flex items-center gap-4 border border-border-subtle bg-layer-01 p-4">
-                    <div className="flex h-44 w-44 shrink-0 items-center justify-center bg-background">
-                        <DiagramContent classValue={effectiveClass} typeValue={effectiveType} />
+                // Sticky, so the staged frame, its type choice and Set stay in
+                // view while the class grid scrolls underneath. The type row
+                // lives in here, next to the preview, rather than below the
+                // class grid where a short window hid it entirely.
+                <div className="sticky top-0 z-10 flex items-start gap-4 border border-border-subtle bg-layer-01 p-4 shadow-[0_8px_16px_-8px_rgba(0,0,0,0.6)]">
+                    <div className="flex h-44 w-44 shrink-0 items-center justify-center bg-background p-2">
+                        <DiagramContent classValue={effectiveClass} typeValue={effectiveType} numbers />
                     </div>
-                    <div className="flex flex-col gap-1">
-                        <span className="text-micro text-text-helper">{isEditing ? "Previewing" : "Currently set to"}</span>
-                        <span className="text-body text-text-primary">
-                            {classLabel ?? (effectiveClass === null ? "Not read yet" : `Frame class ${effectiveClass}`)}
-                            {typeLabel && ` — ${typeLabel}`}
-                        </span>
-                        {previewDiagram?.kind === "scripted" && (
-                            <span className="text-label text-text-helper">
-                                Motor layout is defined by a Lua script — there's no fixed diagram to show.
+                    <div className="flex min-w-0 flex-1 flex-col gap-3">
+                        <div className="flex flex-col gap-1">
+                            <span className="text-micro text-text-helper">{isEditing ? "Previewing" : "Currently set to"}</span>
+                            <span className="text-body text-text-primary">
+                                {classLabel ?? (effectiveClass === null ? "Not read yet" : `Frame class ${effectiveClass}`)}
+                                {typeLabel && ` — ${typeLabel}`}
                             </span>
+                            {scripted && (
+                                <span className="text-label text-text-helper">
+                                    Motor layout is defined by a Lua script — there's no fixed diagram to show.
+                                </span>
+                            )}
+                        </div>
+
+                        {frameType && typeOptions.length > 0 && (
+                            <div className="flex min-w-0 flex-col gap-1.5">
+                                <span className={`text-label ${missingType ? "text-state-warn" : "text-text-secondary"}`}>
+                                    Frame Type{missingType && " — pick one to continue"}
+                                </span>
+                                <div
+                                    className={`flex gap-2 overflow-x-auto border p-1 pb-2 ${missingType ? "border-state-warn" : "border-transparent"}`}
+                                >
+                                    {typeOptions.map((typeValue) => (
+                                        <Tile
+                                            key={typeValue}
+                                            size="sm"
+                                            label={frameType.values?.find((v) => v.value === typeValue)?.label ?? `Type ${typeValue}`}
+                                            selected={effectiveType === typeValue}
+                                            disabled={comboPending}
+                                            onClick={() => handleTypeClick(typeValue)}
+                                        >
+                                            <DiagramContent classValue={effectiveClass} typeValue={typeValue} />
+                                        </Tile>
+                                    ))}
+                                </div>
+                            </div>
                         )}
+
                         {isEditing && (
-                            <div className="mt-2 flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                                 <button
                                     type="button"
-                                    disabled={(stagedNeedsType && stagedType === "") || comboPending}
+                                    disabled={missingType || comboPending}
                                     onClick={() => void handleCombinedSet()}
                                     className="h-control-sm w-fit border border-border-subtle px-3 text-label text-text-primary hover:enabled:bg-layer-hover-01 disabled:text-text-disabled"
                                 >
@@ -232,6 +272,7 @@ export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
                                 >
                                     Cancel
                                 </button>
+                                {missingType && <span className="text-label text-state-warn">Pick a frame type</span>}
                                 {comboResult && !comboResult.ok && (
                                     <span className="text-label text-state-danger">{comboResult.message}</span>
                                 )}
@@ -263,39 +304,19 @@ export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
                 </div>
             )}
 
-            {frameType && showTypeGrid && effectiveClass !== null && (
-                <div className="flex flex-col gap-2">
-                    <span className="text-label text-text-secondary">Frame Type</span>
-                    <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
-                        {/* Only types ArduPilot's own diagrams cover for this class — e.g. Y6B/Y6F
-                            don't show up under Quad, BetaflightX/DJIX/etc don't show up under Y6.
-                            See frameDiagrams.ts for why this is more reliable than the full param enum. */}
-                        {typeOptions.map((typeValue) => (
-                            <Tile
-                                key={typeValue}
-                                label={frameType.values?.find((v) => v.value === typeValue)?.label ?? `Type ${typeValue}`}
-                                selected={effectiveType === typeValue}
-                                disabled={comboPending}
-                                onClick={() => handleTypeClick(typeValue)}
-                            >
-                                <DiagramContent classValue={effectiveClass} typeValue={typeValue} />
-                            </Tile>
-                        ))}
-                    </div>
-                </div>
-            )}
-
             <p className="text-label text-text-helper">
                 Both only take effect after a reboot — once you've set the ones you need,{" "}
                 <button
                     type="button"
-                    onClick={() => void connection.reboot()}
-                    className="text-state-info underline"
+                    onClick={() => void reboot.reboot()}
+                    disabled={reboot.pending}
+                    className="text-state-info underline disabled:text-text-disabled"
                 >
-                    reboot the vehicle
+                    {reboot.pending ? "rebooting…" : "reboot the vehicle"}
                 </button>
                 .
             </p>
+            {reboot.error && <p className="text-label text-state-danger">{reboot.error}</p>}
         </div>
     );
 }

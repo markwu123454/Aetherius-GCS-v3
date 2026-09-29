@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useRef, useState} from "react";
 import {sendVehicleCommand} from "@/lib/vehicle/commands.ts";
 import {useTauriEvent} from "@/lib/tauriEvent.ts";
+import type {ConnectionStatus} from "@/lib/vehicle/connection.ts";
 import {ACCEL_CAL_STEPS, ACCEL_POS_FAILED, ACCEL_POS_SUCCESS, accelStepFor} from "./accelCalSteps.ts";
 
 type Phase = "idle" | "starting" | "active";
@@ -113,6 +114,21 @@ export function useAccelCalibration() {
         setPhase("active");
         setPosition(payload.position);
         setConfirming(false);
+    });
+
+    // The vehicle's calibration only lives as long as its link: a reboot
+    // (the panel's own way out of a stuck wizard) or a lost link ends it on
+    // the vehicle's side, so end it here too. Without this the wizard kept
+    // showing its last step after a reboot, as if the reboot did nothing.
+    useTauriEvent<ConnectionStatus>("link-status", (status) => {
+        if (status !== "rebooting" && status !== "lost" && status !== "disconnected" && status !== "error") return;
+        if (phaseRef.current === "idle") return;
+        clearTimers();
+        setPhase("idle");
+        setPosition(null);
+        setConfirming(false);
+        setResult(null);
+        setError(status === "rebooting" ? null : "The link dropped, so the calibration stopped. Reconnect and start again.");
     });
 
     // Best-effort courtesy attempt on the way out — ArduPilot has no real
