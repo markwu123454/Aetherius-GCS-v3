@@ -35,6 +35,9 @@ mavlink = { version = "0.18.0", features = ["dialect-ardupilotmega", "mav2-messa
 flate2 = "1"
 base64 = "0.22"
 reqwest = "0.12"
+# OS name/edition/build for bug reports — reads the real Windows 11 name,
+# which the registry's own ProductName still reports as "Windows 10".
+os_info = { version = "3", default-features = false }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

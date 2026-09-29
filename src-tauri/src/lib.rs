@@ -15,6 +15,7 @@ mod params;
 mod rally;
 mod scripting;
 mod sdcard;
+mod system_info;
 mod telemetry;
 mod vehicle_command;
 mod vehicle_profile;
@@ -77,6 +78,7 @@ pub fn run() {
             link::connect_link,
             link::disconnect_link,
             link::link_state,
+            system_info::system_info,
             link::refresh_links,
             link::reboot_link,
             vehicle_command::send_vehicle_command,

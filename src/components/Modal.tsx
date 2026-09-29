@@ -4,6 +4,9 @@ interface ModalProps {
     title: string;
     onClose: () => void;
     children: React.ReactNode;
+    /** Width class for the dialog — confirmations fit the default; a form
+     * (the feedback dialog) needs more. */
+    widthClassName?: string;
 }
 
 /**
@@ -12,7 +15,7 @@ interface ModalProps {
  * (delete, overwrite). `onClose` fires on Escape or a backdrop click — the
  * caller decides what that means (cancel, in every current use).
  */
-export default function Modal({title, onClose, children}: ModalProps) {
+export default function Modal({title, onClose, children, widthClassName = "w-80"}: ModalProps) {
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.key === "Escape") onClose();
@@ -28,7 +31,7 @@ export default function Modal({title, onClose, children}: ModalProps) {
                 if (event.target === event.currentTarget) onClose();
             }}
         >
-            <div className="w-80 border border-border-subtle bg-layer-01 p-4 shadow-overlay">
+            <div className={`${widthClassName} max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-auto border border-border-subtle bg-layer-01 p-4 shadow-overlay`}>
                 <div className="mb-3 text-heading text-text-primary">{title}</div>
                 {children}
             </div>

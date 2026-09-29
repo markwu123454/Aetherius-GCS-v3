@@ -1,0 +1,2 @@
+# Keep blank issues available for anything that fits neither template.
+blank_issues_enabled: true

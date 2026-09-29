@@ -1,0 +1,23 @@
+# Field ids here are also the query parameters the app's Request a feature
+# dialog fills in (src/lib/feedback/feedback.ts) — rename one in both places.
+name: Feature request
+description: Something Aetherius GCS doesn't do yet, or could do better.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The task or problem, rather than a specific solution — that leaves room for the best way to solve it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help?
+      description: How you imagine it working, if you have an idea.
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: Filled in automatically from the app; otherwise see Help › About.

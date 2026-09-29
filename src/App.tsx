@@ -1,3 +1,4 @@
+import FeedbackDialog from "@/components/FeedbackDialog.tsx";
 import {useEffect, useMemo, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
 import TopBar from "@/components/topmenu/TopBar.tsx";
@@ -177,6 +178,7 @@ function App() {
                         </FullScreenPage>
                     )}
                 </div>
+                <FeedbackDialog/>
                 {updatePromptOpen && !updatePromptDismissed && (
                     <UpdatePromptModal update={update} onDismiss={() => setUpdatePromptDismissed(true)}/>
                 )}

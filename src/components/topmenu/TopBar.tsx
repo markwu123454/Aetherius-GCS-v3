@@ -1,3 +1,4 @@
+import {openFeedback} from "@/lib/feedback/feedbackDialog.ts";
 import {useEffect, useMemo, useRef, useState} from "react";
 import {ArrowLeft} from "@carbon/icons-react";
 import AppMenu, {Menu} from "./AppMenu.tsx";
@@ -180,6 +181,8 @@ export default function TopBar({vehicle, settings, openIds, page, mission, onRes
                 items: [
                     {label: "Preferences…", action: () => navigation.openPage("settings")},
                     {label: "MAVLink Inspector…", action: () => navigation.openPage("inspector")},
+                    {label: "Report a Bug…", action: () => openFeedback("bug"), separatorBefore: true},
+                    {label: "Request a Feature…", action: () => openFeedback("feature")},
                     {label: "About", action: () => navigation.openPage("about"), separatorBefore: true},
                 ],
             },

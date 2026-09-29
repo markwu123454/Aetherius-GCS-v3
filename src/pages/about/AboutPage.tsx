@@ -1,3 +1,4 @@
+import {openFeedback} from "@/lib/feedback/feedbackDialog.ts";
 import {useEffect, useState} from "react";
 import {getVersion} from "@tauri-apps/api/app";
 import {LogoGithub} from "@carbon/icons-react";
@@ -125,6 +126,22 @@ export default function AboutPage({update}: AboutPageProps) {
                         <LogoGithub size={16}/>
                         {REPO_URL.replace("https://", "")}
                     </a>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                        <button
+                            type="button"
+                            onClick={() => openFeedback("bug")}
+                            className="h-control-sm border border-border-strong px-3 text-label text-text-primary hover:bg-layer-hover-01"
+                        >
+                            Report a bug
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => openFeedback("feature")}
+                            className="h-control-sm border border-border-strong px-3 text-label text-text-primary hover:bg-layer-hover-01"
+                        >
+                            Request a feature
+                        </button>
+                    </div>
                 </section>
 
                 <UpdateSection update={update}/>
