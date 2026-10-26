@@ -1,4 +1,5 @@
 import {useMemo, useState} from "react";
+import type {ReactNode} from "react";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {ParamOption} from "@/lib/params/paramSheet.ts";
 import {findFrameLayout, FrameLayout, motorAngle, MotorPosition, motorPositionName} from "@/lib/frames/motorLayouts.ts";
@@ -33,6 +34,72 @@ function SpinChip({motor}: {motor: MotorPosition}) {
     return <span className={`${chip} text-text-primary`}>{motor.spin}</span>;
 }
 
+/** `MotorN` → its `SERVOx_FUNCTION` value, read off the function list's own
+ * labels. */
+export function motorFunctionValues(functionValues: ParamOption[]): Map<number, number> {
+    const map = new Map<number, number>();
+    for (const o of functionValues) {
+        const match = /^Motor(\d+)$/.exec(o.label);
+        if (match) map.set(Number(match[1]), o.value);
+    }
+    return map;
+}
+
+interface MotorCardProps {
+    layout: FrameLayout;
+    motor: MotorPosition;
+    /** This motor's `SERVOx_FUNCTION` value, when the param sheet has it. */
+    fn: number | undefined;
+    hot: boolean;
+    /** Outlined as a problem — a motor no output drives. */
+    warn?: boolean;
+    onHot: (motor: number | null) => void;
+    /** The output picker or readout along the bottom. */
+    children: ReactNode;
+}
+
+/** One motor of a frame: where it sits, which way it spins, and (via
+ * `children`) which output drives it. */
+export function MotorCard({layout, motor, fn, hot, warn = false, onHot, children}: MotorCardProps) {
+    return (
+        <div
+            onPointerEnter={() => onHot(motor.number)}
+            onPointerLeave={() => onHot(null)}
+            onFocus={() => onHot(motor.number)}
+            onBlur={() => onHot(null)}
+            className={`flex w-38 flex-none flex-col gap-1.5 border bg-layer-02 p-2 ${
+                hot ? "border-state-info" : warn ? "border-state-warn" : "border-transparent"
+            }`}
+        >
+            <FrameDiagram frame={layout} highlight={motor.number} className="aspect-square w-full bg-background"/>
+            <div className="flex items-baseline justify-between gap-1">
+                <span className="text-body font-semibold text-text-primary">Motor {motor.number}</span>
+                {fn !== undefined && <span className="font-mono text-micro text-text-helper">fn {fn}</span>}
+            </div>
+            <span className="min-h-8 text-label text-text-primary">{motorPositionName(motor)}</span>
+            <div className="flex min-h-4 flex-wrap gap-1">
+                <SpinChip motor={motor}/>
+                {motor.stack && (
+                    <span className="bg-background px-1.5 font-mono text-micro leading-4 text-text-secondary">
+                        {motor.stack === "top" ? "TOP" : "BOTTOM"}
+                    </span>
+                )}
+                {motor.sameAs !== undefined && (
+                    <span className="bg-background px-1.5 font-mono text-micro leading-4 text-text-secondary">
+                        SAME AS {motor.sameAs}
+                    </span>
+                )}
+                {motor.kind === "motor" && Math.hypot(motor.x, motor.y) >= 0.05 && (
+                    <span className="bg-background px-1.5 font-mono text-micro leading-4 text-text-secondary">
+                        {motorAngle(motor)}°
+                    </span>
+                )}
+            </div>
+            <div className="mt-auto flex flex-col gap-0.5">{children}</div>
+        </div>
+    );
+}
+
 /**
  * The frame-aware view of the same `SERVOx_FUNCTION` params the output list
  * below edits: one card per `MotorN` the vehicle's frame uses, named for
@@ -55,14 +122,7 @@ export default function MotorMappingSection({live, onSet, functionValues, frameC
     const classLabel = frameClassValues.find((o) => o.value === frameClass)?.label ?? `Frame class ${frameClass}`;
 
     const functionByValue = useMemo(() => new Map(functionValues.map((o) => [o.value, o.label])), [functionValues]);
-    const motorFunction = useMemo(() => {
-        const map = new Map<number, number>();
-        for (const o of functionValues) {
-            const match = /^Motor(\d+)$/.exec(o.label);
-            if (match) map.set(Number(match[1]), o.value);
-        }
-        return map;
-    }, [functionValues]);
+    const motorFunction = useMemo(() => motorFunctionValues(functionValues), [functionValues]);
 
     // outputs[n] = SERVOn_FUNCTION as the vehicle last reported it.
     const outputs: (number | undefined)[] = [];
@@ -201,41 +261,15 @@ export default function MotorMappingSection({live, onSet, functionValues, frameC
                             const out = fn === undefined ? -1 : outputOf(fn);
                             const assigned = out > 0;
                             return (
-                                <div
+                                <MotorCard
                                     key={motor.number}
-                                    onPointerEnter={() => setHot(motor.number)}
-                                    onPointerLeave={() => setHot(null)}
-                                    onFocus={() => setHot(motor.number)}
-                                    onBlur={() => setHot(null)}
-                                    className={`flex w-38 flex-none flex-col gap-1.5 border bg-layer-02 p-2 ${
-                                        hot === motor.number ? "border-state-info" : assigned ? "border-transparent" : "border-state-warn"
-                                    }`}
+                                    layout={layout}
+                                    motor={motor}
+                                    fn={fn}
+                                    hot={hot === motor.number}
+                                    warn={!assigned}
+                                    onHot={setHot}
                                 >
-                                    <FrameDiagram frame={layout} highlight={motor.number} className="aspect-square w-full bg-background"/>
-                                    <div className="flex items-baseline justify-between gap-1">
-                                        <span className="text-body font-semibold text-text-primary">Motor {motor.number}</span>
-                                        {fn !== undefined && <span className="font-mono text-micro text-text-helper">fn {fn}</span>}
-                                    </div>
-                                    <span className="min-h-8 text-label text-text-primary">{motorPositionName(motor)}</span>
-                                    <div className="flex min-h-4 flex-wrap gap-1">
-                                        <SpinChip motor={motor}/>
-                                        {motor.stack && (
-                                            <span className="bg-background px-1.5 font-mono text-micro leading-4 text-text-secondary">
-                                                {motor.stack === "top" ? "TOP" : "BOTTOM"}
-                                            </span>
-                                        )}
-                                        {motor.sameAs !== undefined && (
-                                            <span className="bg-background px-1.5 font-mono text-micro leading-4 text-text-secondary">
-                                                SAME AS {motor.sameAs}
-                                            </span>
-                                        )}
-                                        {motor.kind === "motor" && Math.hypot(motor.x, motor.y) >= 0.05 && (
-                                            <span className="bg-background px-1.5 font-mono text-micro leading-4 text-text-secondary">
-                                                {motorAngle(motor)}°
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="mt-auto flex flex-col gap-0.5">
                                         <label
                                             htmlFor={`motor-output-${motor.number}`}
                                             className={`text-micro uppercase ${assigned ? "text-text-helper" : "text-state-warn"}`}
@@ -276,8 +310,7 @@ export default function MotorMappingSection({live, onSet, functionValues, frameC
                                                 })}
                                             </select>
                                         </div>
-                                    </div>
-                                </div>
+                                </MotorCard>
                             );
                         })}
                     </div>

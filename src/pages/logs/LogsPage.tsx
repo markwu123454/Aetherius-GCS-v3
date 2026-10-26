@@ -1,4 +1,5 @@
-import {useEffect} from "react";
+import {useEffect, useState} from "react";
+import {open as openDialog} from "@tauri-apps/plugin-dialog";
 import {useConnection} from "@/lib/vehicle/useConnection.ts";
 import {useLogs, DownloadProgress} from "@/lib/logs/useLogs.ts";
 import {LogEntry} from "@/lib/logs/logs.ts";
@@ -104,12 +105,43 @@ interface LogsPageProps {
  * Lists dataflash logs off the vehicle and downloads them to local disk.
  * Once a log is on disk, its row's Analyze button opens Log Analysis
  * (`LogAnalysisPage`) on it — see `logs/analysis.rs` for the parsing this
- * feeds.
+ * feeds. Open… does the same for any log file already on disk, which is all
+ * this page can do with no vehicle connected.
  */
 export default function LogsPage({onAnalyze}: LogsPageProps) {
     const connection = useConnection();
     const connected = connection.status === "connected";
     const logs = useLogs();
+    const [openError, setOpenError] = useState<string | null>(null);
+
+    const handleOpen = async () => {
+        setOpenError(null);
+        try {
+            const path = await openDialog({
+                multiple: false,
+                filters: [{name: "Dataflash log", extensions: ["bin", "BIN"]}],
+            });
+            if (!path || Array.isArray(path)) return; // user cancelled
+            onAnalyze?.(path);
+        } catch (error) {
+            setOpenError(error instanceof Error ? error.message : String(error));
+        }
+    };
+
+    const openButton = onAnalyze && (
+        <button
+            type="button"
+            onClick={() => void handleOpen()}
+            className="h-control-sm w-fit border border-border-subtle px-3 text-label text-text-primary hover:bg-layer-hover-01"
+        >
+            Open…
+        </button>
+    );
+    const openErrorRow = openError && (
+        <div className="flex h-control-sm shrink-0 items-center border-b border-border-subtle px-3">
+            <span className="text-label text-state-danger">{openError}</span>
+        </div>
+    );
 
     // Scans on load rather than waiting for a manual Refresh click — both
     // the vehicle's own listing and what's already on disk for it (see
@@ -124,15 +156,22 @@ export default function LogsPage({onAnalyze}: LogsPageProps) {
 
     if (!connected) {
         return (
-            <div className="flex h-full w-full items-center justify-center text-label text-text-helper">
-                Connect a vehicle to see its logs.
+            <div className="flex h-full w-full flex-col">
+                <div className="flex h-control-sm shrink-0 items-center justify-end border-b border-border-subtle px-3">
+                    {openButton}
+                </div>
+                {openErrorRow}
+                <div className="flex min-h-0 flex-1 items-center justify-center text-label text-text-helper">
+                    No vehicle connected
+                </div>
             </div>
         );
     }
 
     return (
         <div className="flex h-full w-full flex-col">
-            <div className="flex h-control-sm shrink-0 items-center justify-end border-b border-border-subtle px-3">
+            <div className="flex h-control-sm shrink-0 items-center justify-end gap-2 border-b border-border-subtle px-3">
+                {openButton}
                 <button
                     type="button"
                     disabled={logs.listing}
@@ -142,6 +181,7 @@ export default function LogsPage({onAnalyze}: LogsPageProps) {
                     {logs.listing ? "Refreshing…" : "Refresh"}
                 </button>
             </div>
+            {openErrorRow}
             {logs.listError && (
                 <div className="flex h-control-sm shrink-0 items-center border-b border-border-subtle px-3">
                     <span className="text-label text-state-danger">{logs.listError}</span>

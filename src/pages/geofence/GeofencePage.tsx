@@ -95,7 +95,7 @@ function isSelfIntersecting(vertices: FenceVertex[]): boolean {
 
 interface SelectRowProps {
     label: string;
-    description: string;
+    description?: string;
     param: string;
     options: {value: number; label: string}[];
     live: Map<string, LiveParamEntry>;
@@ -138,7 +138,7 @@ function SelectRow({label, description, param, options, live, onSet}: SelectRowP
                 {ok && <span className="text-micro text-state-ok">Set</span>}
                 {error && <span className="max-w-24 truncate text-micro text-state-danger" title={error}>{error}</span>}
             </div>
-            <div className="text-micro text-text-helper mb-1">{description}</div>
+            {description && <div className="text-micro text-text-helper mb-1">{description}</div>}
             <select
                 disabled={pending || value === undefined}
                 value={value ?? ""}
@@ -156,7 +156,7 @@ function SelectRow({label, description, param, options, live, onSet}: SelectRowP
 
 interface NumberRowProps {
     label: string;
-    description: string;
+    description?: string;
     param: string;
     unit: string;
     min: number;
@@ -212,7 +212,7 @@ function NumberRow({label, description, param, unit, min, max, step, decimals, l
                 {ok && <span className="text-micro text-state-ok">Set</span>}
                 {error && <span className="max-w-24 truncate text-micro text-state-danger" title={error}>{error}</span>}
             </div>
-            <div className="text-micro text-text-helper mb-1">{description}</div>
+            {description && <div className="text-micro text-text-helper mb-1">{description}</div>}
             <div className="flex items-center gap-1.5">
                 <input
                     type="number"
@@ -352,7 +352,6 @@ export default function GeofencePage() {
                 <div className="flex shrink-0 items-center gap-1 border-b border-border-subtle px-2 py-1.5">
                     <button
                         type="button"
-                        title="Import from a geofence file"
                         onClick={() => void handleImport()}
                         className="flex items-center gap-1 px-2 py-1 text-label text-text-secondary hover:bg-layer-hover-01 hover:text-text-primary"
                     >
@@ -361,7 +360,6 @@ export default function GeofencePage() {
                     </button>
                     <button
                         type="button"
-                        title="Export to a geofence file"
                         disabled={fence.polygons.length === 0}
                         onClick={() => void handleExport()}
                         className="flex items-center gap-1 px-2 py-1 text-label text-text-secondary hover:enabled:bg-layer-hover-01 hover:enabled:text-text-primary disabled:text-text-disabled"
@@ -371,7 +369,6 @@ export default function GeofencePage() {
                     </button>
                     <button
                         type="button"
-                        title="Download the fence stored on the vehicle"
                         disabled={fence.downloading}
                         onClick={() => void fence.download().catch(() => {})}
                         className="flex items-center gap-1 px-2 py-1 text-label text-text-secondary hover:enabled:bg-layer-hover-01 hover:enabled:text-text-primary disabled:text-text-disabled"
@@ -394,7 +391,6 @@ export default function GeofencePage() {
                 <SectionHeader title="General"/>
                 <SelectRow
                     label="Active fence type"
-                    description="Which fence type(s) are enforced"
                     param="FENCE_ENABLE"
                     options={FENCE_ENABLE_OPTIONS}
                     live={live.values}
@@ -402,7 +398,6 @@ export default function GeofencePage() {
                 />
                 <SelectRow
                     label="Breach action"
-                    description="What the vehicle does when a fence is breached"
                     param="FENCE_ACTION"
                     options={fenceActionOptions}
                     live={live.values}
@@ -413,7 +408,6 @@ export default function GeofencePage() {
                 <SectionHeader title="Altitude fence"/>
                 <NumberRow
                     label="Max altitude"
-                    description="Vehicle will not climb above this"
                     param="FENCE_ALT_MAX"
                     unit="m"
                     min={10}
@@ -425,7 +419,7 @@ export default function GeofencePage() {
                 />
                 <NumberRow
                     label="Min altitude"
-                    description="Vehicle will not descend below this (0 = disabled)"
+                    description="0 = disabled"
                     param="FENCE_ALT_MIN"
                     unit="m"
                     min={0}
@@ -440,7 +434,6 @@ export default function GeofencePage() {
                 <SectionHeader title="Circle fence"/>
                 <NumberRow
                     label="Radius"
-                    description="Maximum distance from home"
                     param="FENCE_RADIUS"
                     unit="m"
                     min={30}
@@ -474,7 +467,7 @@ export default function GeofencePage() {
                 {/* Polygon list */}
                 {fence.polygons.length === 0 ? (
                     <div className="border-b border-border-subtle px-2 py-2 text-micro text-text-disabled">
-                        No polygons yet — click Add Polygon to start.
+                        No polygons yet
                     </div>
                 ) : (
                     <div className="border-b border-border-subtle">
@@ -544,7 +537,7 @@ export default function GeofencePage() {
 
                 {fence.circles.length === 0 ? (
                     <div className="border-b border-border-subtle px-2 py-2 text-micro text-text-disabled">
-                        No circles yet — click Add Circle to start.
+                        No circles yet
                     </div>
                 ) : (
                     <div className="border-b border-border-subtle">

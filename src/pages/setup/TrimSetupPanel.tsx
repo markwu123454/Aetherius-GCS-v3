@@ -268,22 +268,10 @@ export default function TrimSetupPanel({live, onSet, firmware}: TrimSetupPanelPr
 
     return (
         <div className="flex w-full flex-col gap-8">
-            <div>
-                <h1 className="text-heading text-text-primary">Trim</h1>
-                <p className="text-body text-text-secondary">
-                    Corrects for physical offsets in the controller mounting or airframe — distinct from PID tuning,
-                    which controls how aggressively the controller reacts to errors.
-                </p>
-            </div>
+            <h1 className="text-heading text-text-primary">Trim</h1>
 
             <section className="flex flex-col gap-2">
-                <div>
-                    <h2 className="text-label uppercase text-text-helper">Board Level</h2>
-                    <p className="text-label text-text-secondary">
-                        Compensates for the flight controller not being mounted perfectly level. Use these if the
-                        vehicle consistently rolls or pitches in one direction even with a physically level airframe.
-                    </p>
-                </div>
+                <h2 className="text-label uppercase text-text-helper">Board Level</h2>
                 <div className="border-t border-border-subtle">
                     {AHRS_AXES.map(({label, param}) => (
                         <AhrsTrimRow key={param} label={label} param={param} live={live} onSet={onSet} />
@@ -292,13 +280,7 @@ export default function TrimSetupPanel({live, onSet, firmware}: TrimSetupPanelPr
             </section>
 
             <section className="flex flex-col gap-2">
-                <div>
-                    <h2 className="text-label uppercase text-text-helper">Servo Output Trim</h2>
-                    <p className="text-label text-text-secondary">
-                        The PWM neutral position for each output channel. Adjust if a control surface isn't physically
-                        centered at 1500 μs. Min/Max limits are configured in Servo Setup.
-                    </p>
-                </div>
+                <h2 className="text-label uppercase text-text-helper">Servo Output Trim</h2>
                 <div className="border-t border-border-subtle">
                     {channels.map((ch) => (
                         <ChannelTrimRow key={ch} prefix="SERVO" channel={ch} live={live} onSet={onSet} />
@@ -309,9 +291,6 @@ export default function TrimSetupPanel({live, onSet, firmware}: TrimSetupPanelPr
             <section className="flex flex-col gap-2">
                 <div>
                     <h2 className="text-label uppercase text-text-helper">RC Input Trim</h2>
-                    <p className="text-label text-text-secondary">
-                        The expected center PWM from the transmitter on each channel.
-                    </p>
                     <div className="mt-1 flex items-start gap-1.5 text-label text-text-helper">
                         <Information size={16} className="mt-px shrink-0" />
                         <span>
@@ -329,12 +308,7 @@ export default function TrimSetupPanel({live, onSet, firmware}: TrimSetupPanelPr
 
             {isPlane && (
                 <section className="flex flex-col gap-2">
-                    <div>
-                        <h2 className="text-label uppercase text-text-helper">Flight Trim</h2>
-                        <p className="text-label text-text-secondary">
-                            Target conditions for level cruise flight, used by automatic modes.
-                        </p>
-                    </div>
+                    <h2 className="text-label uppercase text-text-helper">Flight Trim</h2>
                     <div className="border-t border-border-subtle">
                         {FLIGHT_TRIMS.map((config) => (
                             <FlightTrimRow key={config.param} {...config} live={live} onSet={onSet} />

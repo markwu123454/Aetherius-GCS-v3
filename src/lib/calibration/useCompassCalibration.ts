@@ -38,6 +38,14 @@ interface MagCalReportEvent {
     fitness: number;
 }
 
+/** First compass's live field from `RAW_IMU`, body frame (x nose, y right
+ * wing, z belly), milligauss. Only its direction is used. */
+export interface MagField {
+    x: number;
+    y: number;
+    z: number;
+}
+
 function message(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
@@ -69,6 +77,7 @@ export function useCompassCalibration() {
     const [calibrating, setCalibrating] = useState(false);
     const [progress, setProgress] = useState<Map<number, CompassCalProgress>>(new Map());
     const [reports, setReports] = useState<Map<number, CompassCalReport>>(new Map());
+    const [field, setField] = useState<MagField | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     // Mirrored so the report handler can check "have all of them reported
@@ -81,6 +90,7 @@ export function useCompassCalibration() {
         setError(null);
         setProgress(new Map());
         setReports(new Map());
+        setField(null);
         reportsRef.current = new Map();
         calMaskRef.current = null;
         setCalibrating(true);
@@ -92,18 +102,27 @@ export function useCompassCalibration() {
         }
     }, []);
 
+    /** Drops the field arrow and hands RAW_IMU back to its default rate —
+     * every way a calibration ends goes through here. */
+    const stopFieldStream = useCallback(() => {
+        setField(null);
+        sendVehicleCommand({type: "stopCompassFieldStream"}).catch(() => {});
+    }, []);
+
     const cancel = useCallback(() => {
         setCalibrating(false);
+        stopFieldStream();
         sendVehicleCommand({type: "cancelCompassCalibration"}).catch((err) => setError(message(err)));
-    }, []);
+    }, [stopFieldStream]);
 
     /** Cancel and surface a specific "stalled" message — called by the panel
      * when progress stops advancing while the vehicle is still rotating. */
     const stallCancel = useCallback(() => {
         setCalibrating(false);
+        stopFieldStream();
         setError("Progress stalled — rotate to cover the remaining sections and try again.");
         sendVehicleCommand({type: "cancelCompassCalibration"}).catch(() => {});
-    }, []);
+    }, [stopFieldStream]);
 
     useTauriEvent<MagCalProgressEvent>("mag-cal-progress", (payload) => {
         if (!calibrating) {
@@ -132,6 +151,13 @@ export function useCompassCalibration() {
         const expected = idsInMask(calMaskRef.current ?? payload.calMask);
         if (expected.length > 0 && expected.every((id) => next.has(id))) {
             setCalibrating(false);
+            stopFieldStream();
+        }
+    });
+
+    useTauriEvent<MagField>("mag-field", (payload) => {
+        if (calibrating) {
+            setField(payload);
         }
     });
 
@@ -144,8 +170,9 @@ export function useCompassCalibration() {
         setCalibrating(false);
         setProgress(new Map());
         setReports(new Map());
+        setField(null);
         setError(null);
     });
 
-    return {calibrating, progress, reports, error, start, cancel, stallCancel};
+    return {calibrating, progress, reports, field, error, start, cancel, stallCancel};
 }

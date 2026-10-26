@@ -476,12 +476,7 @@ export default function FirmwarePage() {
         <div className="flex h-full flex-col">
             {/* Header */}
             <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-6 py-4">
-                <div>
-                    <h2 className="text-heading text-text-primary">Firmware</h2>
-                    <p className="text-micro text-text-helper">
-                        Install official ArduPilot firmware on a flight controller.
-                    </p>
-                </div>
+                <h2 className="text-heading text-text-primary">Firmware</h2>
                 <label className="flex cursor-pointer items-center gap-2 text-label text-text-secondary select-none">
                     <input
                         type="checkbox"
@@ -542,11 +537,6 @@ export default function FirmwarePage() {
                                 : undefined
                         }
                     >
-                        <p className="mb-3 text-micro text-text-helper">
-                            Plug your flight controller in via USB. If it's already connected and running
-                            firmware, you can proceed — the last step will reboot it into flashing mode
-                            automatically so you don't have to unplug it.
-                        </p>
                         {advanced ? (
                             <div className="flex flex-col gap-2">
                                 <div className="flex items-center justify-between">
@@ -630,7 +620,6 @@ export default function FirmwarePage() {
                                 <p className="text-label text-text-secondary">
                                     Vehicle connected via MAVLink on{" "}
                                     <span className="font-mono text-text-primary">{connectedPort}</span>
-                                    . Use "Reboot to bootloader" in the last step — no unplug needed.
                                 </p>
                                 <button
                                     type="button"
@@ -643,7 +632,7 @@ export default function FirmwarePage() {
                         ) : (
                             <div className="flex items-center justify-between">
                                 <p className="text-label text-text-helper">
-                                    Plug in your flight controller. It should appear here automatically.
+                                    Plug in your flight controller.
                                 </p>
                                 <button
                                     type="button"
@@ -701,16 +690,10 @@ export default function FirmwarePage() {
                             }
                             doneSummary={advancedBoard?.platform}
                         >
-                            <p className="mb-3 text-micro text-text-helper">
-                                Search the full firmware catalog and pick the exact board build you want
-                                to install. Use this to override the auto-detected board or to flash a
-                                board that isn't currently plugged in.
-                            </p>
                             <div className="flex flex-col gap-2">
                                 {detectedBoard && (
                                     <p className="text-micro text-text-helper">
-                                        Detected: {detectedBoard.label} — pick a different board below to
-                                        override.
+                                        Detected: {detectedBoard.label}
                                     </p>
                                 )}
                                 <input
@@ -785,11 +768,6 @@ export default function FirmwarePage() {
                         }
                         doneSummary={selectedVersion ? versionLabel(selectedVersion) : undefined}
                     >
-                        <p className="mb-3 text-micro text-text-helper">
-                            Stable is tested and recommended for most builds. Beta may have minor bugs.
-                            Dev is the latest code and changes daily — only use it if you're actively
-                            testing new features.
-                        </p>
                         {manifest.status === "loading" && (
                             <p className="text-label text-text-helper">
                                 Loading firmware catalog…
@@ -852,11 +830,6 @@ export default function FirmwarePage() {
                                 : undefined
                         }
                     >
-                        <p className="mb-3 text-micro text-text-helper">
-                            Fetches the firmware file from ArduPilot's servers to this computer.
-                            Nothing is written to the board yet — you can review the build details
-                            before committing to the flash.
-                        </p>
                         {targetOption && (
                             <div className="flex flex-col gap-3">
                                 <div className="text-label text-text-secondary">
@@ -984,11 +957,7 @@ export default function FirmwarePage() {
                         }
                     >
                         <div className="flex flex-col gap-4">
-                            <p className="text-micro text-text-helper">
-                                Erases the board's current firmware and writes the new build. A board
-                                interrupted mid-write will need recovering via its bootloader — don't
-                                unplug during this step.
-                            </p>
+                            <p className="text-micro text-text-helper">Don't unplug the board while flashing.</p>
                             {/* Reboot-to-bootloader shortcut when a MAVLink vehicle is active */}
                             {mavlinkConnected && !flashStarted && (
                                 <div className="flex flex-col gap-1">
@@ -1002,9 +971,6 @@ export default function FirmwarePage() {
                                             ? "Rebooting…"
                                             : `Reboot ${detectedBoard?.label ?? connectedPort} to bootloader`}
                                     </button>
-                                    <p className="text-micro text-text-helper">
-                                        Sends a MAVLink reboot command — no need to unplug and replug.
-                                    </p>
                                 </div>
                             )}
 
@@ -1064,11 +1030,6 @@ export default function FirmwarePage() {
                                                 </button>
                                             </div>
                                         </div>
-                                    )}
-                                    {!downloadReady && (
-                                        <p className="text-micro text-text-helper">
-                                            Complete the steps above first.
-                                        </p>
                                     )}
                                     {downloadReady && !selectedPort && !mavlinkConnected && (
                                         <p className="text-micro text-text-helper">

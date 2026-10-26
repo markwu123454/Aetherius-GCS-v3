@@ -14,17 +14,27 @@ interface SetupItem {
     label: string;
 }
 
-function SidebarRow({item, active, onSelect}: {item: SetupItem; active: boolean; onSelect: () => void}) {
+/** Every tab, since with no vehicle there's no vehicle type to narrow them by. */
+const OFFLINE_ITEMS: SetupItem[] = [
+    {id: "frame", label: "Frame"},
+    {id: "servo", label: "Servo"},
+    {id: "trim", label: "Trim"},
+    {id: "motorTest", label: "Motor Test"},
+    {id: "failsafe", label: "Failsafe"},
+];
+
+function SidebarRow({item, active, disabled = false, onSelect}: {item: SetupItem; active: boolean; disabled?: boolean; onSelect: () => void}) {
     return (
         <button
             type="button"
             aria-current={active}
+            disabled={disabled}
             onClick={onSelect}
             className={[
                 "px-3 py-2 text-left text-label whitespace-nowrap",
                 active
                     ? "bg-background text-text-primary"
-                    : "text-text-secondary hover:bg-layer-hover-01 hover:text-text-primary",
+                    : "text-text-secondary enabled:hover:bg-layer-hover-01 enabled:hover:text-text-primary disabled:text-text-disabled",
             ].join(" ")}
         >
             {item.label}
@@ -40,6 +50,10 @@ function SidebarRow({item, active, onSelect}: {item: SetupItem; active: boolean;
  * named params — it sends a live `MAV_CMD_DO_MOTOR_TEST` — but it belongs
  * next to Frame/Servo rather than in `CalibrationPage` since it's verifying
  * the wiring those two tabs configure, not calibrating a sensor.
+ *
+ * With no vehicle, Frame stays open as a reference (see `FrameSetupPanel`)
+ * for wiring a powered-off vehicle; every other tab reads or writes the
+ * vehicle itself, so they stay in the list, disabled, until it's back.
  */
 export default function SetupPage() {
     const connection = useConnection();
@@ -70,8 +84,21 @@ export default function SetupPage() {
 
     if (!connected) {
         return (
-            <div className="flex h-full w-full items-center justify-center text-label text-text-helper">
-                Connect a vehicle to see its setup.
+            <div className="flex h-full w-full">
+                <nav className="flex w-48 shrink-0 flex-col border-r border-border-subtle bg-layer-01">
+                    {OFFLINE_ITEMS.map((item) => (
+                        <SidebarRow
+                            key={item.id}
+                            item={item}
+                            active={item.id === "frame"}
+                            disabled={item.id !== "frame"}
+                            onSelect={() => {}}
+                        />
+                    ))}
+                </nav>
+                <div className="min-h-0 flex-1 overflow-auto p-6">
+                    <FrameSetupPanel live={live.values}/>
+                </div>
             </div>
         );
     }

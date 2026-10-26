@@ -253,7 +253,7 @@ export default function MissionPanel() {
                 </div>
             ) : (
                 <div className="flex flex-1 items-center justify-center p-4 text-center text-label text-text-helper">
-                    Upload a mission to start tracking progress.
+                    No mission
                 </div>
             )}
 

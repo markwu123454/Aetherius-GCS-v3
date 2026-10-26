@@ -38,9 +38,14 @@ interface PlaneModelProps {
 // Roll/pitch signs match ArduPilot's own `ATTITUDE` message (positive roll =
 // right wing down, positive pitch = nose up) for a model resting
 // nose-along--Z, right-wing-along-+X, belly-along--Y — the standard
-// three.js/glTF right-handed layout. Yaw is rotation about the vertical
-// (+Y) axis and carries no sign meaning here since callers either omit it
-// (the fixed target poses) or feed it straight from telemetry.
+// three.js/glTF right-handed layout. Positive yaw turns the nose right
+// (clockwise from above), also matching `ATTITUDE`.
+//
+// "YXZ" is ArduPilot's own 3-2-1 sequence in these axes: yaw about the
+// vertical, then pitch about the yawed right wing, then roll about the
+// pitched nose. Any other order only looks right while a single angle is
+// non-zero — a nose-up vehicle rolled past 90° rendered nose-down, and
+// with live yaw in the mix pitch leaked into roll depending on heading.
 //
 // Exported so anything else that needs to share a model's live body-frame
 // rotation — e.g. the compass coverage sphere, anchored to the vehicle
@@ -49,9 +54,9 @@ interface PlaneModelProps {
 export function bodyRotationEuler(rotationDeg: PlaneRotationDeg): THREE.Euler {
     return new THREE.Euler(
         THREE.MathUtils.degToRad(rotationDeg.pitch),
-        THREE.MathUtils.degToRad(-(rotationDeg.yaw ?? 0)),   // negated
+        THREE.MathUtils.degToRad(-(rotationDeg.yaw ?? 0)),
         THREE.MathUtils.degToRad(-rotationDeg.roll),
-        "ZXY",                                               // was "XZY"
+        "YXZ",
     );
 }
 

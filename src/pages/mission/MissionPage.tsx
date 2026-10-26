@@ -117,7 +117,6 @@ export default function MissionPage({mission}: MissionPageProps) {
                 <div className="flex shrink-0 items-center gap-1 border-b border-border-subtle px-2 py-1.5">
                     <button
                         type="button"
-                        title="Import from a mission file"
                         onClick={() => void handleImport()}
                         className="flex items-center gap-1 px-2 py-1 text-label text-text-secondary hover:bg-layer-hover-01 hover:text-text-primary"
                     >
@@ -126,7 +125,6 @@ export default function MissionPage({mission}: MissionPageProps) {
                     </button>
                     <button
                         type="button"
-                        title="Export to a mission file"
                         disabled={mission.waypoints.length === 0}
                         onClick={() => void handleExport()}
                         className="flex items-center gap-1 px-2 py-1 text-label text-text-secondary hover:enabled:bg-layer-hover-01 hover:enabled:text-text-primary disabled:text-text-disabled"
@@ -136,7 +134,6 @@ export default function MissionPage({mission}: MissionPageProps) {
                     </button>
                     <button
                         type="button"
-                        title="Download the mission currently stored on the vehicle"
                         disabled={mission.downloading}
                         onClick={() => void mission.download().catch(() => {})}
                         className="flex items-center gap-1 px-2 py-1 text-label text-text-secondary hover:enabled:bg-layer-hover-01 hover:enabled:text-text-primary disabled:text-text-disabled"

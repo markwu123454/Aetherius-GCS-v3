@@ -74,7 +74,6 @@ export default function RallyPage() {
                 <div className="flex shrink-0 items-center gap-1 border-b border-border-subtle px-2 py-1.5">
                     <button
                         type="button"
-                        title="Import from a rally point file"
                         onClick={() => void handleImport()}
                         className="flex items-center gap-1 px-2 py-1 text-label text-text-secondary hover:bg-layer-hover-01 hover:text-text-primary"
                     >
@@ -83,7 +82,6 @@ export default function RallyPage() {
                     </button>
                     <button
                         type="button"
-                        title="Export to a rally point file"
                         disabled={rally.points.length === 0}
                         onClick={() => void handleExport()}
                         className="flex items-center gap-1 px-2 py-1 text-label text-text-secondary hover:enabled:bg-layer-hover-01 hover:enabled:text-text-primary disabled:text-text-disabled"
@@ -93,7 +91,6 @@ export default function RallyPage() {
                     </button>
                     <button
                         type="button"
-                        title="Download the rally points stored on the vehicle"
                         disabled={rally.downloading}
                         onClick={() => void rally.download().catch(() => {})}
                         className="flex items-center gap-1 px-2 py-1 text-label text-text-secondary hover:enabled:bg-layer-hover-01 hover:enabled:text-text-primary disabled:text-text-disabled"
@@ -122,7 +119,7 @@ export default function RallyPage() {
                 {/* Point list */}
                 {rally.points.length === 0 ? (
                     <div className="border-b border-border-subtle px-2 py-2 text-micro text-text-disabled">
-                        No rally points yet — click the map to add one.
+                        No rally points yet
                     </div>
                 ) : (
                     <div className="border-b border-border-subtle">

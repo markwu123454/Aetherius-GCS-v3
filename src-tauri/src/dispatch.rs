@@ -5,7 +5,7 @@ use std::{
 
 use mavlink::dialects::ardupilotmega::{
     COMMAND_LONG_DATA, MAG_CAL_PROGRESS_DATA, MAG_CAL_REPORT_DATA, MavCmd, MavMessage,
-    RC_CHANNELS_DATA, SERVO_OUTPUT_RAW_DATA, STATUSTEXT_DATA,
+    RAW_IMU_DATA, RC_CHANNELS_DATA, SERVO_OUTPUT_RAW_DATA, STATUSTEXT_DATA,
 };
 use num_traits::ToPrimitive;
 use tauri::{AppHandle, Emitter, Manager};
@@ -130,6 +130,10 @@ pub fn route(app: &AppHandle, snapshot: &mut VehicleSnapshot, message: &MavMessa
         }
         MavMessage::MAG_CAL_REPORT(data) => {
             on_mag_cal_report(app, data);
+            true
+        }
+        MavMessage::RAW_IMU(data) => {
+            on_raw_imu(app, data);
             true
         }
         MavMessage::LOG_ENTRY(data) => {
@@ -265,6 +269,20 @@ fn on_mag_cal_progress(app: &AppHandle, data: &MAG_CAL_PROGRESS_DATA) {
             "completionPct": data.completion_pct,
             "completionMask": data.completion_mask.to_vec(),
         }),
+    );
+}
+
+/// The first compass's live field in body frame (x nose, y right wing,
+/// z belly), milligauss, saved offsets applied. Its direction is what
+/// ArduPilot sorts each calibration sample into a coverage section by —
+/// `MAG_CAL_PROGRESS` has `direction_x/y/z` fields for exactly this, but
+/// ArduPilot always sends them as zero — so the frontend draws it as the
+/// arrow pointing at the section being filled. Requested only while a
+/// compass calibration runs (see `vehicle_command`).
+fn on_raw_imu(app: &AppHandle, data: &RAW_IMU_DATA) {
+    let _ = app.emit(
+        "mag-field",
+        serde_json::json!({"x": data.xmag, "y": data.ymag, "z": data.zmag}),
     );
 }
 

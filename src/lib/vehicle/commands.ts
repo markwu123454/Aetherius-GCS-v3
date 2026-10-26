@@ -24,6 +24,7 @@ export type VehicleCommand =
     | {type: "startGyroCalibration"}
     | {type: "startCompassCalibration"}
     | {type: "cancelCompassCalibration"}
+    | {type: "stopCompassFieldStream"}
     | {type: "motorTest"; motor: number; throttlePercent: number; timeoutSecs: number};
 
 /**

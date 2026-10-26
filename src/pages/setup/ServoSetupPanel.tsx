@@ -78,7 +78,6 @@ function ReverseToggle({checked, disabled, onChange}: {checked: boolean; disable
             role="switch"
             aria-checked={checked}
             disabled={disabled}
-            title={checked ? "Reversed" : "Normal"}
             onClick={() => onChange(!checked)}
             className={[
                 "relative h-5 w-9 shrink-0 border transition-colors duration-100",

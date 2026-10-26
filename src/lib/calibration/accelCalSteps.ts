@@ -31,37 +31,37 @@ export const ACCEL_CAL_STEPS: AccelCalStep[] = [
     {
         position: ACCEL_POS_LEVEL,
         label: "Level",
-        instruction: "Place the vehicle level, then press Next.",
+        instruction: "Place the vehicle level.",
         rotationDeg: {roll: 0, pitch: 0},
     },
     {
         position: ACCEL_POS_LEFT,
         label: "Left Side Down",
-        instruction: "Rest the vehicle on its left side, then press Next.",
+        instruction: "Rest the vehicle on its left side.",
         rotationDeg: {roll: -90, pitch: 0},
     },
     {
         position: ACCEL_POS_RIGHT,
         label: "Right Side Down",
-        instruction: "Rest the vehicle on its right side, then press Next.",
+        instruction: "Rest the vehicle on its right side.",
         rotationDeg: {roll: 90, pitch: 0},
     },
     {
         position: ACCEL_POS_NOSEDOWN,
         label: "Nose Down",
-        instruction: "Stand the vehicle on its nose, then press Next.",
+        instruction: "Stand the vehicle on its nose.",
         rotationDeg: {roll: 0, pitch: -90},
     },
     {
         position: ACCEL_POS_NOSEUP,
         label: "Nose Up",
-        instruction: "Stand the vehicle on its tail, then press Next.",
+        instruction: "Stand the vehicle on its tail.",
         rotationDeg: {roll: 0, pitch: 90},
     },
     {
         position: ACCEL_POS_BACK,
         label: "Upside Down",
-        instruction: "Turn the vehicle upside down, then press Next.",
+        instruction: "Turn the vehicle upside down.",
         rotationDeg: {roll: 180, pitch: 0},
     },
 ];

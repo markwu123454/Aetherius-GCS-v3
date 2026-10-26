@@ -35,6 +35,7 @@ pub enum VehicleCommand {
     StartGyroCalibration,
     StartCompassCalibration,
     CancelCompassCalibration,
+    StopCompassFieldStream,
     // The enum-level `rename_all` above only renames variant tags, not a
     // struct variant's own fields (every other struct variant here happens
     // to use single-word field names, so this never came up before) — needs
@@ -160,6 +161,14 @@ fn to_mav_command(command: &VehicleCommand) -> (MavCmd, [f32; 7]) {
             MavCmd::MAV_CMD_DO_CANCEL_MAG_CAL,
             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         ),
+        VehicleCommand::StopCompassFieldStream => (
+            // Puts RAW_IMU (27) back after `StartCompassCalibration` sped it
+            // up for the field arrow. Interval 0 is MAVLink's "this port's
+            // default rate", not "off" — whatever SRx_RAW_SENS asked for
+            // before keeps flowing.
+            MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
+            [27.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        ),
         VehicleCommand::MotorTest { motor, throttle_percent, timeout_secs } => (
             // param5 (motor count) = 0 — a single motor, not the "run
             // motor..motor+N in sequence" mode DO_MOTOR_TEST also supports.
@@ -209,8 +218,16 @@ pub async fn send_vehicle_command(app: AppHandle, command: VehicleCommand) -> Re
         Ok(MavResult::MAV_RESULT_ACCEPTED) => {
             // ArduPilot 4.x does not push MAG_CAL_PROGRESS or MAG_CAL_REPORT
             // automatically — request both so the frontend receives coverage
-            // updates (191) and detects completion (192).
+            // updates (191) and detects completion (192). RAW_IMU (27) at
+            // 10 Hz carries the live field for the coverage arrow; the
+            // frontend sends `StopCompassFieldStream` once calibration ends.
             if matches!(command, VehicleCommand::StartCompassCalibration) {
+                let _ = commands::send_async(
+                    &app,
+                    MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
+                    [27.0, 100_000.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    target,
+                );
                 let _ = commands::send_async(
                     &app,
                     MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,

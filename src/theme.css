@@ -132,10 +132,19 @@
         outline-offset: -2px;
     }
 
-    /* Dark scrollbar — webkit (Chrome, Edge, Safari) and Firefox. */
+    /* Dark scrollbar — webkit (Chrome, Edge, Safari) and Firefox.
+       `color-scheme` tells the webview the app is dark, so native popups
+       draw dark too: without it a <select>'s option list kept Windows' light
+       background while inheriting the app's light text, and read as blank. */
     html {
+        color-scheme: dark;
         scrollbar-color: var(--color-border-strong) var(--color-layer-01);
         scrollbar-width: thin;
+    }
+
+    option {
+        background-color: var(--color-layer-01);
+        color: var(--color-text-primary);
     }
 
     ::-webkit-scrollbar {

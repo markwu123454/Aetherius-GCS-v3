@@ -183,10 +183,7 @@ export default function FeedbackDialog() {
                     )}
                 </div>
 
-                <p className="text-label text-text-helper">
-                    Continue opens GitHub with this filled in. Sign in (or create a free account), check it, and press
-                    Submit. No GitHub account? Copy the report and send it another way.
-                </p>
+                <p className="text-label text-text-helper">Continue opens GitHub.</p>
 
                 {notice && (
                     <p className={`text-label ${notice.tone === "ok" ? "text-state-ok" : notice.tone === "warn" ? "text-state-warn" : "text-state-danger"}`}>

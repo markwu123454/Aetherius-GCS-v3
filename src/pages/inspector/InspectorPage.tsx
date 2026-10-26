@@ -135,7 +135,7 @@ export default function InspectorPage() {
                     </>
                 ) : (
                     <div className="flex h-full items-center justify-center p-6 text-center text-label text-text-helper">
-                        Select a message type to see its recent raw messages.
+                        No message type selected
                     </div>
                 )}
             </div>

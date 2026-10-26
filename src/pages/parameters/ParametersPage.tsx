@@ -139,7 +139,6 @@ interface GroupRowProps {
 function GroupRow({
     label,
     count,
-    ownCount,
     depth,
     isActive,
     selectable,
@@ -148,7 +147,6 @@ function GroupRow({
     onToggle,
     onSelect,
 }: GroupRowProps) {
-    const showOwnMarker = selectable && hasToggle && ownCount > 0;
     const paddingLeft = `${depth * 14}px`;
 
     const arrow = (
@@ -220,7 +218,6 @@ function GroupRow({
             <button
                 type="button"
                 aria-current={isActive}
-                title={showOwnMarker ? `${label} has ${ownCount} parameters of its own, plus its sub-groups` : undefined}
                 onClick={onSelect}
                 className={[
                     "flex min-w-0 flex-1 items-center justify-between gap-2 py-1.5 pr-3 pl-2 text-left",
@@ -850,7 +847,7 @@ function ParamDetail({match, live, connected, onSet}: ParamDetailProps) {
     if (!match) {
         return (
             <div className="flex h-full w-80 shrink-0 items-center justify-center border-l border-border-subtle bg-layer-01 p-6 text-center text-label text-text-helper">
-                Select a parameter to see its documentation.
+                No parameter selected
             </div>
         );
     }
@@ -918,10 +915,16 @@ function firmwareOf(kind: VehicleKind | null): VehicleFirmware | null {
     return null;
 }
 
+const BROWSABLE_FIRMWARE: VehicleFirmware[] = ["ArduCopter", "ArduPlane"];
+
 /**
  * Names and structure come from the official ArduCopter/ArduPlane parameter
  * documentation, auto-selected from the connected vehicle's reported type;
  * values come from whatever's actually connected.
+ *
+ * With no vehicle the documentation is still all here, so the page stays up
+ * as a reference: no values, nothing to set, and the firmware picked by hand
+ * — starting from the last vehicle's.
  */
 export default function ParametersPage() {
     const connection = useConnection();
@@ -930,7 +933,10 @@ export default function ParametersPage() {
     // `vehicleKind` is deliberately kept around after a disconnect (so other
     // views can show it struck through), so it alone can't be trusted to mean
     // "connected" — `connected` is checked independently wherever it matters.
-    const firmware = firmwareOf(vehicleTelemetry.vehicleKind);
+    const [browseFirmware, setBrowseFirmware] = useState<VehicleFirmware | null>(null);
+    const firmware = connected
+        ? firmwareOf(vehicleTelemetry.vehicleKind)
+        : (browseFirmware ?? firmwareOf(vehicleTelemetry.vehicleKind) ?? "ArduCopter");
 
     const state = useParamSheet(firmware);
     const live = useLiveParams();
@@ -1039,14 +1045,6 @@ export default function ParametersPage() {
         );
     }
 
-    if (!connected) {
-        return (
-            <div className="flex h-full w-full items-center justify-center text-label text-text-helper">
-                Connect a vehicle to browse its parameters.
-            </div>
-        );
-    }
-
     if (state.status === "idle") {
         return (
             <div className="flex h-full w-full items-center justify-center text-label text-text-helper">
@@ -1096,28 +1094,49 @@ export default function ParametersPage() {
                             <span className="shrink-0 text-label text-text-helper">
                                 {searching ? `${rows.length} matches` : `${rows.length} parameters`}
                             </span>
-                            <span className="shrink-0 text-label text-text-helper">
-                                {live.total !== null ? `${live.values.size}/${live.total} read` : "Reading…"}
-                            </span>
-                            <button
-                                type="button"
-                                onClick={live.refresh}
-                                className="h-control-sm border border-border-subtle px-3 text-label text-text-primary hover:bg-layer-hover-01"
-                            >
-                                Refresh
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => void handleSave()}
-                                title="Save every currently-read parameter to a file"
-                                className="h-control-sm border border-border-subtle px-3 text-label text-text-primary hover:bg-layer-hover-01"
-                            >
-                                Save…
-                            </button>
+                            {connected ? (
+                                <>
+                                    <span className="shrink-0 text-label text-text-helper">
+                                        {live.total !== null ? `${live.values.size}/${live.total} read` : "Reading…"}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={live.refresh}
+                                        className="h-control-sm border border-border-subtle px-3 text-label text-text-primary hover:bg-layer-hover-01"
+                                    >
+                                        Refresh
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleSave()}
+                                        className="h-control-sm border border-border-subtle px-3 text-label text-text-primary hover:bg-layer-hover-01"
+                                    >
+                                        Save…
+                                    </button>
+                                </>
+                            ) : (
+                                <div className="flex shrink-0 border border-border-subtle" role="radiogroup" aria-label="Firmware">
+                                    {BROWSABLE_FIRMWARE.map((option) => (
+                                        <button
+                                            key={option}
+                                            type="button"
+                                            role="radio"
+                                            aria-checked={firmware === option}
+                                            onClick={() => setBrowseFirmware(option)}
+                                            className={`h-control-sm px-3 text-label ${
+                                                firmware === option
+                                                    ? "bg-layer-02 text-text-primary"
+                                                    : "text-text-secondary hover:bg-layer-hover-01"
+                                            }`}
+                                        >
+                                            {option}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                             <button
                                 type="button"
                                 onClick={() => void handleLoad()}
-                                title="Load a parameter file and review changes before applying"
                                 className="h-control-sm border border-border-subtle px-3 text-label text-text-primary hover:bg-layer-hover-01"
                             >
                                 Load…

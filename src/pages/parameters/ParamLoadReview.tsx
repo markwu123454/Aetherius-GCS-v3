@@ -200,7 +200,6 @@ export default function ParamLoadReview({fileName, rows, connected, armed, onSet
                                 type="button"
                                 onClick={() => void apply()}
                                 disabled={!canApply}
-                                title={armedBlock ? "Vehicle is armed — disarm before applying a parameter file" : undefined}
                                 className="h-control-sm border border-border-subtle bg-layer-01 px-3 text-label text-text-primary hover:enabled:bg-layer-hover-01 disabled:text-text-disabled"
                             >
                                 {applying ? "Applying…" : `Apply ${checked.size} change${checked.size === 1 ? "" : "s"}`}
@@ -258,7 +257,7 @@ export default function ParamLoadReview({fileName, rows, connected, armed, onSet
                     ))}
                 </CollapsibleSection>
 
-                <CollapsibleSection title="Unrecognized — not reported by this vehicle" count={unrecognized.length} tone="warn" defaultOpen={false}>
+                <CollapsibleSection title="Unrecognized" count={unrecognized.length} tone="warn" defaultOpen={false}>
                     {unrecognized.map((row) => (
                         <ReviewRow
                             key={row.name}

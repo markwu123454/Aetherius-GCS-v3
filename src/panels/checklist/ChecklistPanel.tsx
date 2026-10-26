@@ -134,7 +134,7 @@ function ItemRow({
                     effectiveChecked ? "text-state-ok" : "text-text-helper",
                 ].join(" ")}
                 onClick={hasAuto ? undefined : onToggle}
-                title={hasAuto ? "Controlled by auto-condition" : effectiveChecked ? "Uncheck" : "Check"}
+                title={hasAuto ? "Controlled by auto-condition" : undefined}
             >
                 {effectiveChecked
                     ? <span className="flex h-4 w-4 items-center justify-center bg-state-ok text-text-on-color"><span className="text-micro font-bold">✓</span></span>
@@ -447,7 +447,7 @@ export default function ChecklistPanel({panel: _panel, area: _area}: {panel: Pan
             <div className="min-h-0 flex-1 overflow-y-auto">
                 {items.length === 0 ? (
                     <div className="px-3 py-4 text-center text-label text-text-helper">
-                        No items — click + below to add one.
+                        No items
                     </div>
                 ) : (
                     items.map((item, index) => (

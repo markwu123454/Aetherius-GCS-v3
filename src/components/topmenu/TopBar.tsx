@@ -6,6 +6,7 @@ import StatusChip, {Tone} from "./StatusChip.tsx";
 import ConnectControl from "./ConnectControl.tsx";
 import ArmControl from "./ArmControl.tsx";
 import ModeControl from "./ModeControl.tsx";
+import TopBarStatus from "./TopBarStatus.tsx";
 import {useNow} from "@/lib/vehicle/useMockVehicle.ts";
 import {alertLevel, fixLabel, VehicleState, worst} from "@/lib/vehicle/vehicle.ts";
 import {isLinkFailing, isLinkIdle, linkSeverity} from "@/lib/vehicle/connection.ts";
@@ -222,6 +223,10 @@ export default function TopBar({vehicle, settings, openIds, page, mission, onRes
                     </span>
                 </div>
             )}
+
+            {/* Takes the free space between the menu and the readings, so it
+                gives way first when the menu expands. */}
+            <TopBarStatus/>
 
             {/* Anchored right so expanding the menu never pushes the readings. */}
             <div className="ml-auto flex items-stretch">

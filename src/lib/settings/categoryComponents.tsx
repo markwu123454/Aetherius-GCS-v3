@@ -40,14 +40,12 @@ function UnitRow<T extends string>({
     options,
     value,
     onChange,
-    help,
 }: {
     name: string;
     label: string;
     options: {value: T; label: string; suffix: string}[];
     value: T;
     onChange: (value: T) => void;
-    help: string;
 }) {
     return (
         <div className="flex flex-col gap-1">
@@ -66,7 +64,6 @@ function UnitRow<T extends string>({
                     </label>
                 ))}
             </div>
-            <p className="text-label text-text-helper">{help}</p>
         </div>
     );
 }
@@ -123,9 +120,6 @@ function ConnectionSettings({settings}: {settings: SettingsApi}) {
                     />
                     Hz
                 </label>
-                <p className="text-label text-text-helper">
-                    Attitude, position, VFR HUD, and RC channels. Max 20 Hz.
-                </p>
             </section>
         </div>
     );
@@ -227,21 +221,21 @@ function AirspaceClassRow({
     );
 }
 
-const BASE_LAYER_OPTIONS: {value: MapBaseLayer; label: string; description: string}[] = [
-    {value: "esri", label: "ESRI World Imagery", description: "Global satellite imagery"},
-    {value: "openfreemap", label: "OpenFreeMap", description: "Vector street map, offline-capable"},
+const BASE_LAYER_OPTIONS: {value: MapBaseLayer; label: string}[] = [
+    {value: "esri", label: "ESRI World Imagery"},
+    {value: "openfreemap", label: "OpenFreeMap"},
 ];
 
-const AUTO_ZOOM_MODES: {value: AutoZoomMode; label: string; description: string}[] = [
-    {value: "off", label: "Off", description: "Zoom stays exactly where you left it"},
-    {value: "groundspeed", label: "By groundspeed", description: "Zooms out as the vehicle moves faster over the ground"},
-    {value: "altitude", label: "By altitude", description: "Zooms out as the vehicle climbs"},
+const AUTO_ZOOM_MODES: {value: AutoZoomMode; label: string}[] = [
+    {value: "off", label: "Off"},
+    {value: "groundspeed", label: "By groundspeed"},
+    {value: "altitude", label: "By altitude"},
 ];
 
-const MAP_CACHE_MODES: {value: MapCacheMode; label: string; description: string}[] = [
-    {value: "off", label: "Off", description: "Every tile is a plain network fetch — nothing read from or written to disk"},
-    {value: "readOnly", label: "Read-only", description: "Serve cached tiles, never add new ones — locks in a cache built ahead of time"},
-    {value: "readWrite", label: "Read + write", description: "Serve cached tiles, and cache anything new as it's fetched"},
+const MAP_CACHE_MODES: {value: MapCacheMode; label: string}[] = [
+    {value: "off", label: "Off"},
+    {value: "readOnly", label: "Read-only"},
+    {value: "readWrite", label: "Read + write"},
 ];
 
 const MAP_CACHE_PROVIDER_OPTIONS: {key: MapCacheProvider; label: string}[] = [
@@ -341,10 +335,10 @@ function MapCacheUsage() {
     );
 }
 
-const REGIONAL_LAYER_OPTIONS: {key: keyof MapRegionalLayers; label: string; description: string}[] = [
-    {key: "japanGsi", label: "Japan — GSI Seamless Photo", description: "Aerial imagery, Japan only"},
-    {key: "statkart", label: "Norway — Kartverket Topo4", description: "Topographic map, Norway only"},
-    {key: "usgsNaip", label: "US — USGS NAIP", description: "High-res aerial, continental US only"},
+const REGIONAL_LAYER_OPTIONS: {key: keyof MapRegionalLayers; label: string}[] = [
+    {key: "japanGsi", label: "Japan — GSI Seamless Photo"},
+    {key: "statkart", label: "Norway — Kartverket Topo4"},
+    {key: "usgsNaip", label: "US — USGS NAIP"},
 ];
 
 function DisplaySettings({settings}: {settings: SettingsApi}) {
@@ -386,10 +380,6 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
 
             <section className="flex flex-col gap-2 border-t border-border-subtle pt-6">
                 <h2 className="text-heading text-text-primary">Auto-zoom</h2>
-                <p className="text-label text-text-helper">
-                    Only takes effect while the map is following the vehicle. Zooming or panning
-                    manually cancels following the same way it already does today.
-                </p>
                 <div className="flex flex-col gap-1" role="radiogroup" aria-label="Auto-zoom">
                     {AUTO_ZOOM_MODES.map((mode) => (
                         <label key={mode.value} className="flex items-start gap-2 text-body text-text-secondary">
@@ -400,10 +390,7 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
                                 checked={settings.autoZoomMode === mode.value}
                                 onChange={() => settings.set("autoZoomMode", mode.value)}
                             />
-                            <span>
-                                {mode.label}
-                                <span className="ml-2 text-label text-text-helper">{mode.description}</span>
-                            </span>
+                            {mode.label}
                         </label>
                     ))}
                 </div>
@@ -418,8 +405,6 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
                     options={SPEED_UNITS}
                     value={settings.speedUnit}
                     onChange={(v) => settings.set("speedUnit", v)}
-                    help="Groundspeed, airspeed, and wind speed. Mission speed overrides and
-                        vehicle parameters stay in m/s, since that's what's sent over the wire."
                 />
 
                 <UnitRow
@@ -428,8 +413,6 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
                     options={VERTICAL_SPEED_UNITS}
                     value={settings.verticalSpeedUnit}
                     onChange={(v) => settings.set("verticalSpeedUnit", v)}
-                    help="Separate from Speed above — vertical speed conventionally uses its own
-                        unit (ft/min) even when horizontal speed is in knots or km/h."
                 />
 
                 <UnitRow
@@ -438,8 +421,6 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
                     options={ALTITUDE_UNITS}
                     value={settings.altitudeUnit}
                     onChange={(v) => settings.set("altitudeUnit", v)}
-                    help="Position altitude and the PFD's ALT tape. Mission waypoint altitude,
-                        the Takeoff climb altitude, and fence altitude limits stay in meters."
                 />
 
                 <UnitRow
@@ -448,8 +429,6 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
                     options={DISTANCE_UNITS}
                     value={settings.distanceUnit}
                     onChange={(v) => settings.set("distanceUnit", v)}
-                    help="Distance to home, distance to the current waypoint, cross-track
-                        error, and the mission editor's route-distance stat."
                 />
             </section>
 
@@ -465,10 +444,7 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
                                 checked={settings.mapBaseLayer === opt.value}
                                 onChange={() => settings.set("mapBaseLayer", opt.value)}
                             />
-                            <span>
-                                {opt.label}
-                                <span className="ml-2 text-label text-text-helper">{opt.description}</span>
-                            </span>
+                            {opt.label}
                         </label>
                     ))}
                 </div>
@@ -476,10 +452,6 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
 
             <section className="flex flex-col gap-2 border-t border-border-subtle pt-6">
                 <h2 className="text-heading text-text-primary">Regional overlays</h2>
-                <p className="text-label text-text-helper">
-                    Higher-resolution imagery for specific regions, layered on top of the base map.
-                    Tiles outside each region return nothing and the base map shows through.
-                </p>
                 <div className="flex flex-col gap-1">
                     {REGIONAL_LAYER_OPTIONS.map((opt) => (
                         <label key={opt.key} className="flex items-start gap-2 text-body text-text-secondary">
@@ -494,10 +466,7 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
                                     })
                                 }
                             />
-                            <span>
-                                {opt.label}
-                                <span className="ml-2 text-label text-text-helper">{opt.description}</span>
-                            </span>
+                            {opt.label}
                         </label>
                     ))}
                 </div>
@@ -505,13 +474,6 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
 
             <section className="flex flex-col gap-2 border-t border-border-subtle pt-6">
                 <h2 className="text-heading text-text-primary">Map cache</h2>
-                <p className="text-label text-text-helper">
-                    Keeps a copy of every fetched tile — base layer and regional overlays alike —
-                    on disk, so they don't need re-downloading on the next launch. Useful for
-                    flying the same field again without a connection. Only caches tiles you
-                    actually pan or zoom over, not a pre-fetched region.
-                </p>
-
                 <div className="flex flex-col gap-1" role="radiogroup" aria-label="Map cache mode">
                     {MAP_CACHE_MODES.map((mode) => (
                         <label key={mode.value} className="flex items-start gap-2 text-body text-text-secondary">
@@ -522,19 +484,12 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
                                 checked={settings.mapCacheMode === mode.value}
                                 onChange={() => settings.set("mapCacheMode", mode.value)}
                             />
-                            <span>
-                                {mode.label}
-                                <span className="ml-2 text-label text-text-helper">{mode.description}</span>
-                            </span>
+                            {mode.label}
                         </label>
                     ))}
                 </div>
 
                 <MapCacheSizeInput settings={settings}/>
-                <p className="text-label text-text-helper">
-                    No upper bound enforced — oldest tiles are dropped first once the cache grows
-                    past whatever this is set to.
-                </p>
 
                 <label className="flex items-center gap-2 text-body text-text-secondary">
                     Refresh after
@@ -552,11 +507,6 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
                     />
                     days (0 = never)
                 </label>
-                <p className="text-label text-text-helper">
-                    Past this age, a tile is refetched if there's a connection — the aged copy is
-                    only kept and reused if that refetch fails, rather than the tile ever being
-                    deleted for age alone.
-                </p>
 
                 <div className="flex items-center gap-2 text-body text-text-secondary">
                     Cache zoom
@@ -588,9 +538,6 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
                         className="w-14 border-b border-border-strong bg-layer-02 px-2 py-1 text-center font-mono text-body text-text-primary disabled:text-text-disabled"
                     />
                 </div>
-                <p className="text-label text-text-helper">
-                    Tiles outside this range are always fetched fresh, never cached.
-                </p>
 
                 <div className="flex flex-col gap-1">
                     <span className="text-body text-text-secondary">Cache these sources</span>
@@ -619,9 +566,6 @@ function DisplaySettings({settings}: {settings: SettingsApi}) {
 
             <section className="flex max-w-2xl flex-col gap-1 border-t border-border-subtle pt-6">
                 <h2 className="text-heading text-text-primary">Airspace</h2>
-                <p className="pb-2 text-label text-text-helper">
-                    Controlled airspace drawn over the map, from the FAA NASR cycle.
-                </p>
                 {AIRSPACE_CLASSES.map((definition) => (
                     <AirspaceClassRow
                         key={definition.id}
@@ -662,11 +606,6 @@ function PanelsSettings({settings}: {settings: SettingsApi}) {
                     />
                     repeats
                 </label>
-                <p className="text-label text-text-helper">
-                    Below that, every occurrence is shown as its own line. The repeat that crosses
-                    this count folds all of them into one with a running ×N count instead of piling
-                    up.
-                </p>
             </section>
 
             <section className="flex flex-col gap-2 border-t border-border-subtle pt-6">
@@ -679,10 +618,6 @@ function PanelsSettings({settings}: {settings: SettingsApi}) {
                     />
                     Show sparklines on telemetry rows
                 </label>
-                <p className="text-label text-text-helper">
-                    Trailing trend charts on voltage, vibration, packet loss, and RSSI. Turn off if
-                    you find them distracting.
-                </p>
             </section>
         </div>
     );
@@ -699,10 +634,6 @@ function FlightSettings({settings}: {settings: SettingsApi}) {
         <div className="flex flex-col gap-8">
             <section className="flex flex-col gap-2">
                 <h2 className="text-heading text-text-primary">Manual control</h2>
-                <p className="text-label text-text-helper">
-                    While not clicked into, the manual-control sticks follow the live RC input. This
-                    sets which of those positions the RC override starts from when you click in.
-                </p>
                 <div className="flex flex-col gap-1" role="radiogroup" aria-label="RC override starting position">
                     {RC_OVERRIDE_MATCH_MODES.map((mode) => (
                         <label key={mode.value} className="flex items-start gap-2 text-body text-text-secondary">

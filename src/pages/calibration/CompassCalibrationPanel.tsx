@@ -181,16 +181,19 @@ export default function CompassCalibrationPanel({live}: CompassCalibrationPanelP
                 squeezed into the same narrow column as the accel/gyro forms,
                 which have nothing comparable to show. */}
             <div className="min-w-0 flex-1">
-                <CompassCoverageViewport rotationDeg={rotationDeg} coveredMask={coveredMask} />
+                <CompassCoverageViewport
+                    rotationDeg={vehicle.attitude ? rotationDeg : null}
+                    coveredMask={coveredMask}
+                    field={calibration.field}
+                />
             </div>
 
             <div className="flex w-full max-w-sm shrink-0 flex-col gap-6">
                 <div>
                     <h2 className="text-heading text-text-primary">Compass</h2>
                     <p className="text-body text-text-secondary">
-                        Corrects magnetometer offsets so heading is accurate. Rotate the vehicle slowly through as
-                        many orientations as you can — nose down, tail down, each side down, upside down, and
-                        everything in between — until every compass's coverage fills in.
+                        The white arrow points at the triangle being filled right now — slowly turn the vehicle so
+                        dark triangles pass under its tip until calibration finishes.
                     </p>
                 </div>
 

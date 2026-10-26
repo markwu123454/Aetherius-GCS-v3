@@ -62,9 +62,16 @@ const CRASH_CHECK: EnumOption[] = [
 
 // ── Row components ─────────────────────────────────────────────────────────
 
+/** The line under a row's label, when there's anything the label can't say. */
+function RowHint({description, recommended}: {description?: string; recommended?: string}) {
+    const parts = [description, recommended && `Recommended: ${recommended}`].filter(Boolean);
+    if (parts.length === 0) return null;
+    return <div className="text-micro text-text-helper">{parts.join(" · ")}</div>;
+}
+
 interface SelectRowProps {
     label: string;
-    description: string;
+    description?: string;
     param: string;
     options: EnumOption[];
     recommended?: string;
@@ -105,7 +112,7 @@ function SelectRow({label, description, param, options, recommended, live, onSet
         <div className="grid grid-cols-[1fr_14rem] items-center gap-4 border-b border-border-subtle-base px-2 py-2 last:border-b-0">
             <div>
                 <div className="text-label text-text-primary">{label}</div>
-                <div className="text-micro text-text-helper">{description}{recommended && ` · Recommended: ${recommended}`}</div>
+                <RowHint description={description} recommended={recommended} />
             </div>
             <div className="flex items-center gap-2">
                 <select
@@ -129,7 +136,7 @@ function SelectRow({label, description, param, options, recommended, live, onSet
 
 interface NumberRowProps {
     label: string;
-    description: string;
+    description?: string;
     param: string;
     unit: string;
     min: number;
@@ -183,7 +190,7 @@ function NumberRow({label, description, param, unit, min, max, step, decimals, r
         <div className="grid grid-cols-[1fr_14rem] items-center gap-4 border-b border-border-subtle-base px-2 py-2 last:border-b-0">
             <div>
                 <div className="text-label text-text-primary">{label}</div>
-                <div className="text-micro text-text-helper">{description}{recommended && ` · Recommended: ${recommended}`}</div>
+                <RowHint description={description} recommended={recommended} />
             </div>
             <div className="flex items-center gap-2">
                 <input
@@ -213,12 +220,12 @@ function NumberRow({label, description, param, unit, min, max, step, decimals, r
 
 // ── Section wrapper ────────────────────────────────────────────────────────
 
-function Section({title, description, children}: {title: string; description: string; children: React.ReactNode}) {
+function Section({title, description, children}: {title: string; description?: string; children: React.ReactNode}) {
     return (
         <section className="flex flex-col gap-2">
             <div>
                 <h2 className="text-label uppercase text-text-helper">{title}</h2>
-                <p className="text-label text-text-secondary">{description}</p>
+                {description && <p className="text-label text-text-secondary">{description}</p>}
             </div>
             <div className="border-t border-border-subtle">
                 {children}
@@ -238,21 +245,13 @@ export default function FailsafeSetupPanel({live, onSet, firmware}: FailsafeSetu
 
     return (
         <div className="flex w-full flex-col gap-8">
-            <div>
-                <h1 className="text-heading text-text-primary">Failsafe</h1>
-                <p className="text-body text-text-secondary">
-                    What the vehicle does when it loses contact with the RC transmitter, GCS, or GPS — and when
-                    the battery gets low. Set these before the first flight.
-                </p>
-            </div>
+            <h1 className="text-heading text-text-primary">Failsafe</h1>
 
             <Section
                 title="RC Signal Loss"
-                description="Triggered when the PWM signal on the throttle channel drops below the threshold — usually because the transmitter was turned off or is out of range."
             >
                 <SelectRow
                     label="Enable"
-                    description="Whether to act on a lost RC signal"
                     param={rcParam}
                     options={rcEnableOptions}
                     recommended="Enabled (always)"
@@ -261,7 +260,6 @@ export default function FailsafeSetupPanel({live, onSet, firmware}: FailsafeSetu
                 />
                 <NumberRow
                     label="Threshold"
-                    description="PWM value below which the signal is considered lost"
                     param={rcThreshParam}
                     unit="μs"
                     min={800}
@@ -280,7 +278,6 @@ export default function FailsafeSetupPanel({live, onSet, firmware}: FailsafeSetu
             >
                 <SelectRow
                     label="Action"
-                    description="What to do at low battery"
                     param="BATT_FS_LOW_ACT"
                     options={action}
                     recommended="RTL"
@@ -289,7 +286,7 @@ export default function FailsafeSetupPanel({live, onSet, firmware}: FailsafeSetu
                 />
                 <NumberRow
                     label="Voltage trigger"
-                    description="Pack voltage below which low battery triggers (0 = disabled)"
+                    description="0 = disabled"
                     param="BATT_LOW_VOLT"
                     unit="V"
                     min={0}
@@ -301,7 +298,7 @@ export default function FailsafeSetupPanel({live, onSet, firmware}: FailsafeSetu
                 />
                 <NumberRow
                     label="Consumed trigger"
-                    description="mAh consumed above which low battery triggers (0 = disabled)"
+                    description="0 = disabled"
                     param="BATT_LOW_MAH"
                     unit="mAh"
                     min={0}
@@ -315,11 +312,9 @@ export default function FailsafeSetupPanel({live, onSet, firmware}: FailsafeSetu
 
             <Section
                 title="Battery — Critical"
-                description="Last-resort level. The vehicle may not make it home; Land is often the safer choice here."
             >
                 <SelectRow
                     label="Action"
-                    description="What to do at critical battery"
                     param="BATT_CRT_ACT"
                     options={action}
                     recommended="Land"
@@ -328,7 +323,7 @@ export default function FailsafeSetupPanel({live, onSet, firmware}: FailsafeSetu
                 />
                 <NumberRow
                     label="Voltage trigger"
-                    description="Pack voltage below which critical triggers (0 = disabled)"
+                    description="0 = disabled"
                     param="BATT_CRT_VOLT"
                     unit="V"
                     min={0}
@@ -346,7 +341,6 @@ export default function FailsafeSetupPanel({live, onSet, firmware}: FailsafeSetu
             >
                 <SelectRow
                     label="Enable"
-                    description="Whether to act on a lost GCS link"
                     param="FS_GCS_ENABLE"
                     options={GCS_ENABLE}
                     recommended="Enabled"
@@ -358,11 +352,9 @@ export default function FailsafeSetupPanel({live, onSet, firmware}: FailsafeSetu
             {isCopter && (
                 <Section
                     title="EKF / Position Error"
-                    description="Triggered when the EKF (the onboard position estimator) loses confidence in its own output — usually because of bad compass data or vibration. The vehicle can no longer safely navigate autonomously."
                 >
                     <SelectRow
                         label="Action"
-                        description="What to do on EKF failure"
                         param="FS_EKF_ACTION"
                         options={EKF_ACTION}
                         recommended="Land"
@@ -371,7 +363,6 @@ export default function FailsafeSetupPanel({live, onSet, firmware}: FailsafeSetu
                     />
                     <NumberRow
                         label="Threshold"
-                        description="EKF variance above which failsafe triggers — lower = more sensitive"
                         param="FS_EKF_THRESH"
                         unit=""
                         min={0.6}
@@ -388,11 +379,9 @@ export default function FailsafeSetupPanel({live, onSet, firmware}: FailsafeSetu
             {isCopter && (
                 <Section
                     title="Crash Detection"
-                    description="Detects a crash by watching for sustained attitude error — if the vehicle is on its side and the motors are still running, it disarms to stop them."
                 >
                     <SelectRow
                         label="Action"
-                        description="What to do on crash detection"
                         param="FS_CRASH_CHECK"
                         options={CRASH_CHECK}
                         recommended="Disarm"

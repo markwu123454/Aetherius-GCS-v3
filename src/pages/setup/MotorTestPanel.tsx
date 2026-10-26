@@ -176,19 +176,7 @@ export default function MotorTestPanel({live, firmware, armed}: MotorTestPanelPr
 
     return (
         <div className="flex w-full flex-col gap-4">
-            <div>
-                <h1 className="text-heading text-text-primary">Motor Test</h1>
-                <p className="text-body text-text-secondary">
-                    Spins one motor at a time at low throttle to confirm each output is wired to the motor Frame
-                    Setup expects, and spins the direction ArduPilot expects. The vehicle stops the motor on its own
-                    once the timeout below elapses.
-                </p>
-            </div>
-
-            <div className="flex items-start gap-2 border border-state-danger/40 bg-layer-01 px-3 py-2 text-label text-state-danger">
-                <Warning size={16} className="mt-px shrink-0" />
-                <span>Remove all propellers before testing. A motor under test spins at full RPM for its output.</span>
-            </div>
+            <h1 className="text-heading text-text-primary">Motor Test</h1>
 
             {armed && (
                 <div className="flex items-start gap-2 border border-state-danger/40 bg-layer-01 px-3 py-2 text-label text-state-danger">
@@ -254,10 +242,8 @@ export default function MotorTestPanel({live, firmware, armed}: MotorTestPanelPr
 
             {hasRejection && (
                 <p className="text-label text-text-helper">
-                    The vehicle rejected the test outright (MAV_RESULT_FAILED) rather than timing out — the command
-                    reached it, but it refused to run the test. On ArduPilot this is usually a physical safety
-                    switch not pressed, the vehicle being armed some other way the panel above isn't seeing, or
-                    FRAME_CLASS/FRAME_TYPE not set (finish Frame Setup and reboot first).
+                    The vehicle refused the test — check the safety switch, and that Frame Setup is done and the
+                    vehicle rebooted.
                 </p>
             )}
 

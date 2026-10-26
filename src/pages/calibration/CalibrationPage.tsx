@@ -15,7 +15,6 @@ type CalibrationStatus = "complete" | "incomplete" | "not-needed" | "unknown";
 interface CalibrationItem {
     id: string;
     label: string;
-    description: string;
     status: CalibrationStatus;
     /** Shown in the detail pane when the status can't speak for itself —
      * either nothing here computes it, or it's gated on something worth
@@ -168,13 +167,11 @@ function buildItems(vehicleKind: VehicleKind | null, live: Map<string, LiveParam
         {
             id: "accel",
             label: "Accelerometer",
-            description: "Corrects accelerometer bias so attitude and altitude readings are accurate.",
             status: paramDefaultStatus(live, ["INS_ACCOFFS_X", "INS_ACCOFFS_Y", "INS_ACCOFFS_Z"]),
         },
         {
             id: "gyro",
             label: "Gyroscope",
-            description: "Corrects gyro bias so the vehicle doesn't drift when it should be still.",
             // Always green: ArduPilot re-runs gyro calibration automatically on
             // every boot, so a valid calibration is always present. Manual
             // calibration is only needed if the vehicle was disturbed at power-up.
@@ -187,7 +184,6 @@ function buildItems(vehicleKind: VehicleKind | null, live: Map<string, LiveParam
     items.push({
         id: "levelHorizon",
         label: "Level Horizon",
-        description: "Trims the flight controller so it reads zero roll and pitch while the vehicle is at rest in its level flight position.",
         status: lvlStatus,
         // Zero AHRS_TRIM_X/Y is valid for a perfectly-level board, so we can't
         // tell "never run" from "run and result was zero" — be honest about it.
@@ -205,7 +201,6 @@ function buildItems(vehicleKind: VehicleKind | null, live: Map<string, LiveParam
         items.push({
             id: `compass-${instance}`,
             label: `Compass ${instance}`,
-            description: "Corrects magnetometer offsets so heading is accurate.",
             status,
         });
     }
@@ -214,7 +209,6 @@ function buildItems(vehicleKind: VehicleKind | null, live: Map<string, LiveParam
         {
             id: "pressure",
             label: "Pressure",
-            description: "Calibrates the barometer's ground-level reference. ArduPilot does this automatically on every boot.",
             // Same story as gyro: auto-calibrates on boot, manual trigger rarely needed.
             status: "not-needed",
             note: "Run manually if the altitude estimate is significantly wrong immediately after boot.",
@@ -222,16 +216,13 @@ function buildItems(vehicleKind: VehicleKind | null, live: Map<string, LiveParam
         {
             id: "radio",
             label: "Radio",
-            description: "Records each RC channel's min/max/trim so stick input maps correctly.",
             status: radioStatus(live),
         },
         {
             id: "compassMot",
             label: "Motor Interference",
-            description:
-                "Measures and compensates for magnetic interference produced by the motors at different throttle levels. " +
-                "Optional — most useful for vehicles with an internal compass near the power wiring.",
             status: compassMotStatus(live),
+            note: "Optional — most useful for vehicles with an internal compass near the power wiring.",
         },
     );
 
@@ -240,7 +231,6 @@ function buildItems(vehicleKind: VehicleKind | null, live: Map<string, LiveParam
         items.push({
             id: "airspeed",
             label: "Airspeed Sensor",
-            description: "Calibrates the differential-pressure sensor used for airspeed.",
             status: arspdType === undefined ? "unknown" : arspdType === 0 ? "not-needed" : "unknown",
             note: arspdType ? NOT_AUTO_DETECTED : undefined,
         });
@@ -277,10 +267,7 @@ function SidebarRow({item, active, onSelect}: {item: CalibrationItem; active: bo
 function DetailPane({item}: {item: CalibrationItem}) {
     return (
         <div className="flex max-w-lg flex-col gap-4">
-            <div>
-                <h2 className="text-heading text-text-primary">{item.label}</h2>
-                <p className="text-body text-text-secondary">{item.description}</p>
-            </div>
+            <h2 className="text-heading text-text-primary">{item.label}</h2>
 
             <div className="flex items-center gap-2">
                 <span className="text-label text-text-helper">Status</span>
@@ -332,7 +319,7 @@ export default function CalibrationPage() {
     if (!connected) {
         return (
             <div className="flex h-full w-full items-center justify-center text-label text-text-helper">
-                Connect a vehicle to see its calibration status.
+                No vehicle connected
             </div>
         );
     }

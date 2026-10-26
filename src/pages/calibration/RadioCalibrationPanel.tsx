@@ -157,25 +157,9 @@ export default function RadioCalibrationPanel({live, vehicleKind}: RadioCalibrat
 
     return (
         <div className="flex w-full flex-col gap-6">
-            <div>
-                <h2 className="text-heading text-text-primary">Radio</h2>
-                <p className="text-body text-text-secondary">
-                    Records each RC channel's min/max/trim so stick input maps correctly. Reference:{" "}
-                    <a
-                        href="https://ardupilot.org/copter/docs/common-radio-control-calibration.html"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-state-info underline"
-                    >
-                        ArduPilot's Radio Calibration docs
-                    </a>
-                    .
-                </p>
-            </div>
+            <h2 className="text-heading text-text-primary">Radio</h2>
 
-            {!channels && (
-                <p className="text-label text-state-danger">RC not connected — no channel data received from the vehicle.</p>
-            )}
+            {!channels && <p className="text-label text-state-danger">RC not connected</p>}
 
             <div className="flex flex-wrap gap-8">
                 <div className="flex min-w-[300px] flex-1 flex-col gap-4 border-r border-border-subtle pr-8">

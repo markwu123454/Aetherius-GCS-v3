@@ -191,7 +191,8 @@ pub struct DownloadedLog {
 /// downloaded it in the current session — `download_log`'s own
 /// `savedPaths` tracking only knows about downloads it personally ran.
 /// Only `.bin` files count: `logs/analysis.rs`'s `save_analysis_state`
-/// writes a `<id>.json` sidecar into this same directory, and a file whose
+/// writes a JSON sidecar into this same directory (older builds named it
+/// `<id>.json`), and a file whose
 /// stem parses as the same numeric id would otherwise collide with it in
 /// the id-keyed map the frontend builds from this list, silently handing
 /// the sidecar's own path back as if it were the log itself.

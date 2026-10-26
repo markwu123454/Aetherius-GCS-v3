@@ -39,14 +39,7 @@ export default function GyroCalibrationPanel() {
 
     return (
         <div className="flex w-full max-w-lg flex-col gap-6">
-            <div>
-                <h2 className="text-heading text-text-primary">Gyroscope</h2>
-                <p className="text-body text-text-secondary">
-                    Samples gyro bias while the vehicle sits still, so it doesn't drift when it should be at rest.
-                    ArduPilot already does this automatically on every boot — run it manually only if the vehicle
-                    was disturbed while powering up.
-                </p>
-            </div>
+            <h2 className="text-heading text-text-primary">Gyroscope</h2>
 
             <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2">

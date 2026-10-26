@@ -1,6 +1,7 @@
 import {useSyncExternalStore} from "react";
 import {listen} from "@tauri-apps/api/event";
 import {createStore} from "@/lib/store.ts";
+import {clearStatus, setStatus} from "@/lib/topBarStatus.ts";
 import {ConnectionStatus} from "@/lib/vehicle/connection.ts";
 import {LiveParamEntry, ParamBatch, refreshParams, setParam as setParamCommand} from "./liveParams.ts";
 
@@ -87,6 +88,19 @@ listen<ConnectionStatus>("link-status", (event) => {
     }
 }).catch(() => {
     // No Tauri backend — the store just never updates.
+});
+
+// Read progress in the top bar while a dump is under way — from the first
+// request until every value is in, or the link drops.
+paramsStore.subscribe(() => {
+    const {values, total} = paramsStore.getSnapshot();
+    if (!haveParams || (total !== null && values.size >= total)) {
+        clearStatus("params");
+    } else if (total === null) {
+        setStatus("params", "Reading parameters…");
+    } else {
+        setStatus("params", [{text: "Reading parameters "}, {text: `${values.size}/${total}`, tone: "info"}]);
+    }
 });
 
 export function useLiveParams(): LiveParams {

@@ -1,8 +1,16 @@
-use std::{collections::HashMap, sync::Mutex, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex,
+    },
+    time::{Duration, Instant},
+};
 
 use mavlink::{
     dialects::ardupilotmega::{
-        MavMessage, MavParamType, PARAM_REQUEST_LIST_DATA, PARAM_SET_DATA, PARAM_VALUE_DATA,
+        MavMessage, MavParamType, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA,
+        PARAM_VALUE_DATA,
     },
     MavConnection,
 };
@@ -25,7 +33,21 @@ pub struct ParamState {
     expected_count: Mutex<Option<u16>>,
     pending_batch: Mutex<Vec<(String, CachedParam)>>,
     write_waiters: Mutex<HashMap<String, oneshot::Sender<f32>>>,
+    /// When the last `PARAM_VALUE` arrived — how `complete_dump` tells a dump
+    /// still streaming from one that has stopped short.
+    last_arrival: Mutex<Option<Instant>>,
+    /// Bumped by every `clear`, which ends whichever `complete_dump` was
+    /// watching the dump before it.
+    fetch_epoch: AtomicU64,
 }
+
+/// How long a dump can go quiet before it counts as stalled.
+const STALL_AFTER: Duration = Duration::from_secs(2);
+/// Stalled rounds in a row with nothing new before giving up — a vehicle
+/// that never answers isn't asked forever.
+const MAX_IDLE_ROUNDS: u32 = 10;
+/// Missing values asked for one at a time per round; the rest wait for the next.
+const MAX_READS_PER_ROUND: usize = 50;
 
 #[derive(Clone, Serialize)]
 pub struct ParamEntry {
@@ -81,6 +103,7 @@ pub fn on_value(app: &AppHandle, data: &PARAM_VALUE_DATA) {
     state.values.lock().unwrap_or_else(|e| e.into_inner()).insert(name.clone(), cached);
     *state.expected_count.lock().unwrap_or_else(|e| e.into_inner()) = Some(data.param_count);
     state.pending_batch.lock().unwrap_or_else(|e| e.into_inner()).push((name.clone(), cached));
+    *state.last_arrival.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
 
     let waiter = state.write_waiters.lock().unwrap_or_else(|e| e.into_inner()).remove(&name);
     if let Some(sender) = waiter {
@@ -118,6 +141,92 @@ pub fn clear(app: &AppHandle) {
     state.values.lock().unwrap_or_else(|e| e.into_inner()).clear();
     *state.expected_count.lock().unwrap_or_else(|e| e.into_inner()) = None;
     state.pending_batch.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    *state.last_arrival.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    state.fetch_epoch.fetch_add(1, Ordering::SeqCst);
+}
+
+/// Sees one `PARAM_REQUEST_LIST` through to a full set of values.
+///
+/// A single request isn't enough. ArduPilot drops it outright while its
+/// parameters are still loading, and right after a reboot it's already
+/// sending heartbeats by then — exactly when the frontend asks — so all that
+/// arrives is the handful it pushes out on its own as boot code sets sensor
+/// IDs and the like, each carrying the full count. A lossy radio drops values
+/// out of the middle of a dump too. So whenever values stop arriving short of
+/// the count, this asks again: for the whole list if little of the dump came
+/// through, otherwise for just the missing indices.
+fn complete_dump(app: AppHandle, epoch: u64) {
+    let mut last_request = Instant::now();
+    let mut last_have = 0;
+    let mut idle_rounds = 0;
+
+    loop {
+        std::thread::sleep(Duration::from_millis(500));
+
+        let state = app.state::<ParamState>();
+        if state.fetch_epoch.load(Ordering::SeqCst) != epoch {
+            return;
+        }
+
+        let last_arrival = *state.last_arrival.lock().unwrap_or_else(|e| e.into_inner());
+        let quiet_for = last_arrival.map_or(last_request.elapsed(), |at| at.elapsed().min(last_request.elapsed()));
+        if quiet_for < STALL_AFTER {
+            continue;
+        }
+
+        let expected = *state.expected_count.lock().unwrap_or_else(|e| e.into_inner());
+        let (have, missing) = {
+            let values = state.values.lock().unwrap_or_else(|e| e.into_inner());
+            // Indices only come from the dump itself: a value ArduPilot pushes
+            // out on its own carries index 65535, which is filtered out here.
+            let missing = expected.map(|count| {
+                let seen: HashSet<u16> = values.values().map(|p| p.index).filter(|&i| i < count).collect();
+                (0..count).filter(|i| !seen.contains(i)).collect::<Vec<u16>>()
+            });
+            (values.len(), missing)
+        };
+        if expected.is_some_and(|count| have >= count as usize) {
+            return;
+        }
+
+        if have > last_have {
+            last_have = have;
+            idle_rounds = 0;
+        } else {
+            idle_rounds += 1;
+            if idle_rounds > MAX_IDLE_ROUNDS {
+                return;
+            }
+        }
+
+        let link = app.state::<LinkState>();
+        let Some(target) = *link.target.lock().unwrap_or_else(|e| e.into_inner()) else {
+            return;
+        };
+        let Some(connection) = link.connection.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
+            return;
+        };
+
+        match (expected, missing) {
+            (Some(count), Some(missing)) if missing.len() <= count as usize / 2 => {
+                for index in missing.into_iter().take(MAX_READS_PER_ROUND) {
+                    let _ = connection.send_default(&MavMessage::PARAM_REQUEST_READ(PARAM_REQUEST_READ_DATA {
+                        param_index: index as i16,
+                        target_system: target.0,
+                        target_component: target.1,
+                        param_id: "".into(),
+                    }));
+                }
+            }
+            _ => {
+                let _ = connection.send_default(&MavMessage::PARAM_REQUEST_LIST(PARAM_REQUEST_LIST_DATA {
+                    target_system: target.0,
+                    target_component: target.1,
+                }));
+            }
+        }
+        last_request = Instant::now();
+    }
 }
 
 #[tauri::command]
@@ -135,11 +244,15 @@ pub fn refresh_params(app: AppHandle, link: State<LinkState>) -> Result<(), Stri
         .ok_or_else(|| "not connected".to_string())?;
 
     clear(&app);
+    let epoch = app.state::<ParamState>().fetch_epoch.load(Ordering::SeqCst);
 
     let _ = connection.send_default(&MavMessage::PARAM_REQUEST_LIST(PARAM_REQUEST_LIST_DATA {
         target_system: target.0,
         target_component: target.1,
     }));
+
+    let handle = app.clone();
+    std::thread::spawn(move || complete_dump(handle, epoch));
     Ok(())
 }
 

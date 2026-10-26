@@ -92,7 +92,7 @@ function AvailableRow({entry, board, disabled, onSelect, onRename, onToggleAutoC
                     <button
                         type="button"
                         aria-label={board?.autoConnect ? `Stop auto-connecting ${label}` : `Auto-connect ${label} from now on`}
-                        title={board?.autoConnect ? "Auto-connects when plugged in — click to stop" : "Auto-connect this board when it's plugged in"}
+                        title={board?.autoConnect ? "Stop auto-connect" : "Auto-connect"}
                         disabled={disabled}
                         onClick={onToggleAutoConnect}
                         className={[

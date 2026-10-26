@@ -110,7 +110,6 @@ export default function TimelineRow({row, series, colorIndex, startUs, endUs, pl
                     {...listeners}
                     className="cursor-grab text-text-secondary hover:text-text-primary active:cursor-grabbing"
                     aria-label="Drag to reorder"
-                    title="Drag to reorder"
                 >
                     <Draggable size={14}/>
                 </button>
@@ -150,7 +149,6 @@ export default function TimelineRow({row, series, colorIndex, startUs, endUs, pl
                         {...listeners}
                         className="flex shrink-0 cursor-grab items-center text-text-secondary hover:text-text-primary active:cursor-grabbing"
                         aria-label="Drag to reorder"
-                        title="Drag to reorder"
                     >
                         <Draggable size={14}/>
                     </button>

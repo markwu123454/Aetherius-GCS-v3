@@ -171,7 +171,6 @@ export default function ConsolePanel() {
                             </span>
                             {entry.count > 1 && (
                                 <span
-                                    title={`Repeated ${entry.count} times`}
                                     className="shrink-0 self-start border border-border-subtle px-1 tabular-nums text-text-helper"
                                 >
                                     ×{entry.count}

@@ -201,10 +201,20 @@ pub struct AnalysisFileState {
 }
 
 /// The sidecar path for a log at `path` — `00000021.bin` alongside
-/// `00000021.json`, same directory, same basename, so the two stay
-/// associated just by sitting next to each other rather than needing a
-/// separate index to relate them.
+/// `00000021.bin.analysis.json`, so the two stay associated just by sitting
+/// next to each other rather than needing a separate index to relate them.
+/// The whole file name is kept rather than the extension swapped because the
+/// Logs page's Open… takes a log from anywhere on disk, where a `flight.json`
+/// beside `flight.bin` may well be someone else's file.
 fn sidecar_path(path: &str) -> PathBuf {
+    let mut name = PathBuf::from(path).into_os_string();
+    name.push(".analysis.json");
+    PathBuf::from(name)
+}
+
+/// Where `sidecar_path` used to point — `00000021.json`. Still read so state
+/// saved before the rename isn't lost; never written.
+fn legacy_sidecar_path(path: &str) -> PathBuf {
     let mut p = PathBuf::from(path);
     p.set_extension("json");
     p
@@ -217,11 +227,14 @@ fn sidecar_path(path: &str) -> PathBuf {
 #[tauri::command]
 pub fn load_analysis_state(path: String) -> Result<Option<AnalysisFileState>, String> {
     let sidecar = sidecar_path(&path);
-    if !sidecar.exists() {
-        return Ok(None);
+    if sidecar.exists() {
+        let content = std::fs::read_to_string(&sidecar).map_err(|e| e.to_string())?;
+        return serde_json::from_str(&content).map(Some).map_err(|e| e.to_string());
     }
-    let content = std::fs::read_to_string(&sidecar).map_err(|e| e.to_string())?;
-    serde_json::from_str(&content).map(Some).map_err(|e| e.to_string())
+    // A legacy-named file that doesn't parse is someone else's JSON, not
+    // broken state of ours — treated as nothing saved.
+    let legacy = legacy_sidecar_path(&path);
+    Ok(std::fs::read_to_string(&legacy).ok().and_then(|content| serde_json::from_str(&content).ok()))
 }
 
 #[tauri::command]

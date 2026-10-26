@@ -204,7 +204,7 @@ export default function LogAnalysisPage({path}: LogAnalysisPageProps) {
                 onPointerLeave={handlePointerUp}
             >
                 {rows.length === 0 ? (
-                    <div className="p-6 text-center text-label text-text-helper">No rows yet — click "Add row" to chart a field.</div>
+                    <div className="p-6 text-center text-label text-text-helper">No rows yet</div>
                 ) : (
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                         <SortableContext items={rows.map((r) => r.id)} strategy={verticalListSortingStrategy}>

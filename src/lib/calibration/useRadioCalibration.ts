@@ -116,7 +116,7 @@ export const STEPS: CalibrationStep[] = [
         role: null,
         auto: false,
         direction: null,
-        instruction: "Move every remaining switch and dial back and forth through its full range. Continue when done.",
+        instruction: "Move every remaining switch and dial back and forth through its full range.",
     },
     {
         id: "save",
@@ -124,7 +124,7 @@ export const STEPS: CalibrationStep[] = [
         role: null,
         auto: false,
         direction: null,
-        instruction: "All settings captured. Save to write the new calibration to the vehicle.",
+        instruction: "All settings captured.",
     },
 ];
 

@@ -1,4 +1,4 @@
-import {useState} from "react";
+import {useMemo, useState} from "react";
 import type {ReactNode} from "react";
 import {Code} from "@carbon/icons-react";
 import {useReboot} from "@/lib/vehicle/useReboot.ts";
@@ -6,13 +6,17 @@ import {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {useParamSheet} from "@/lib/params/useParamSheet.ts";
 import {ParamDef} from "@/lib/params/paramSheet.ts";
 import {paramDefaultStatus, ParamDefaultStatus} from "@/lib/calibration/paramDefaultStatus.ts";
-import {findFrameDrawing, frameTypesFor} from "@/lib/frames/motorLayouts.ts";
+import {findFrameDrawing, findFrameLayout, frameTypesFor} from "@/lib/frames/motorLayouts.ts";
 import FrameDiagram from "@/components/FrameDiagram.tsx";
 import {FRAME_TYPE_APPLIES_FOR, SCRIPTED_FRAME_CLASSES} from "./frameDiagrams.ts";
+import {MotorCard, motorFunctionValues} from "./MotorMappingSection.tsx";
 
 interface FrameSetupPanelProps {
     live: Map<string, LiveParamEntry>;
-    onSet: (name: string, value: number) => Promise<number>;
+    /** Absent while disconnected, which turns the panel into a reference:
+     * picking a frame only shows it, with every motor's default output, for
+     * wiring with the vehicle powered off. */
+    onSet?: (name: string, value: number) => Promise<number>;
 }
 
 const STATUS_LABEL: Record<ParamDefaultStatus, string> = {
@@ -39,14 +43,14 @@ function findParam(groups: {params: ParamDef[]}[], name: string): ParamDef | nul
  * its layout data, spin rings on; numbers only in the preview, where there's
  * room to read them. Scripted classes have no geometry, so they get the Code
  * icon. `typeValue` null is the class's own tile. */
-function DiagramContent({classValue, typeValue, numbers = false}: {classValue: number | null; typeValue: number | null; numbers?: boolean}) {
+function DiagramContent({classValue, typeValue, numbers = false, highlight = null}: {classValue: number | null; typeValue: number | null; numbers?: boolean; highlight?: number | null}) {
     if (classValue === null) return null;
     if (SCRIPTED_FRAME_CLASSES.has(classValue)) {
         return <Code size={32} className="text-text-helper" />;
     }
     const frame = findFrameDrawing(classValue, typeValue);
     if (!frame) return null;
-    return <FrameDiagram frame={frame} spin numbers={numbers} className="h-full w-full" />;
+    return <FrameDiagram frame={frame} spin numbers={numbers} highlight={highlight} className="h-full w-full" />;
 }
 
 interface TileProps {
@@ -94,8 +98,14 @@ function Tile({label, selected, disabled, size = "md", onClick, children}: TileP
  * has a `FRAME_TYPE` to go with it. Classes where `FRAME_TYPE` actually does
  * something (`FRAME_TYPE_APPLIES_FOR`) write both params together so `Set`
  * never leaves a stale type from a previous class in place.
+ *
+ * Without `onSet` (no vehicle) there's nothing to write, so the same picker
+ * is a reference instead: it starts on Quad X, every class lands on a type
+ * straight away, and a card per motor below the preview shows where it sits,
+ * which way it spins, and the output ArduPilot drives it from by default.
  */
 export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
+    const reference = onSet === undefined;
     const reboot = useReboot();
     const sheetState = useParamSheet("ArduCopter");
 
@@ -108,11 +118,23 @@ export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
 
     const frameClass = sheetState.status === "ready" ? findParam(sheetState.sheet.groups, "FRAME_CLASS") : null;
     const frameType = sheetState.status === "ready" ? findParam(sheetState.sheet.groups, "FRAME_TYPE") : null;
+    const servoFunction = sheetState.status === "ready" ? findParam(sheetState.sheet.groups, "SERVO1_FUNCTION") : null;
+    const motorFunction = useMemo(() => motorFunctionValues(servoFunction?.values ?? []), [servoFunction]);
 
     // null = "not editing, showing the live value". Set by clicking any
-    // type-applicable class or type tile; cleared on Set or Cancel.
-    const [stagedClass, setStagedClass] = useState<number | null>(null);
-    const [stagedType, setStagedType] = useState<string>("");
+    // type-applicable class or type tile; cleared on Set or Cancel. A
+    // reference has no live value to fall back on, so it starts on Quad X.
+    const [stagedClass, setStagedClass] = useState<number | null>(reference ? 1 : null);
+    const [stagedType, setStagedType] = useState<string>(reference ? "1" : "");
+    const [hot, setHot] = useState<number | null>(null);
+
+    // Types this class has a layout for that FRAME_TYPE actually documents —
+    // e.g. Y6B/Y6F only under Y6, BetaflightX/DJIX only where ArduPilot mixes
+    // them. The undocumented Quad values in the layout data aren't offered.
+    const documentedTypes = (classValue: number) =>
+        FRAME_TYPE_APPLIES_FOR.has(classValue)
+            ? frameTypesFor(classValue).filter((t) => frameType?.values?.some((v) => v.value === t))
+            : [];
 
     const [comboPending, setComboPending] = useState(false);
     const [comboResult, setComboResult] = useState<{ok: true} | {ok: false; message: string} | null>(null);
@@ -125,11 +147,16 @@ export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
 
     const handleClassClick = (value: number) => {
         setStagedClass(value);
-        setStagedType(
-            FRAME_TYPE_APPLIES_FOR.has(value) && value === classRounded && typeRounded !== null
-                ? String(typeRounded)
-                : "",
-        );
+        if (FRAME_TYPE_APPLIES_FOR.has(value) && value === classRounded && typeRounded !== null) {
+            setStagedType(String(typeRounded));
+        } else if (reference) {
+            // Nothing to confirm here, so a class always lands on something
+            // to show: its X layout where it has one, as its own tile draws.
+            const types = documentedTypes(value);
+            setStagedType(types.length === 0 ? "" : String(types.includes(1) ? 1 : types[0]));
+        } else {
+            setStagedType("");
+        }
         setComboResult(null);
     };
 
@@ -148,7 +175,7 @@ export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
     };
 
     const handleCombinedSet = async () => {
-        if (stagedClass === null || (stagedNeedsType && stagedType === "")) return;
+        if (!onSet || stagedClass === null || (stagedNeedsType && stagedType === "")) return;
         setComboPending(true);
         setComboResult(null);
         try {
@@ -170,37 +197,20 @@ export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
     const typeLabel =
         showTypeGrid && effectiveType !== null ? (frameType?.values?.find((v) => v.value === effectiveType)?.label ?? null) : null;
     const scripted = effectiveClass !== null && SCRIPTED_FRAME_CLASSES.has(effectiveClass);
-    // Types this class has a layout for that FRAME_TYPE actually documents —
-    // e.g. Y6B/Y6F only under Y6, BetaflightX/DJIX only where ArduPilot mixes
-    // them. The undocumented Quad values in the layout data aren't offered.
-    const typeOptions =
-        showTypeGrid && effectiveClass !== null
-            ? frameTypesFor(effectiveClass).filter((t) => frameType?.values?.some((v) => v.value === t))
-            : [];
+    const typeOptions = effectiveClass !== null ? documentedTypes(effectiveClass) : [];
     const missingType = stagedNeedsType && stagedType === "";
+    const layout = reference && effectiveClass !== null ? findFrameLayout(effectiveClass, effectiveType ?? 0) : null;
 
     return (
         <div className="flex w-full flex-col gap-4">
-            <div>
-                <h2 className="text-heading text-text-primary">Frame</h2>
-                <p className="text-body text-text-secondary">
-                    Sets the multicopter's motor count and layout so ArduPilot mixes the right output to each motor.{" "}
-                    <a
-                        href="https://ardupilot.org/copter/docs/connect-escs-and-motors.html"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-state-info underline"
-                    >
-                        Reference diagrams
-                    </a>
-                    .
-                </p>
-            </div>
+            <h2 className="text-heading text-text-primary">Frame</h2>
 
-            <div className="flex items-center gap-2">
-                <span className="text-label text-text-helper">Status</span>
-                <span className={`text-label ${STATUS_TONE[status]}`}>{STATUS_LABEL[status]}</span>
-            </div>
+            {!reference && (
+                <div className="flex items-center gap-2">
+                    <span className="text-label text-text-helper">Status</span>
+                    <span className={`text-label ${STATUS_TONE[status]}`}>{STATUS_LABEL[status]}</span>
+                </div>
+            )}
 
             {sheetState.status === "loading" && (
                 <p className="text-label text-text-helper">Loading ArduCopter parameter reference…</p>
@@ -214,11 +224,13 @@ export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
                 // class grid where a short window hid it entirely.
                 <div className="sticky top-0 z-10 flex items-start gap-4 border border-border-subtle bg-layer-01 p-4 shadow-[0_8px_16px_-8px_rgba(0,0,0,0.6)]">
                     <div className="flex h-44 w-44 shrink-0 items-center justify-center bg-background p-2">
-                        <DiagramContent classValue={effectiveClass} typeValue={effectiveType} numbers />
+                        <DiagramContent classValue={effectiveClass} typeValue={effectiveType} numbers highlight={hot} />
                     </div>
                     <div className="flex min-w-0 flex-1 flex-col gap-3">
                         <div className="flex flex-col gap-1">
-                            <span className="text-micro text-text-helper">{isEditing ? "Previewing" : "Currently set to"}</span>
+                            {!reference && (
+                                <span className="text-micro text-text-helper">{isEditing ? "Previewing" : "Currently set to"}</span>
+                            )}
                             <span className="text-body text-text-primary">
                                 {classLabel ?? (effectiveClass === null ? "Not read yet" : `Frame class ${effectiveClass}`)}
                                 {typeLabel && ` — ${typeLabel}`}
@@ -232,11 +244,9 @@ export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
 
                         {frameType && typeOptions.length > 0 && (
                             <div className="flex min-w-0 flex-col gap-1.5">
-                                <span className={`text-label ${missingType ? "text-state-warn" : "text-text-secondary"}`}>
-                                    Frame Type{missingType && " — pick one to continue"}
-                                </span>
+                                <span className="text-label text-text-secondary">Frame Type</span>
                                 <div
-                                    className={`flex gap-2 overflow-x-auto border p-1 pb-2 ${missingType ? "border-state-warn" : "border-transparent"}`}
+                                    className={`flex gap-2 overflow-x-auto border p-1 pb-2 ${missingType ? "border-border-strong" : "border-transparent"}`}
                                 >
                                     {typeOptions.map((typeValue) => (
                                         <Tile
@@ -254,7 +264,7 @@ export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
                             </div>
                         )}
 
-                        {isEditing && (
+                        {isEditing && !reference && (
                             <div className="flex flex-wrap items-center gap-2">
                                 <button
                                     type="button"
@@ -272,13 +282,37 @@ export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
                                 >
                                     Cancel
                                 </button>
-                                {missingType && <span className="text-label text-state-warn">Pick a frame type</span>}
                                 {comboResult && !comboResult.ok && (
                                     <span className="text-label text-state-danger">{comboResult.message}</span>
                                 )}
                                 {comboResult?.ok && <span className="text-label text-state-ok">Set.</span>}
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {layout && (
+                <div className="flex flex-col gap-2">
+                    <span className="text-label text-text-secondary">Motors</span>
+                    <div className="overflow-x-auto pb-1">
+                        <div className="flex w-max gap-2">
+                            {layout.motors.map((motor) => (
+                                <MotorCard
+                                    key={motor.number}
+                                    layout={layout}
+                                    motor={motor}
+                                    fn={motorFunction.get(motor.number)}
+                                    hot={hot === motor.number}
+                                    onHot={setHot}
+                                >
+                                    <span className="text-micro text-text-helper uppercase">Default output</span>
+                                    <span className="flex h-control-sm items-center border-b border-border-strong bg-layer-01 px-2 font-mono text-body text-text-primary">
+                                        {motor.number}
+                                    </span>
+                                </MotorCard>
+                            ))}
+                        </div>
                     </div>
                 </div>
             )}
@@ -304,18 +338,20 @@ export default function FrameSetupPanel({live, onSet}: FrameSetupPanelProps) {
                 </div>
             )}
 
-            <p className="text-label text-text-helper">
-                Both only take effect after a reboot — once you've set the ones you need,{" "}
-                <button
-                    type="button"
-                    onClick={() => void reboot.reboot()}
-                    disabled={reboot.pending}
-                    className="text-state-info underline disabled:text-text-disabled"
-                >
-                    {reboot.pending ? "rebooting…" : "reboot the vehicle"}
-                </button>
-                .
-            </p>
+            {!reference && (
+                <p className="text-label text-text-helper">
+                    Both only take effect after a reboot — once you've set the ones you need,{" "}
+                    <button
+                        type="button"
+                        onClick={() => void reboot.reboot()}
+                        disabled={reboot.pending}
+                        className="text-state-info underline disabled:text-text-disabled"
+                    >
+                        {reboot.pending ? "rebooting…" : "reboot the vehicle"}
+                    </button>
+                    .
+                </p>
+            )}
             {reboot.error && <p className="text-label text-state-danger">{reboot.error}</p>}
         </div>
     );

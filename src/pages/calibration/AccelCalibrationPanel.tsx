@@ -1,4 +1,4 @@
-import {useState} from "react";
+import {useRef, useState} from "react";
 import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
 import {useReboot} from "@/lib/vehicle/useReboot.ts";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
@@ -43,26 +43,32 @@ export default function AccelCalibrationPanel({live}: AccelCalibrationPanelProps
 
     const status = paramDefaultStatus(live, ["INS_ACCOFFS_X", "INS_ACCOFFS_Y", "INS_ACCOFFS_Z"]);
     const targetRotation = calibration.step?.rotationDeg ?? LEVEL_ROTATION;
-    const liveRotation = {roll: vehicle.attitude?.roll ?? 0, pitch: vehicle.attitude?.pitch ?? 0};
+
+    // Roll and pitch alone can't show a vehicle tipped past vertical: going
+    // over the top, ArduPilot's pitch turns back short of 90° while roll and
+    // yaw both jump 180°, so dropping yaw spun the model round to show its
+    // belly. The full attitude has no jump. Yaw counts from where the vehicle
+    // pointed when this panel first heard from it — re-taken on Calibrate,
+    // when it's sitting on the desk for the level step — so the model starts
+    // facing away like the target does.
+    const headingRef = useRef<number | null>(null);
+    if (headingRef.current === null && vehicle.attitude) {
+        headingRef.current = vehicle.attitude.yaw;
+    }
+    const liveRotation = {
+        roll: vehicle.attitude?.roll ?? 0,
+        pitch: vehicle.attitude?.pitch ?? 0,
+        yaw: (vehicle.attitude?.yaw ?? 0) - (headingRef.current ?? 0),
+    };
+
+    const handleCalibrate = () => {
+        headingRef.current = vehicle.attitude?.yaw ?? null;
+        calibration.start();
+    };
 
     return (
         <div className="flex w-full flex-col gap-6">
-            <div>
-                <h2 className="text-heading text-text-primary">Accelerometer</h2>
-                <p className="text-body text-text-secondary">
-                    Records accelerometer bias across six orientations so attitude and altitude readings are accurate.
-                    Reference:{" "}
-                    <a
-                        href="https://ardupilot.org/copter/docs/common-accelerometer-calibration.html"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-state-info underline"
-                    >
-                        ArduPilot's Accelerometer Calibration docs
-                    </a>
-                    .
-                </p>
-            </div>
+            <h2 className="text-heading text-text-primary">Accelerometer</h2>
 
             {calibration.calibrating && (
                 <div className="flex items-center gap-1">
@@ -123,7 +129,7 @@ export default function AccelCalibrationPanel({live}: AccelCalibrationPanelProps
                     {calibration.error && <p className="text-label text-state-danger">{calibration.error}</p>}
                     <button
                         type="button"
-                        onClick={calibration.start}
+                        onClick={handleCalibrate}
                         className="h-control-sm w-fit border border-border-subtle px-3 text-label text-text-primary hover:bg-layer-hover-01"
                     >
                         Calibrate

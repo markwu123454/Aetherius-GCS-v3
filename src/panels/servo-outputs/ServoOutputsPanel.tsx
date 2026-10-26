@@ -209,7 +209,7 @@ export default function ServoOutputsPanel({area}: {area: PanelArea}) {
     if (connection.status !== "connected") {
         return (
             <div className="flex h-full items-center justify-center text-label text-text-helper">
-                Connect a vehicle to see servo outputs.
+                No vehicle connected
             </div>
         );
     }
