@@ -3,6 +3,7 @@ import {useReboot} from "@/lib/vehicle/useReboot.ts";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
 import {useParamSheet} from "@/lib/params/useParamSheet.ts";
 import {ParamDef, ParamOption, VehicleFirmware} from "@/lib/params/paramSheet.ts";
+import {findMotorOutputs} from "@/lib/params/motorOutputs.ts";
 import SERVO_FUNCTION_PRIORITY from "@/lib/params/servoFunctionPriority.json";
 import MotorMappingSection from "./MotorMappingSection.tsx";
 
@@ -42,6 +43,7 @@ interface ServoSetupPanelProps {
     live: Map<string, LiveParamEntry>;
     onSet: (name: string, value: number) => Promise<number>;
     firmware: VehicleFirmware;
+    onOpenMotors: () => void;
 }
 
 /** ArduPilot supports up to 32 servo outputs — most boards only populate the
@@ -71,7 +73,7 @@ function findParam(groups: {params: ParamDef[]}[], name: string): ParamDef | nul
     return null;
 }
 
-function ReverseToggle({checked, disabled, onChange}: {checked: boolean; disabled: boolean; onChange: (next: boolean) => void}) {
+export function ReverseToggle({checked, disabled, onChange}: {checked: boolean; disabled: boolean; onChange: (next: boolean) => void}) {
     return (
         <button
             type="button"
@@ -114,7 +116,7 @@ interface RangeNumberInputProps {
  * same reasoning as `ParametersPage`'s manual value input; `editing` keeps a
  * value arriving from the vehicle mid-type from clobbering what's being typed.
  */
-function RangeNumberInput({value, disabled, range, onCommit}: RangeNumberInputProps) {
+export function RangeNumberInput({value, disabled, range, onCommit}: RangeNumberInputProps) {
     const [draft, setDraft] = useState(value !== undefined ? String(Math.round(value)) : "");
     const [editing, setEditing] = useState(false);
 
@@ -166,11 +168,14 @@ interface ServoRowProps {
     functionOptions: ParamOption[];
     range: [number, number];
     onFunctionChanged: () => void;
+    /** This output drives a motor: its range lives on the Motors page. */
+    motor: boolean;
+    onOpenMotors: () => void;
 }
 
 type PendingField = "function" | "reversed" | "min" | "trim" | "max" | null;
 
-function ServoRow({channel, live, onSet, functionOptions, range, onFunctionChanged}: ServoRowProps) {
+function ServoRow({channel, live, onSet, functionOptions, range, onFunctionChanged, motor, onOpenMotors}: ServoRowProps) {
     const [pendingField, setPendingField] = useState<PendingField>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -239,12 +244,22 @@ function ServoRow({channel, live, onSet, functionOptions, range, onFunctionChang
                     </option>
                 ))}
             </select>
-            <ReverseToggle checked={reversed} disabled={pendingField !== null || !reversedEntry} onChange={(next) => void handleReversedChange(next)}/>
-            <div className="grid grid-cols-3 gap-2">
-                <RangeNumberInput value={min} range={range} disabled={pendingField !== null} onCommit={handleRangeCommit("min")}/>
-                <RangeNumberInput value={trim} range={range} disabled={pendingField !== null} onCommit={handleRangeCommit("trim")}/>
-                <RangeNumberInput value={max} range={range} disabled={pendingField !== null} onCommit={handleRangeCommit("max")}/>
-            </div>
+            {motor ? (
+                <div className="col-span-2 flex h-control-sm items-center">
+                    <button type="button" onClick={onOpenMotors} className="text-label text-state-info underline">
+                        Edit on Motors page
+                    </button>
+                </div>
+            ) : (
+                <>
+                    <ReverseToggle checked={reversed} disabled={pendingField !== null || !reversedEntry} onChange={(next) => void handleReversedChange(next)}/>
+                    <div className="grid grid-cols-3 gap-2">
+                        <RangeNumberInput value={min} range={range} disabled={pendingField !== null} onCommit={handleRangeCommit("min")}/>
+                        <RangeNumberInput value={trim} range={range} disabled={pendingField !== null} onCommit={handleRangeCommit("trim")}/>
+                        <RangeNumberInput value={max} range={range} disabled={pendingField !== null} onCommit={handleRangeCommit("max")}/>
+                    </div>
+                </>
+            )}
             {error && <span className="col-span-4 text-micro text-state-danger">{error}</span>}
         </div>
     );
@@ -256,8 +271,13 @@ function ServoRow({channel, live, onSet, functionOptions, range, onFunctionChang
  * `Parameters` group visits. Every field commits immediately (Function and
  * Reversed on change, the range inputs on blur/Enter) — there's no per-row
  * "Set" button, unlike `ParametersPage`'s general-purpose control.
+ *
+ * An output driving a motor keeps its Function picker but not its
+ * Rev/Min/Trim/Max: whichever of those the firmware still reads for it
+ * (see motorOutputs.ts) are edited on the Motors page, next to the motor
+ * params that set the rest of its range.
  */
-export default function ServoSetupPanel({live, onSet, firmware}: ServoSetupPanelProps) {
+export default function ServoSetupPanel({live, onSet, firmware, onOpenMotors}: ServoSetupPanelProps) {
     const reboot = useReboot();
     const sheetState = useParamSheet(firmware);
     const [rebootNeeded, setRebootNeeded] = useState(false);
@@ -269,6 +289,7 @@ export default function ServoSetupPanel({live, onSet, firmware}: ServoSetupPanel
     const range: [number, number] = minParam?.range ?? DEFAULT_RANGE;
 
     const channels = useMemo(() => Array.from({length: SERVO_COUNT}, (_, i) => i + 1), []);
+    const motorChannels = new Set(findMotorOutputs(firmware, live, functionParam?.values ?? [], SERVO_COUNT).map((o) => o.channel));
 
     return (
         <div className="flex h-full w-full flex-col gap-4">
@@ -327,6 +348,8 @@ export default function ServoSetupPanel({live, onSet, firmware}: ServoSetupPanel
                         functionOptions={functionOptions}
                         range={range}
                         onFunctionChanged={() => setRebootNeeded(true)}
+                        motor={motorChannels.has(channel)}
+                        onOpenMotors={onOpenMotors}
                     />
                 ))}
             </div>

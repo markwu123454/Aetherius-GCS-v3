@@ -7,10 +7,11 @@ import FrameSetupPanel from "./FrameSetupPanel.tsx";
 import ServoSetupPanel from "./ServoSetupPanel.tsx";
 import TrimSetupPanel from "./TrimSetupPanel.tsx";
 import MotorTestPanel from "./MotorTestPanel.tsx";
+import MotorsSetupPanel from "./MotorsSetupPanel.tsx";
 import FailsafeSetupPanel from "./FailsafeSetupPanel.tsx";
 
 interface SetupItem {
-    id: "frame" | "servo" | "trim" | "motorTest" | "failsafe";
+    id: "frame" | "servo" | "motors" | "trim" | "motorTest" | "failsafe";
     label: string;
 }
 
@@ -18,6 +19,7 @@ interface SetupItem {
 const OFFLINE_ITEMS: SetupItem[] = [
     {id: "frame", label: "Frame"},
     {id: "servo", label: "Servo"},
+    {id: "motors", label: "Motors"},
     {id: "trim", label: "Trim"},
     {id: "motorTest", label: "Motor Test"},
     {id: "failsafe", label: "Failsafe"},
@@ -43,8 +45,8 @@ function SidebarRow({item, active, disabled = false, onSelect}: {item: SetupItem
 }
 
 /**
- * Friendly forms over one specific param family — Frame, Servo, Trim, and
- * (later) Failsafe — distinct from `ParametersPage` (raw access to
+ * Friendly forms over one specific param family — Frame, Servo, Motors,
+ * Trim, and Failsafe — distinct from `ParametersPage` (raw access to
  * everything) and `CalibrationPage` (sensor procedures with a live-value
  * wizard). Motor Test is the one tab here that isn't a plain read/set of
  * named params — it sends a live `MAV_CMD_DO_MOTOR_TEST` — but it belongs
@@ -67,6 +69,7 @@ export default function SetupPage() {
             list.push({id: "frame", label: "Frame"});
         }
         list.push({id: "servo", label: "Servo"});
+        list.push({id: "motors", label: "Motors"});
         list.push({id: "trim", label: "Trim"});
         if (vehicle.vehicleKind === "multirotor") {
             list.push({id: "motorTest", label: "Motor Test"});
@@ -121,7 +124,9 @@ export default function SetupPage() {
                 {selectedId === "frame" ? (
                     <FrameSetupPanel live={live.values} onSet={live.setParam}/>
                 ) : selectedId === "servo" ? (
-                    <ServoSetupPanel live={live.values} onSet={live.setParam} firmware={firmware}/>
+                    <ServoSetupPanel live={live.values} onSet={live.setParam} firmware={firmware} onOpenMotors={() => setSelectedId("motors")}/>
+                ) : selectedId === "motors" ? (
+                    <MotorsSetupPanel live={live.values} onSet={live.setParam} firmware={firmware}/>
                 ) : selectedId === "trim" ? (
                     <TrimSetupPanel live={live.values} onSet={live.setParam} firmware={firmware}/>
                 ) : selectedId === "motorTest" ? (

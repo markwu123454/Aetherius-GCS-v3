@@ -69,11 +69,10 @@ export function resolveChannelCalibration(
  * the stick was actually trimmed rather than the geometric middle of
  * `min`/`max` (real transmitters are rarely trimmed to dead center).
  * Positive always means "right" for the horizontal functions and "up"/"more"
- * for the vertical ones — the same sense `useRadioCalibration`'s own detect
- * step treats as non-reversed.
+ * for the vertical ones.
  */
 export function axisFromRaw(fn: StickFunction, raw: number, cal: ChannelCalibration): number {
-    const {min, max, trim, reversed} = cal;
+    const {min, max, trim} = cal;
     let value: number;
     if (fn === "throttle") {
         value = max > min ? ((raw - min) / (max - min)) * 2 - 1 : 0;
@@ -82,15 +81,22 @@ export function axisFromRaw(fn: StickFunction, raw: number, cal: ChannelCalibrat
         value = (raw - trim) / half;
     }
     value = Math.min(1, Math.max(-1, value));
-    return reversed ? -value : value;
+    return stickSign(fn, cal) * value;
+}
+
+/** ±1 from raw-PWM sense to stick sense. ArduPilot reads a higher pitch PWM
+ * as nose up, so on a non-reversed channel pushing the stick up (forward)
+ * lowers it — the one function where "up" is the low end. */
+function stickSign(fn: StickFunction, cal: ChannelCalibration): 1 | -1 {
+    return cal.reversed !== (fn === "pitch") ? -1 : 1;
 }
 
 /** The exact inverse of `axisFromRaw` — a `-1..1` stick position back to the
  * raw PWM value that would produce it, for sending as an override rather
  * than reading one off the real receiver. */
 export function rawFromAxis(fn: StickFunction, axis: number, cal: ChannelCalibration): number {
-    const {min, max, trim, reversed} = cal;
-    const signed = reversed ? -axis : axis;
+    const {min, max, trim} = cal;
+    const signed = stickSign(fn, cal) * axis;
     let raw: number;
     if (fn === "throttle") {
         raw = max > min ? min + ((signed + 1) / 2) * (max - min) : trim;

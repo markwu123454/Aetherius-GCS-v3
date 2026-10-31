@@ -408,11 +408,13 @@ export function useRadioCalibration(
                 await setParam(`RC${channel}_TRIM`, info.trim);
 
                 if (info.function) {
-                    // ArduCopter's own pitch axis has a backwards sense for
-                    // "reversed" relative to the other three — matched from
-                    // QGC's `_saveStoredCalibrationValues`, not guessed.
-                    const paramReversed =
-                        vehicleKind === "multirotor" && info.function === "pitch" ? !info.reversed : info.reversed;
+                    // ArduPilot reads a higher pitch PWM as nose up, so a
+                    // non-reversed pitch channel is one whose value drops
+                    // when the stick goes up — the opposite of what "detect"
+                    // calls non-reversed. Every vehicle type: QGC applies
+                    // this flip only on multirotors because it never writes
+                    // reversal on a plane at all, but this does.
+                    const paramReversed = info.function === "pitch" ? !info.reversed : info.reversed;
                     const paramName = reversedIsBool ? `RC${channel}_REVERSED` : `RC${channel}_REV`;
                     await setParam(paramName, reversedIsBool ? (paramReversed ? 1 : 0) : paramReversed ? -1 : 1);
                 }
