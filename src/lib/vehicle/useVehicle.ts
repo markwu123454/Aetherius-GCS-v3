@@ -56,6 +56,7 @@ interface Snapshot {
     groundspeed?: number | null;
     airspeed?: number | null;
     climbRate?: number | null;
+    throttle?: number | null;
     homeLat?: number | null;
     homeLon?: number | null;
     windDir?: number | null;
@@ -90,6 +91,7 @@ export const NO_VEHICLE: VehicleState = {
     groundspeed: null,
     airspeed: null,
     climbRate: null,
+    throttle: null,
     vehicleKind: null,
     prearmPass: false,
     prearmReasons: [],
@@ -182,6 +184,7 @@ function fromSnapshot(snapshot: Snapshot): VehicleState {
         groundspeed: snapshot.groundspeed ?? null,
         airspeed: snapshot.airspeed ?? null,
         climbRate: snapshot.climbRate ?? null,
+        throttle: snapshot.throttle ?? null,
         vehicleKind: snapshot.vehicleKind,
         prearmPass: snapshot.prearmPass ?? false,
         // Merged in by `useVehicle` from `prearmReasonsStore`, which is fed by

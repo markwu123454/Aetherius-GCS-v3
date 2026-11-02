@@ -51,6 +51,8 @@ pub struct VehicleSnapshot {
     pub airspeed: Option<f32>,
     /// Meters/second, positive climbing.
     pub climb_rate: Option<f32>,
+    /// VFR_HUD's throttle output, 0-100 percent.
+    pub throttle: Option<u16>,
     pub home_lat: Option<f64>,
     pub home_lon: Option<f64>,
     /// Raw MAV_SYS_STATUS_SENSOR bitmasks, forwarded as-is — the frontend
@@ -128,6 +130,7 @@ pub fn apply(snapshot: &mut VehicleSnapshot, message: &MavMessage) {
             snapshot.groundspeed = Some(data.groundspeed);
             snapshot.airspeed = Some(data.airspeed);
             snapshot.climb_rate = Some(data.climb);
+            snapshot.throttle = Some(data.throttle);
         }
         MavMessage::GPS_RAW_INT(data) => {
             snapshot.gps_fix = Some(data.fix_type as u8);
@@ -172,9 +175,16 @@ pub fn apply(snapshot: &mut VehicleSnapshot, message: &MavMessage) {
             snapshot.sensors_present = Some(data.onboard_control_sensors_present.bits());
             snapshot.sensors_enabled = Some(data.onboard_control_sensors_enabled.bits());
             snapshot.sensors_health = Some(data.onboard_control_sensors_health.bits());
+            // ArduPilot only marks the prearm bit enabled while at least one
+            // arming check is (`ARMING_CHECK`/`ARMING_SKIPCHK`), and only ever
+            // sets it healthy inside that branch — so with every check skipped
+            // the health bit stays clear forever even though nothing stands
+            // in the way of arming. A bit that isn't enabled carries no
+            // health per MAVLink's own convention; read it as nothing failing.
+            let prearm = MavSysStatusSensor::MAV_SYS_STATUS_PREARM_CHECK;
             snapshot.prearm_pass = Some(
-                data.onboard_control_sensors_health
-                    .contains(MavSysStatusSensor::MAV_SYS_STATUS_PREARM_CHECK),
+                !data.onboard_control_sensors_enabled.contains(prearm)
+                    || data.onboard_control_sensors_health.contains(prearm),
             );
         }
         _ => {}

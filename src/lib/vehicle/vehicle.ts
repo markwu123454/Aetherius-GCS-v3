@@ -67,6 +67,8 @@ export interface VehicleState {
     airspeed: number | null;
     /** Meters/second, positive climbing. `null` until the first VFR_HUD arrives. */
     climbRate: number | null;
+    /** Throttle output, 0-100 percent. `null` until the first VFR_HUD arrives. */
+    throttle: number | null;
     /** `null` until the first HEARTBEAT arrives. */
     vehicleKind: VehicleKind | null;
     /**

@@ -1,6 +1,6 @@
 import {useRef} from "react";
 import {useTauriEvent} from "@/lib/tauriEvent.ts";
-import {logConsole} from "./consoleStore.ts";
+import {clearConsole, logConsole} from "./consoleStore.ts";
 import {levelFromSeverity, severityName} from "./console.ts";
 import type {ConnectionStatus} from "@/lib/vehicle/connection.ts";
 import {PREARM_TEXT_PREFIX, type VehicleState} from "@/lib/vehicle/vehicle.ts";
@@ -64,8 +64,12 @@ const LINK_TEXT: Record<ConnectionStatus, string> = {
  * Mounted once, in `App`. Subscribing per panel instead would double every line
  * when the console is open in two docks at once, and would lose everything said
  * while it was closed.
+ *
+ * `clearOnDisconnect` (`settings.clearConsoleOnDisconnect`) empties the log
+ * when the link reaches `disconnected` — the operator's own disconnect, not a
+ * `lost` link, whose lines are the record of what went wrong.
  */
-export function useConsoleEvents(): void {
+export function useConsoleEvents(clearOnDisconnect: boolean): void {
     useTauriEvent<StatusTextEvent>("statustext", (event) => {
         // `PreArm:` lines have their own dedicated panel now, refreshed every
         // few seconds by the backend's own periodic recheck — surfacing them
@@ -89,6 +93,10 @@ export function useConsoleEvents(): void {
     });
 
     useTauriEvent<ConnectionStatus>("link-status", (status) => {
+        if (status === "disconnected" && clearOnDisconnect) {
+            clearConsole();
+            return;
+        }
         logConsole(LINK_LEVEL[status] ?? "info", "link", LINK_TEXT[status] ?? `Link ${status}`);
     });
 

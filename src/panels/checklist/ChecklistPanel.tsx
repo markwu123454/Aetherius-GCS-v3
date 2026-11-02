@@ -23,46 +23,38 @@ function makeId(): string {
     return Math.random().toString(36).slice(2, 10);
 }
 
-const FIRST_TIME_SETUP: ChecklistFile = {
-    version: 1,
-    name: "First-Time Setup",
-    items: [
-        {id: "setup-01", text: "You're in Aetherius GCS — tick this off and keep this panel open", checked: false},
-        {id: "setup-02", text: "Plug flight controller into computer via USB", checked: false},
-        {id: "setup-03", text: "Flash ArduPilot — ☰ › Vehicle › Firmware, pick Copter, Plane or Rover", checked: false},
-        {id: "setup-04", text: "Connect to FC — click Connect (top right), pick your COM port", checked: false, autoCheck: {type: "connected"}, autoUncheck: {type: "disconnected"}},
-        {id: "setup-05", text: "Set frame class — ☰ › Vehicle › Setup › Frame — Quad, Hex, Octo…", checked: false},
-        {id: "setup-06", text: "Set frame geometry — same page — X, +, V, H…", checked: false},
-        {id: "setup-07", text: "Calibrate accelerometer — ☰ › Vehicle › Calibration › Accelerometer", checked: false},
-        {id: "setup-08", text: "Calibrate gyro — ☰ › Vehicle › Calibration › Gyro (just click Start)", checked: false},
-        {id: "setup-09", text: "Calibrate compass — ☰ › Vehicle › Calibration › Compass, rotate through all axes", checked: false},
-        {id: "setup-10", text: "Wire RC receiver to FC — CRSF, SBUS or PPM port (check your FC pinout)", checked: false},
-        {id: "setup-11", text: "Bind transmitter to receiver — follow your receiver manual", checked: false},
-        {id: "setup-12", text: "Calibrate radio — ☰ › Vehicle › Calibration › Radio, move all sticks and switches to limits", checked: false},
-        {id: "setup-13", text: "Set flight modes — ☰ › Vehicle › Parameters, search FLTMODE — set Stabilize, Loiter, RTL", checked: false},
-        {id: "setup-14", text: "Set RC failsafe — ☰ › Vehicle › Parameters, search FS_THR_ENABLE = 1", checked: false},
-        {id: "setup-15", text: "Set RTL altitude — ☰ › Vehicle › Parameters, RTL_ALT = 3000 (means 30 m)", checked: false},
-        {id: "setup-16", text: "REMOVE ALL PROPELLERS before the next step — every one", checked: false},
-        {id: "setup-17", text: "Test motors — ☰ › Vehicle › Setup › Motor Test, all spin without grinding", checked: false},
-        {id: "setup-18", text: "Motor directions correct — compare to frame diagram on your FC manufacturer's page", checked: false},
-        {id: "setup-19", text: "Wrong direction? Swap any 2 of the 3 wires between ESC and that motor", checked: false},
-        {id: "setup-20", text: "Install propellers — CW prop on CW motor, CCW on CCW (printed on the blade or hub)", checked: false},
-        {id: "setup-21", text: "First-time setup done — use a pre-flight checklist before every flight from now on", checked: false},
-    ],
-};
+/** The panel always has at least one checklist to show, so a fresh install
+ * starts on an empty one rather than any built-in list. */
+function emptyChecklist(): ChecklistFile {
+    return {version: 1, name: "New Checklist", items: []};
+}
+
+/** The built-in "First-Time Setup" list earlier versions seeded on first
+ * launch — matched by its stock name and `setup-NN` item ids so a list the
+ * operator made themselves is never caught by it. Dropped from saved state on
+ * load: it would otherwise survive in every install that ever opened this
+ * panel, and as the only list it couldn't even be deleted by hand. */
+function isRetiredSetupChecklist(checklist: ChecklistFile): boolean {
+    return (
+        checklist.name === "First-Time Setup" &&
+        checklist.items.length > 0 &&
+        checklist.items.every((item) => /^setup-\d{2}$/.test(item.id))
+    );
+}
 
 function loadState(): PersistedState {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) throw new Error("empty");
         const parsed = JSON.parse(raw) as PersistedState;
-        if (!Array.isArray(parsed.checklists) || parsed.checklists.length === 0) throw new Error("invalid");
-        return {
-            checklists: parsed.checklists,
-            activeIndex: Math.max(0, Math.min(parsed.activeIndex ?? 0, parsed.checklists.length - 1)),
-        };
+        if (!Array.isArray(parsed.checklists)) throw new Error("invalid");
+        const checklists = parsed.checklists.filter((checklist) => !isRetiredSetupChecklist(checklist));
+        if (checklists.length === 0) throw new Error("empty");
+        const active = parsed.checklists[parsed.activeIndex ?? 0];
+        const activeIndex = active ? checklists.indexOf(active) : -1;
+        return {checklists, activeIndex: Math.max(0, activeIndex)};
     } catch {
-        return {checklists: [FIRST_TIME_SETUP], activeIndex: 0};
+        return {checklists: [emptyChecklist()], activeIndex: 0};
     }
 }
 

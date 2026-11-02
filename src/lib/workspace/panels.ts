@@ -20,7 +20,21 @@ export interface PanelDefinition {
     openByDefault: boolean;
 }
 
+/** Order here is also each dock's tab order on a fresh install, the first
+ * open panel in a dock being the one shown. */
 export const PANEL_DEFINITIONS: PanelDefinition[] = [
+    {
+        id: "manual",
+        title: "Manual",
+        component: "manual",
+        dockLeft: true,
+        dockRight: true,
+        dockBottom: true,
+        // Same reasoning as telemetry — position-driven layout, no float.
+        floatable: false,
+        defaultDock: "bottom",
+        openByDefault: true,
+    },
     {
         id: "telemetry",
         title: "Telemetry",
@@ -34,18 +48,6 @@ export const PANEL_DEFINITIONS: PanelDefinition[] = [
         floatable: false,
         defaultDock: "bottom",
         openByDefault: true,
-    },
-    {
-        id: "manual",
-        title: "Manual",
-        component: "manual",
-        dockLeft: true,
-        dockRight: true,
-        dockBottom: true,
-        // Same reasoning as telemetry — position-driven layout, no float.
-        floatable: false,
-        defaultDock: "bottom",
-        openByDefault: false,
     },
     {
         id: "rc-override",
@@ -86,7 +88,7 @@ export const PANEL_DEFINITIONS: PanelDefinition[] = [
         dockBottom: true,
         floatable: true,
         defaultDock: "right",
-        openByDefault: false,
+        openByDefault: true,
     },
     {
         id: "mission",
@@ -107,8 +109,8 @@ export const PANEL_DEFINITIONS: PanelDefinition[] = [
         dockRight: true,
         dockBottom: true,
         floatable: false,
-        defaultDock: "bottom",
-        openByDefault: false,
+        defaultDock: "right",
+        openByDefault: true,
     },
     {
         id: "checklist",
@@ -119,7 +121,7 @@ export const PANEL_DEFINITIONS: PanelDefinition[] = [
         dockBottom: false,
         floatable: true,
         defaultDock: "right",
-        openByDefault: true,
+        openByDefault: false,
     },
 ];
 

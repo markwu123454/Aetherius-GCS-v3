@@ -114,6 +114,10 @@ export interface Settings {
      * they stop appending as separate lines and start folding into one with a
      * running `×N` count. */
     consoleCollapseThreshold: number;
+    /** Empty the console when the operator disconnects, so the next session
+     * starts on a clean log. Only a deliberate disconnect — a lost link keeps
+     * the lines that explain what happened. */
+    clearConsoleOnDisconnect: boolean;
     /** Compress the map marker icon along the vehicle's pitch and roll axes to
      * suggest attitude at a glance. Purely cosmetic. */
     markerTilt: boolean;
@@ -190,6 +194,7 @@ export const DEFAULT_SETTINGS: Settings = {
     mapRegionalLayers: DEFAULT_MAP_REGIONAL_LAYERS,
     airspace: DEFAULT_AIRSPACE_SETTINGS,
     consoleCollapseThreshold: MIN_CONSOLE_COLLAPSE_THRESHOLD,
+    clearConsoleOnDisconnect: false,
     markerTilt: false,
     telemetrySparklines: true,
     prearmCheckInterval: 3,

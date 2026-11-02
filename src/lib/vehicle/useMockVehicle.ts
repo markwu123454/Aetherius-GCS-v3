@@ -19,6 +19,7 @@ function initial(): VehicleState {
         groundspeed: 5.2,
         airspeed: null,
         climbRate: 0,
+        throttle: 0,
         vehicleKind: "multirotor",
         prearmPass: false,
         prearmReasons: INITIAL_REASONS.map((text) => ({text})),

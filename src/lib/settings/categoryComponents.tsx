@@ -606,6 +606,14 @@ function PanelsSettings({settings}: {settings: SettingsApi}) {
                     />
                     repeats
                 </label>
+                <label className="flex items-center gap-2 text-body text-text-secondary">
+                    <input
+                        type="checkbox"
+                        checked={settings.clearConsoleOnDisconnect}
+                        onChange={(event) => settings.set("clearConsoleOnDisconnect", event.target.checked)}
+                    />
+                    Clear on disconnect
+                </label>
             </section>
 
             <section className="flex flex-col gap-2 border-t border-border-subtle pt-6">

@@ -63,8 +63,9 @@ fn to_mavlink_address(endpoint: &str) -> String {
 /// GCS asks for more. `REQUEST_DATA_STREAM` used to be the way to ask, but
 /// it (and the stream-id enum it took) are deprecated in the MAVLink spec in
 /// favor of `MAV_CMD_SET_MESSAGE_INTERVAL` — one COMMAND_LONG per message
-/// type, naming the interval in microseconds. Sent once as soon as the
-/// vehicle's target IDs are known from its first HEARTBEAT. Only the
+/// type, naming the interval in microseconds. Sent as soon as the vehicle's
+/// target IDs are known from its first HEARTBEAT, and again whenever
+/// heartbeats resume after a silence (see `read_loop`). Only the
 /// messages that actually need to feel smooth are sped up — battery, GPS
 /// status and the rest stay at their own default rate, since asking for
 /// those at 20 Hz would just be discarded bandwidth.
@@ -94,8 +95,8 @@ fn request_data_streams(app: &AppHandle, target_system: u8, target_component: u8
 }
 
 /// ArduPilot doesn't push AUTOPILOT_VERSION on its own — it has to be asked
-/// for, same as the streams above. Sent once, right after the first
-/// HEARTBEAT; the reply is routed through `telemetry::apply` like any other
+/// for, same as the streams above. Sent alongside them, at the same points;
+/// the reply is routed through `telemetry::apply` like any other
 /// message and lands in the same `vehicle` event the frontend already reads.
 fn request_autopilot_version(app: &AppHandle, target_system: u8, target_component: u8) {
     let _ = commands::send_async(
@@ -367,7 +368,15 @@ fn read_loop(
 
                 if !foreign_heartbeat {
                     if matches!(message, MavMessage::HEARTBEAT(_)) {
-                        let first_heartbeat = last_heartbeat.is_none();
+                        // The first heartbeat on this link, or the first after
+                        // a silence long enough to have shown as `Losing`. The
+                        // link comes back from that on its own, but the vehicle
+                        // may have rebooted behind it (a power cycle over a
+                        // telemetry radio), which wipes every message interval
+                        // asked for — RC_CHANNELS, ATTITUDE and the rest drop
+                        // back to the port's defaults, often off entirely. So
+                        // both are treated as a fresh session and asked again.
+                        let session_start = last_heartbeat.is_none_or(|at| at.elapsed() > LOSING_AFTER);
                         last_heartbeat = Some(Instant::now());
                         state.last_heartbeat_ms.store(
                             SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
@@ -376,7 +385,7 @@ fn read_loop(
                         *state.target.lock().unwrap_or_else(|e| e.into_inner()) =
                             Some((header.system_id, header.component_id));
 
-                        if first_heartbeat {
+                        if session_start {
                             request_data_streams(&app, header.system_id, header.component_id, telem_interval_us);
                             request_autopilot_version(&app, header.system_id, header.component_id);
                         }

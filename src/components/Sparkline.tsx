@@ -12,6 +12,9 @@ type SparklineProps = {
      * of what happened.
      */
     tones: Tone[];
+    /** Draws `ok` and `neutral` segments in helper gray instead of their own
+     * color, so only a warn/danger stretch of the trace stands out. */
+    quiet?: boolean;
     /** Sizing classes only — color comes from `tones` per segment, not one
      * class for the whole line. */
     className?: string;
@@ -88,7 +91,7 @@ type SparklineProps = {
  * own.
  */
 export default function Sparkline(props: SparklineProps) {
-    const {values, tones, className} = props;
+    const {values, tones, quiet, className} = props;
 
     let lo: number, hi: number;
     if (props.autoScale) {
@@ -158,7 +161,7 @@ export default function Sparkline(props: SparklineProps) {
                         y1={prev.y}
                         x2={point.x}
                         y2={point.y}
-                        className={TONE_TEXT[tone]}
+                        className={quiet && (tone === "ok" || tone === "neutral") ? "text-text-helper" : TONE_TEXT[tone]}
                         stroke="currentColor"
                         strokeWidth={1.5}
                         strokeLinecap="round"

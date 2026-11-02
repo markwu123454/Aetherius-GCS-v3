@@ -59,7 +59,7 @@ function App() {
     // Subscribed once here rather than inside the panel: the console is closed
     // by default, and a log that only starts recording when you open it is
     // useless for explaining something that already happened.
-    useConsoleEvents();
+    useConsoleEvents(settings.clearConsoleOnDisconnect);
     // Applies whenever the setting changes, not just from the Settings page —
     // this is the one preference with a real-world side effect outside React.
     useApplyDisplayMode(settings.displayMode);
