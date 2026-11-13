@@ -54,13 +54,26 @@ export function cancelDownload(id: number): Promise<void> {
 export interface DownloadedLog {
     id: number;
     path: string;
+    /** File size in bytes. The vehicle reuses log numbers once logs are
+     * erased, so match a `LogEntry` on id and size (`savedLogKey`), not id
+     * alone. */
+    size: number;
+}
+
+/** Identifies one particular log for matching a vehicle's `LogEntry`
+ * against a `DownloadedLog`: the vehicle reuses ids once logs are erased,
+ * so the same id with a different size is a different flight. */
+export function savedLogKey(id: number, size: number): string {
+    return `${id}:${size}`;
 }
 
 /**
  * Scans the connected vehicle's own logs folder on disk (scoped by its
  * hardware UID — see `vehicle_profile.rs`) for logs already downloaded, so
  * a log saved in an earlier session still shows as saved rather than only
- * ones `downloadLog` personally ran this session.
+ * ones `downloadLog` personally ran this session. A reused log number
+ * gives more than one file for the same id (`00000042.bin`,
+ * `00000042-2.bin`, …).
  */
 export function listDownloadedLogs(): Promise<DownloadedLog[]> {
     requireBackend();

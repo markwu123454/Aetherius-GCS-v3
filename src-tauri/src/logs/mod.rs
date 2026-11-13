@@ -1,5 +1,7 @@
 use std::{
     collections::HashMap,
+    io,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -183,19 +185,69 @@ struct DownloadProgress {
 pub struct DownloadedLog {
     pub id: u16,
     pub path: String,
+    /// The file's size on disk. ArduPilot reuses log numbers once logs are
+    /// erased, so an id alone can't tell this file apart from a newer log
+    /// with the same number still on the vehicle; id and size together can.
+    pub size: u64,
+}
+
+/// The file name for the `copy`th distinct log saved under `id`:
+/// `00000042.bin` for the first, then `00000042-2.bin`, `00000042-3.bin`, …
+/// for later logs the vehicle gave the same number.
+fn log_file_name(id: u16, copy: u32) -> String {
+    if copy <= 1 {
+        format!("{id:08}.bin")
+    } else {
+        format!("{id:08}-{copy}.bin")
+    }
+}
+
+/// The log id in a name `log_file_name` produced, or `None` for anything
+/// else in the folder. Only `.bin` files count: `logs/analysis.rs`'s
+/// `save_analysis_state` writes a JSON sidecar into this same directory
+/// (older builds named it `<id>.json`), and a file whose stem parses as the
+/// same numeric id would otherwise be handed back as if it were the log.
+fn parse_log_file_name(name: &str) -> Option<u16> {
+    let stem = name.strip_suffix(".bin")?;
+    let id = match stem.split_once('-') {
+        Some((id, copy)) => {
+            copy.parse::<u32>().ok().filter(|&n| n >= 2)?;
+            id
+        }
+        None => stem,
+    };
+    id.parse::<u16>().ok()
+}
+
+/// Where to save a freshly downloaded log `id` in `dir` without overwriting
+/// a different log. ArduPilot reuses log numbers once logs are erased, so an
+/// `00000042.bin` already on disk may be an older flight than the log 42
+/// just downloaded. Tries each `log_file_name` in turn: a free name is used;
+/// a file with exactly these bytes is the same log downloaded again and is
+/// returned as already saved (`true`); any other file is left alone.
+fn save_path_for(dir: &Path, id: u16, bytes: &[u8]) -> io::Result<(PathBuf, bool)> {
+    let mut copy = 1;
+    loop {
+        let path = dir.join(log_file_name(id, copy));
+        match std::fs::metadata(&path) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok((path, false)),
+            Err(e) => return Err(e),
+            Ok(meta) => {
+                if meta.len() == bytes.len() as u64 && std::fs::read(&path)? == bytes {
+                    return Ok((path, true));
+                }
+            }
+        }
+        copy += 1;
+    }
 }
 
 /// Scans the connected vehicle's own `logs/` folder (see
 /// `vehicle_profile::vehicle_dir`) for files already downloaded, so the
 /// Logs page can show "already have this one" without needing to have
-/// downloaded it in the current session — `download_log`'s own
-/// `savedPaths` tracking only knows about downloads it personally ran.
-/// Only `.bin` files count: `logs/analysis.rs`'s `save_analysis_state`
-/// writes a JSON sidecar into this same directory (older builds named it
-/// `<id>.json`), and a file whose
-/// stem parses as the same numeric id would otherwise collide with it in
-/// the id-keyed map the frontend builds from this list, silently handing
-/// the sidecar's own path back as if it were the log itself.
+/// downloaded it in the current session. Each comes back with its size,
+/// since the id alone can match a different log the vehicle has since
+/// given the same number.
 #[tauri::command]
 pub fn list_downloaded_logs(app: AppHandle) -> Result<Vec<DownloadedLog>, String> {
     let dir = vehicle_profile::vehicle_dir(&app)?.join("logs");
@@ -206,13 +258,16 @@ pub fn list_downloaded_logs(app: AppHandle) -> Result<Vec<DownloadedLog>, String
     for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
-        if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("bin") {
-            continue;
-        }
-        let Some(id) = path.file_stem().and_then(|s| s.to_str()).and_then(|s| s.parse::<u16>().ok()) else {
+        let Ok(meta) = entry.metadata() else {
             continue;
         };
-        out.push(DownloadedLog { id, path: path.to_string_lossy().to_string() });
+        if !meta.is_file() {
+            continue;
+        }
+        let Some(id) = path.file_name().and_then(|s| s.to_str()).and_then(parse_log_file_name) else {
+            continue;
+        };
+        out.push(DownloadedLog { id, path: path.to_string_lossy().to_string(), size: meta.len() });
     }
     Ok(out)
 }
@@ -234,7 +289,10 @@ fn is_cancelled(app: &AppHandle, id: u16) -> bool {
 /// `$APPDATA/<vehicle>/logs/<id>.bin` — `<vehicle>` is the connected
 /// board's own hardware UID (see `vehicle_profile.rs`), or `unknown` if it
 /// hasn't reported one, so two different aircraft's log `#21`s can't
-/// overwrite each other. Returns the saved path. `size` comes from the
+/// overwrite each other. A different log already saved under the same id
+/// (the vehicle reuses numbers once logs are erased) is never overwritten:
+/// the new one gets the next free name from `save_path_for`, and the same
+/// log downloaded again isn't written twice. Returns the saved path. `size` comes from the
 /// caller's own `LogEntry` (from `list_logs`) — read `LOG_CHUNK_BYTES` at a
 /// time sequentially, one `LOG_REQUEST_DATA`/`LOG_DATA` round trip per
 /// chunk, retrying a chunk up to `LOG_CHUNK_MAX_RETRIES` times before
@@ -262,8 +320,10 @@ pub async fn download_log(app: AppHandle, id: u16, size: u32) -> Result<String, 
 
     let dir = vehicle_profile::vehicle_dir(&app)?.join("logs");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let path = dir.join(format!("{id:08}.bin"));
-    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    let (path, already_saved) = save_path_for(&dir, id, &bytes).map_err(|e| e.to_string())?;
+    if !already_saved {
+        std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    }
     Ok(path.to_string_lossy().to_string())
 }
 
@@ -337,4 +397,80 @@ async fn fetch_chunk(
         }
     }
     Err(format!("timed out reading log {id} at offset {ofs}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A fresh, empty directory for one test, removed when the guard drops.
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!("aetherius-logs-{}-{name}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            TempDir(dir)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn save(dir: &Path, id: u16, bytes: &[u8]) -> (String, bool) {
+        let (path, already_saved) = save_path_for(dir, id, bytes).unwrap();
+        if !already_saved {
+            std::fs::write(&path, bytes).unwrap();
+        }
+        (path.file_name().unwrap().to_string_lossy().to_string(), already_saved)
+    }
+
+    #[test]
+    fn file_names_round_trip() {
+        assert_eq!(log_file_name(42, 1), "00000042.bin");
+        assert_eq!(log_file_name(42, 3), "00000042-3.bin");
+        assert_eq!(parse_log_file_name("00000042.bin"), Some(42));
+        assert_eq!(parse_log_file_name("00000042-3.bin"), Some(42));
+        assert_eq!(parse_log_file_name("42.bin"), Some(42));
+    }
+
+    #[test]
+    fn other_files_in_the_folder_are_ignored() {
+        assert_eq!(parse_log_file_name("00000042.bin.analysis.json"), None);
+        assert_eq!(parse_log_file_name("00000042.json"), None);
+        assert_eq!(parse_log_file_name("00000042-1.bin"), None);
+        assert_eq!(parse_log_file_name("00000042-x.bin"), None);
+        assert_eq!(parse_log_file_name("flight.bin"), None);
+    }
+
+    #[test]
+    fn a_reused_log_number_gets_its_own_file() {
+        let dir = TempDir::new("reused");
+        assert_eq!(save(&dir.0, 42, b"first flight"), ("00000042.bin".into(), false));
+        assert_eq!(save(&dir.0, 42, b"second flight, longer"), ("00000042-2.bin".into(), false));
+        assert_eq!(save(&dir.0, 42, b"third flight"), ("00000042-3.bin".into(), false));
+        assert_eq!(std::fs::read(dir.0.join("00000042.bin")).unwrap(), b"first flight");
+        assert_eq!(std::fs::read(dir.0.join("00000042-2.bin")).unwrap(), b"second flight, longer");
+    }
+
+    #[test]
+    fn same_size_but_different_bytes_is_a_different_log() {
+        let dir = TempDir::new("same-size");
+        save(&dir.0, 7, b"aaaa");
+        assert_eq!(save(&dir.0, 7, b"bbbb"), ("00000007-2.bin".into(), false));
+    }
+
+    #[test]
+    fn downloading_the_same_log_again_reuses_its_file() {
+        let dir = TempDir::new("again");
+        save(&dir.0, 42, b"first flight");
+        save(&dir.0, 42, b"second flight");
+        assert_eq!(save(&dir.0, 42, b"second flight"), ("00000042-2.bin".into(), true));
+        assert_eq!(save(&dir.0, 42, b"first flight"), ("00000042.bin".into(), true));
+        assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), 2);
+    }
 }

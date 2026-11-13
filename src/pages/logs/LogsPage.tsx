@@ -2,7 +2,7 @@ import {useEffect, useState} from "react";
 import {open as openDialog} from "@tauri-apps/plugin-dialog";
 import {useConnection} from "@/lib/vehicle/useConnection.ts";
 import {useLogs, DownloadProgress} from "@/lib/logs/useLogs.ts";
-import {LogEntry} from "@/lib/logs/logs.ts";
+import {LogEntry, savedLogKey} from "@/lib/logs/logs.ts";
 
 function formatSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
@@ -211,7 +211,7 @@ export default function LogsPage({onAnalyze}: LogsPageProps) {
                             entry={entry}
                             downloading={logs.downloadingId === entry.id}
                             progress={logs.downloadingId === entry.id ? logs.progress : null}
-                            savedPath={logs.savedPaths.get(entry.id)}
+                            savedPath={logs.savedPaths.get(savedLogKey(entry.id, entry.size))}
                             onDownload={() => void logs.download(entry)}
                             onCancel={logs.cancel}
                             onAnalyze={onAnalyze}

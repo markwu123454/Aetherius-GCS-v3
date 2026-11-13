@@ -7,6 +7,7 @@ import {
     listDownloadedLogs,
     listLogs,
     LogEntry,
+    savedLogKey,
 } from "./logs.ts";
 
 /** The raw event shape the backend emits — just the byte counts. Rate and
@@ -35,7 +36,8 @@ interface LogsState {
     downloadingId: number | null;
     progress: DownloadProgress | null;
     downloadError: string | null;
-    savedPaths: Map<number, string>;
+    /** Local paths of downloaded logs, keyed by `savedLogKey(id, size)`. */
+    savedPaths: Map<string, string>;
 }
 
 function message(error: unknown): string {
@@ -91,16 +93,16 @@ listen<RawProgress>("log-download-progress", (event) => {
  * already on disk for this vehicle (`listDownloadedLogs`, scoped by the
  * connected board's own hardware UID), so a log downloaded in an earlier
  * session — or before the app was last restarted — still shows as saved.
+ * The disk listing replaces what was known before rather than adding to
+ * it: every download is on disk already, and a previous vehicle's entries
+ * mustn't linger.
  */
 export async function refreshLogs(): Promise<void> {
     store.update((s) => ({...s, listing: true, listError: null}));
     try {
         const [entries, downloaded] = await Promise.all([listLogs(), listDownloadedLogs()]);
-        store.update((s) => {
-            const savedPaths = new Map(s.savedPaths);
-            for (const d of downloaded) savedPaths.set(d.id, d.path);
-            return {...s, entries, savedPaths};
-        });
+        const savedPaths = new Map(downloaded.map((d) => [savedLogKey(d.id, d.size), d.path]));
+        store.update((s) => ({...s, entries, savedPaths}));
     } catch (err) {
         store.update((s) => ({...s, listError: message(err)}));
     } finally {
@@ -126,7 +128,10 @@ export async function downloadLog(entry: LogEntry): Promise<void> {
     }));
     try {
         const path = await downloadLogCommand(entry.id, entry.size);
-        store.update((s) => ({...s, savedPaths: new Map(s.savedPaths).set(entry.id, path)}));
+        store.update((s) => ({
+            ...s,
+            savedPaths: new Map(s.savedPaths).set(savedLogKey(entry.id, entry.size), path),
+        }));
     } catch (err) {
         // A user-initiated cancel isn't a failure — leave it quiet rather
         // than showing it as an error.
