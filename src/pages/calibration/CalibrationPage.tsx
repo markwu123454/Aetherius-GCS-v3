@@ -3,12 +3,15 @@ import {useConnection} from "@/lib/vehicle/useConnection.ts";
 import {useVehicle} from "@/lib/vehicle/useVehicle.ts";
 import {useLiveParams} from "@/lib/params/useLiveParams.ts";
 import {LiveParamEntry} from "@/lib/params/liveParams.ts";
-import {VehicleKind} from "@/lib/vehicle/vehicle.ts";
 import {paramDefaultStatus} from "@/lib/calibration/paramDefaultStatus.ts";
 import RadioCalibrationPanel from "./RadioCalibrationPanel.tsx";
 import AccelCalibrationPanel from "./AccelCalibrationPanel.tsx";
 import GyroCalibrationPanel from "./GyroCalibrationPanel.tsx";
 import CompassCalibrationPanel from "./CompassCalibrationPanel.tsx";
+import LevelHorizonCalibrationPanel from "./LevelHorizonCalibrationPanel.tsx";
+import EscCalibrationPanel, {escCalibrationNotNeeded} from "./EscCalibrationPanel.tsx";
+import {VehicleKind} from "@/lib/vehicle/vehicle.ts";
+import {escCalibrationInProgress, useEscCalibration} from "@/lib/calibration/escCalibration.ts";
 
 type CalibrationStatus = "complete" | "incomplete" | "not-needed" | "unknown";
 
@@ -16,10 +19,6 @@ interface CalibrationItem {
     id: string;
     label: string;
     status: CalibrationStatus;
-    /** Shown in the detail pane when the status can't speak for itself —
-     * either nothing here computes it, or it's gated on something worth
-     * explaining. */
-    note?: string;
 }
 
 const STATUS_LABEL: Record<CalibrationStatus, string> = {
@@ -27,13 +26,6 @@ const STATUS_LABEL: Record<CalibrationStatus, string> = {
     incomplete: "Needs calibration",
     "not-needed": "Not needed",
     unknown: "Unknown",
-};
-
-const STATUS_TONE: Record<CalibrationStatus, string> = {
-    complete: "text-state-ok",
-    incomplete: "text-state-danger",
-    "not-needed": "text-text-helper",
-    unknown: "text-text-helper",
 };
 
 /** QGroundControl's own convention: green dot = complete, red dot =
@@ -106,24 +98,6 @@ function levelHorizonStatus(live: Map<string, LiveParamEntry>): CalibrationStatu
 }
 
 /**
- * Motor interference compensation: COMPASS_MOTCT selects the mode
- * (0 = disabled, 1 = throttle-based, 2 = current-based).
- * Disabled → genuinely optional, most setups with an external compass skip it.
- * Enabled → check COMPASS_MOT_X/Y/Z for a non-zero compensation vector;
- * all-zero means the procedure hasn't been run yet.
- */
-function compassMotStatus(live: Map<string, LiveParamEntry>): CalibrationStatus {
-    const motct = paramValue(live, "COMPASS_MOTCT");
-    if (motct === undefined) return "unknown";
-    if (motct === 0) return "not-needed";
-    const x = paramValue(live, "COMPASS_MOT_X");
-    const y = paramValue(live, "COMPASS_MOT_Y");
-    const z = paramValue(live, "COMPASS_MOT_Z");
-    if (x === undefined || y === undefined || z === undefined) return "unknown";
-    return x !== 0 || y !== 0 || z !== 0 ? "complete" : "incomplete";
-}
-
-/**
  * One compass instance (1-3), the same rule QGroundControl uses
  * (`APMSensorsComponent::compassSetupNeeded`): a `DEV_ID` of 0 means the
  * slot has no compass fitted at all; a `USE` of 0 means one is fitted but
@@ -149,16 +123,11 @@ function compassStatus(
     return {fitted: true, status: offsets.every((value) => value === 0) ? "incomplete" : "complete"};
 }
 
-const NOT_AUTO_DETECTED =
-    "Not automatically detected yet — ArduPilot's own prearm check will flag this before arming if it isn't done.";
-
 /**
  * Every calibration this page could offer, for the connected vehicle's own
- * type. Sensor calibration only — Frame setup, Servo output, and anything
- * else that's a plain parameter form rather than a calibration procedure
- * lives on the Setup page instead (see `SetupPage`). ESC calibration and
- * motor testing are bench/system tests, not sensor corrections, and belong
- * on a future page of their own.
+ * type. Frame setup, Servo output, and anything else that's a plain
+ * parameter form rather than a calibration procedure lives on the Setup page
+ * instead (see `SetupPage`), as does motor testing.
  */
 function buildItems(vehicleKind: VehicleKind | null, live: Map<string, LiveParamEntry>): CalibrationItem[] {
     const items: CalibrationItem[] = [];
@@ -176,20 +145,13 @@ function buildItems(vehicleKind: VehicleKind | null, live: Map<string, LiveParam
             // every boot, so a valid calibration is always present. Manual
             // calibration is only needed if the vehicle was disturbed at power-up.
             status: "complete",
-            note: "Recalibrates automatically on every boot — run manually only if the vehicle was disturbed while powering up.",
         },
     );
 
-    const lvlStatus = levelHorizonStatus(live);
     items.push({
         id: "levelHorizon",
         label: "Level Horizon",
-        status: lvlStatus,
-        // Zero AHRS_TRIM_X/Y is valid for a perfectly-level board, so we can't
-        // tell "never run" from "run and result was zero" — be honest about it.
-        note: lvlStatus === "unknown"
-            ? "Cannot be auto-detected — a zero trim is also the correct result for a perfectly-level board. Run this if the vehicle drifts or tilts when it should be flying level."
-            : undefined,
+        status: levelHorizonStatus(live),
     });
 
     for (const instance of [1, 2, 3] as const) {
@@ -205,34 +167,23 @@ function buildItems(vehicleKind: VehicleKind | null, live: Map<string, LiveParam
         });
     }
 
-    items.push(
-        {
-            id: "pressure",
-            label: "Pressure",
-            // Same story as gyro: auto-calibrates on boot, manual trigger rarely needed.
-            status: "not-needed",
-            note: "Run manually if the altitude estimate is significantly wrong immediately after boot.",
-        },
-        {
-            id: "radio",
-            label: "Radio",
-            status: radioStatus(live),
-        },
-        {
-            id: "compassMot",
-            label: "Motor Interference",
-            status: compassMotStatus(live),
-            note: "Optional — most useful for vehicles with an internal compass near the power wiring.",
-        },
-    );
+    // Pressure, motor interference (CompassMot) and airspeed calibration are
+    // left out until each has a working panel — a listed calibration with a
+    // dead button reads as broken.
+    items.push({
+        id: "radio",
+        label: "Radio",
+        status: radioStatus(live),
+    });
 
-    if (vehicleKind === "plane") {
-        const arspdType = paramValue(live, "ARSPD_TYPE");
+    // ArduCopter only: Plane has no ESC calibration of its own, and heli
+    // builds compile it out — the parameter existing is the real test.
+    if (vehicleKind === "multirotor" && live.has("ESC_CALIBRATION")) {
         items.push({
-            id: "airspeed",
-            label: "Airspeed Sensor",
-            status: arspdType === undefined ? "unknown" : arspdType === 0 ? "not-needed" : "unknown",
-            note: arspdType ? NOT_AUTO_DETECTED : undefined,
+            id: "esc",
+            label: "ESC",
+            // ArduPilot keeps no record of a completed ESC calibration.
+            status: escCalibrationNotNeeded(paramValue(live, "MOT_PWM_TYPE")) ? "not-needed" : "unknown",
         });
     }
 
@@ -264,38 +215,11 @@ function SidebarRow({item, active, onSelect}: {item: CalibrationItem; active: bo
     );
 }
 
-function DetailPane({item}: {item: CalibrationItem}) {
-    return (
-        <div className="flex max-w-lg flex-col gap-4">
-            <h2 className="text-heading text-text-primary">{item.label}</h2>
-
-            <div className="flex items-center gap-2">
-                <span className="text-label text-text-helper">Status</span>
-                <span className={`text-label ${STATUS_TONE[item.status]}`}>{STATUS_LABEL[item.status]}</span>
-            </div>
-
-            {item.note && <p className="text-label text-text-helper">{item.note}</p>}
-
-            <button
-                type="button"
-                disabled
-                title="Not implemented yet"
-                className="h-control-sm w-fit border border-border-subtle px-3 text-label text-text-disabled"
-            >
-                Calibrate
-            </button>
-        </div>
-    );
-}
-
 /**
- * Sensor calibration only — accelerometer, gyroscope, compass, radio,
- * airspeed — see `buildItems`. Accelerometer/compass status mirrors
+ * Accelerometer, gyroscope, level horizon, compass, radio and ESC — see
+ * `buildItems`. Accelerometer/compass status mirrors
  * QGroundControl's own ArduPilot detection, read from the same live
- * parameter map the Parameters page uses. Every `DetailPane` "Calibrate"
- * button is disabled: running an actual calibration routine needs backend
- * command support that doesn't exist yet for that sensor, and a button that
- * looks live but does nothing is worse than an honestly disabled one.
+ * parameter map the Parameters page uses.
  */
 export default function CalibrationPage() {
     const connection = useConnection();
@@ -304,6 +228,8 @@ export default function CalibrationPage() {
     const live = useLiveParams();
 
     const items = useMemo(() => buildItems(vehicle.vehicleKind, live.values), [vehicle.vehicleKind, live.values]);
+    const esc = useEscCalibration();
+    const escActive = escCalibrationInProgress(esc);
 
     const [selectedId, setSelectedId] = useState<string | null>(null);
     useEffect(() => {
@@ -311,12 +237,33 @@ export default function CalibrationPage() {
         // item; a selection that's no longer in the list — e.g. a compass
         // that stopped reporting — falls back the same way rather than
         // pointing at nothing.
-        if (!items.some((item) => item.id === selectedId)) {
+        if (escActive && selectedId !== "esc" && items.some((item) => item.id === "esc")) {
+            setSelectedId("esc");
+        } else if (!items.some((item) => item.id === selectedId)) {
             setSelectedId(items[0]?.id ?? null);
         }
-    }, [items, selectedId]);
+        // Only re-run on the guide starting, not on every selection change —
+        // otherwise picking another item mid-calibration would snap back.
+    }, [items, escActive]);
+
+    const escPanel = (
+        <EscCalibrationPanel
+            live={live.values}
+            connected={connected}
+            linkLost={connection.status === "lost"}
+            armed={vehicle.armed}
+            radioCalibrated={radioStatus(live.values) === "unknown" ? null : radioStatus(live.values) === "complete"}
+            paramsTotal={live.total}
+            onSet={live.setParam}
+        />
+    );
 
     if (!connected) {
+        // ESC calibration takes the link down on purpose, more than once —
+        // keep the guide on screen rather than "No vehicle connected".
+        if (escActive) {
+            return <div className="h-full w-full overflow-auto p-6">{escPanel}</div>;
+        }
         return (
             <div className="flex h-full w-full items-center justify-center text-label text-text-helper">
                 No vehicle connected
@@ -348,9 +295,11 @@ export default function CalibrationPage() {
                         <GyroCalibrationPanel/>
                     ) : selected.id.startsWith("compass-") ? (
                         <CompassCalibrationPanel live={live.values}/>
-                    ) : (
-                        <DetailPane item={selected}/>
-                    ))}
+                    ) : selected.id === "esc" ? (
+                        escPanel
+                    ) : selected.id === "levelHorizon" ? (
+                        <LevelHorizonCalibrationPanel live={live.values} vehicleKind={vehicle.vehicleKind}/>
+                    ) : null)}
             </div>
         </div>
     );

@@ -1,6 +1,11 @@
-import {ReactElement, useEffect, useState} from "react";
+import {ReactElement, useEffect, useState, useSyncExternalStore} from "react";
+import {revealItemInDir} from "@tauri-apps/plugin-opener";
+import {cliHistoryDir, cliStore} from "@/lib/cli/cli.ts";
 import {
     AutoZoomMode,
+    CLI_HISTORY_OPTIONS,
+    CliPermissions,
+    CliPolicy,
     DisplayMode,
     MapBaseLayer,
     MapCacheMode,
@@ -668,11 +673,143 @@ function FlightSettings({settings}: {settings: SettingsApi}) {
     );
 }
 
+const CLI_POLICIES: {value: CliPolicy; label: string}[] = [
+    {value: "allow", label: "Allow"},
+    {value: "ask", label: "Ask"},
+    {value: "block", label: "Block"},
+];
+
+const CLI_PERMISSION_ROWS: {key: keyof CliPermissions; label: string}[] = [
+    {key: "reads", label: "Reads"},
+    {key: "logs", label: "Log files"},
+    {key: "params", label: "Parameter writes"},
+    {key: "scripts", label: "Script writes"},
+    {key: "reboot", label: "Reboot"},
+];
+
+function PolicySwitcher({label, value, onChange}: {label: string; value: CliPolicy; onChange: (value: CliPolicy) => void}) {
+    return (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <span className="w-44 text-body text-text-secondary">{label}</span>
+            <div role="group" aria-label={label} className="flex">
+                {CLI_POLICIES.map((policy) => {
+                    const selected = value === policy.value;
+                    return (
+                        <button
+                            key={policy.value}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => onChange(policy.value)}
+                            className={[
+                                "-ml-px h-control-sm min-w-[72px] border border-border-strong px-4 text-body first:ml-0",
+                                selected
+                                    ? "bg-text-primary text-background"
+                                    : "text-text-secondary hover:bg-layer-hover-01 hover:text-text-primary",
+                            ].join(" ")}
+                        >
+                            {policy.label}
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function CliSettings({settings}: {settings: SettingsApi}) {
+    const status = useSyncExternalStore(cliStore.subscribe, cliStore.getSnapshot).status;
+    const [folder, setFolder] = useState<string | null>(null);
+    useEffect(() => {
+        cliHistoryDir().then(setFolder).catch(() => {});
+    }, []);
+    const setPermission = (key: keyof CliPermissions, value: CliPolicy) =>
+        settings.set("cliPermissions", {...settings.cliPermissions, [key]: value});
+
+    return (
+        <div className="flex flex-col gap-8">
+            <section className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <span id="cli-access-label" className="w-44 text-body text-text-secondary">CLI access</span>
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={settings.cliEnabled}
+                        aria-labelledby="cli-access-label"
+                        onClick={() => settings.set("cliEnabled", !settings.cliEnabled)}
+                        className={[
+                            "relative h-6 w-12 shrink-0",
+                            settings.cliEnabled ? "bg-blue-60" : "bg-gray-60",
+                        ].join(" ")}
+                    >
+                        <span
+                            aria-hidden="true"
+                            className={[
+                                "absolute top-[3px] h-[18px] w-[18px] bg-text-primary transition-[left] duration-100",
+                                settings.cliEnabled ? "left-[27px]" : "left-[3px]",
+                            ].join(" ")}
+                        />
+                    </button>
+                    <span className="text-body text-text-primary">{settings.cliEnabled ? "On" : "Off"}</span>
+                </div>
+                {status.error && <span className="text-label text-state-danger">{status.error}</span>}
+            </section>
+
+            <section className="flex flex-col gap-3 border-t border-border-subtle pt-6">
+                <h2 className="text-heading text-text-primary">Permissions</h2>
+                {CLI_PERMISSION_ROWS.map((row) => (
+                    <PolicySwitcher
+                        key={row.key}
+                        label={row.label}
+                        value={settings.cliPermissions[row.key]}
+                        onChange={(value) => setPermission(row.key, value)}
+                    />
+                ))}
+                <div className="h-px bg-border-subtle-base"/>
+                <PolicySwitcher
+                    label="While armed"
+                    value={settings.cliPermissions.whileArmed}
+                    onChange={(value) => setPermission("whileArmed", value)}
+                />
+            </section>
+
+            <section className="flex flex-col gap-3 border-t border-border-subtle pt-6">
+                <h2 className="text-heading text-text-primary">History</h2>
+                <label className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <span className="w-44 text-body text-text-secondary">Keep</span>
+                    <select
+                        value={settings.cliHistoryDays}
+                        onChange={(event) => settings.set("cliHistoryDays", Number(event.target.value))}
+                        className="h-control-sm border-b border-border-strong bg-layer-01 px-3 text-body text-text-primary"
+                    >
+                        {CLI_HISTORY_OPTIONS.map((days) => (
+                            <option key={days} value={days}>{days === 0 ? "Forever" : `${days} days`}</option>
+                        ))}
+                    </select>
+                </label>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <span className="w-44 text-body text-text-secondary">Folder</span>
+                    <span className="min-w-0 font-mono text-label break-all text-text-primary">{folder ?? "—"}</span>
+                    {folder && (
+                        <button
+                            type="button"
+                            onClick={() => void revealItemInDir(folder)}
+                            className="h-control-sm px-2 text-label text-blue-40 hover:bg-background-hover"
+                        >
+                            Open
+                        </button>
+                    )}
+                </div>
+            </section>
+        </div>
+    );
+}
+
 const CATEGORY_COMPONENTS: Record<string, SettingsCategoryComponent> = {
     connection: ConnectionSettings,
     flight: FlightSettings,
     display: DisplaySettings,
     panels: PanelsSettings,
+    cli: CliSettings,
 };
 
 export function SettingsCategoryBody({id, settings}: {id: string; settings: SettingsApi}) {

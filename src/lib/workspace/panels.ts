@@ -113,6 +113,18 @@ export const PANEL_DEFINITIONS: PanelDefinition[] = [
         openByDefault: true,
     },
     {
+        id: "cli",
+        title: "CLI",
+        component: "cli",
+        // Sizes off its own container like the console, so any dock works.
+        dockLeft: true,
+        dockRight: true,
+        dockBottom: true,
+        floatable: true,
+        defaultDock: "right",
+        openByDefault: false,
+    },
+    {
         id: "checklist",
         title: "Checklist",
         component: "checklist",

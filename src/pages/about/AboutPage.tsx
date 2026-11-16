@@ -3,6 +3,7 @@ import {useEffect, useState} from "react";
 import {getVersion} from "@tauri-apps/api/app";
 import {LogoGithub} from "@carbon/icons-react";
 import {UpdateCheck} from "@/lib/update/useUpdateCheck.ts";
+import Logo from "@/components/Logo.tsx";
 
 const REPO_URL = "https://github.com/markwu123454/Aetherius-GCS-v3";
 
@@ -113,7 +114,13 @@ export default function AboutPage({update}: AboutPageProps) {
         <div className="min-h-0 flex-1 overflow-auto p-6">
             <div className="flex max-w-2xl flex-col gap-8">
                 <section className="flex flex-col gap-2">
-                    <h2 className="text-heading text-text-primary">Aetherius GCS</h2>
+                    <div className="mb-2 flex items-center gap-4 text-text-primary">
+                        <Logo size={40}/>
+                        <h2 className="text-[1.25rem] leading-7 tracking-[0.12em]">
+                            <span className="font-semibold">AETHERIUS</span>{" "}
+                            <span className="font-normal">GCS</span>
+                        </h2>
+                    </div>
                     <p className="text-body text-text-secondary">
                         {version ? `Version ${version}` : "Version unknown"}
                     </p>
@@ -225,6 +232,23 @@ export default function AboutPage({update}: AboutPageProps) {
                         , licensed{" "}
                         <a
                             href="http://creativecommons.org/licenses/by/4.0/"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline"
+                        >
+                            CC BY 4.0
+                        </a>
+                        .
+                    </p>
+
+                    <p className="text-label text-text-helper">
+                        3D model:{" "}
+                        <a href="https://www.cadcrowd.com/3d-models/rc-drone" target="_blank" rel="noreferrer" className="underline">
+                            "RC Drone"
+                        </a>{" "}
+                        by rukshans, licensed{" "}
+                        <a
+                            href="https://creativecommons.org/licenses/by/4.0/"
                             target="_blank"
                             rel="noreferrer"
                             className="underline"

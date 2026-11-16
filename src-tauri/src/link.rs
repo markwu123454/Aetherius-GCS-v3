@@ -322,6 +322,20 @@ fn is_vehicle_heartbeat(data: &HEARTBEAT_DATA) -> bool {
 /// Read messages until asked to stop. Emission is throttled because SITL sends
 /// roughly fifty messages a second and the UI cannot use that rate — it would
 /// just be re-rendering faster than a human can read.
+/// How far the vehicle's boot clock must step back before it counts as a
+/// reboot rather than messages arriving slightly out of order.
+const REBOOT_CLOCK_SLACK_MS: u32 = 1_000;
+
+/// `time_boot_ms` from the routinely streamed messages that carry it.
+fn boot_time_ms(message: &MavMessage) -> Option<u32> {
+    match message {
+        MavMessage::ATTITUDE(data) => Some(data.time_boot_ms),
+        MavMessage::GLOBAL_POSITION_INT(data) => Some(data.time_boot_ms),
+        MavMessage::SYSTEM_TIME(data) => Some(data.time_boot_ms),
+        _ => None,
+    }
+}
+
 fn read_loop(
     app: AppHandle,
     connection: Arc<dyn MavConnection<MavMessage> + Send + Sync>,
@@ -330,6 +344,11 @@ fn read_loop(
 ) {
     let mut last_emit = Instant::now();
     let mut last_heartbeat: Option<Instant> = None;
+    // The vehicle's own boot clock, from the last message that carried one —
+    // see `boot_time_ms`. Per read loop on purpose: an app-initiated reboot
+    // reopens the link (`reboot_reconnect_loop`) and starts a fresh loop, and
+    // the frontend already reloads on that reconnect.
+    let mut last_boot_ms: Option<u32> = None;
     // Tracks the previous `prearm_pass` value so we can detect the passing →
     // failing edge and fire an immediate check without waiting for the periodic
     // poll loop. Initialised to `None` (unknown) so the very first `false`
@@ -389,6 +408,21 @@ fn read_loop(
                             request_data_streams(&app, header.system_id, header.component_id, telem_interval_us);
                             request_autopilot_version(&app, header.system_id, header.component_id);
                         }
+                    }
+
+                    // A power cycle behind a link that stays open (a telemetry
+                    // radio) only shows as Losing → Connected, the same as a
+                    // radio dropout. The boot clock going backwards is what
+                    // tells them apart — the frontend reloads parameters on it,
+                    // which a dropout must not trigger (it would restart any
+                    // dump in progress).
+                    let from_vehicle = *state.target.lock().unwrap_or_else(|e| e.into_inner())
+                        == Some((header.system_id, header.component_id));
+                    if let (true, Some(boot_ms)) = (from_vehicle, boot_time_ms(&message)) {
+                        if last_boot_ms.is_some_and(|prev| boot_ms.saturating_add(REBOOT_CLOCK_SLACK_MS) < prev) {
+                            let _ = app.emit("vehicle-rebooted", ());
+                        }
+                        last_boot_ms = Some(boot_ms);
                     }
 
                     let mut snapshot = state.snapshot.lock().unwrap_or_else(|e| e.into_inner());

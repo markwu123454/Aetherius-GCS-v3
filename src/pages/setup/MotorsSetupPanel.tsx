@@ -34,7 +34,7 @@ interface MotorsSetupPanelProps {
 }
 
 /** Everything a row needs to read, write and describe a param. */
-interface ParamContext {
+export interface ParamContext {
     live: Map<string, LiveParamEntry>;
     onSet: (name: string, value: number) => Promise<number>;
     defs: Map<string, ParamDef>;
@@ -60,7 +60,7 @@ function decimalsFor(def: ParamDef | undefined, fallback: number): number {
     return Math.min(4, Math.max(0, -Math.floor(Math.log10(def.increment) + 1e-9)));
 }
 
-function useParamWrite(ctx: ParamContext) {
+export function useParamWrite(ctx: ParamContext) {
     const [pending, setPending] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [ok, setOk] = useState(false);
@@ -89,7 +89,7 @@ function useParamWrite(ctx: ParamContext) {
     return {pending, error, ok, write};
 }
 
-interface RowSpec {
+export interface RowSpec {
     name: string;
     label: string;
     /** Used when the param sheet gives no increment to infer it from. */
@@ -100,7 +100,7 @@ interface RowSpec {
 
 /** One param as a select (when pdef names its values) or a number input,
  * committed on change / blur. */
-function ParamRow({ctx, spec}: {ctx: ParamContext; spec: RowSpec}) {
+export function ParamRow({ctx, spec}: {ctx: ParamContext; spec: RowSpec}) {
     const entry = ctx.live.get(spec.name);
     const def = ctx.defs.get(spec.name);
     const decimals = decimalsFor(def, spec.decimals ?? 2);
@@ -183,7 +183,7 @@ function ParamRow({ctx, spec}: {ctx: ParamContext; spec: RowSpec}) {
     );
 }
 
-function ParamSection({ctx, title, rows}: {ctx: ParamContext; title: string; rows: RowSpec[]}) {
+export function ParamSection({ctx, title, rows}: {ctx: ParamContext; title: string; rows: RowSpec[]}) {
     const present = rows.filter((row) => ctx.live.has(row.name));
     if (present.length === 0) return null;
     return (

@@ -229,8 +229,31 @@ fn complete_dump(app: AppHandle, epoch: u64) {
     }
 }
 
+/// Every cached value as `(name, value, type name)`, for the CLI.
+pub(crate) fn cached_values(app: &AppHandle) -> Vec<(String, f32, &'static str)> {
+    let values = app.state::<ParamState>().values.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let mut out: Vec<_> = values.into_iter().map(|(name, p)| (name, p.value, type_name(p.param_type))).collect();
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
+/// How many values are cached, and how many the vehicle says it has.
+pub(crate) fn loaded_counts(app: &AppHandle) -> (usize, Option<u16>) {
+    let state = app.state::<ParamState>();
+    let loaded = state.values.lock().unwrap_or_else(|e| e.into_inner()).len();
+    let total = *state.expected_count.lock().unwrap_or_else(|e| e.into_inner());
+    (loaded, total)
+}
+
 #[tauri::command]
 pub fn refresh_params(app: AppHandle, link: State<LinkState>) -> Result<(), String> {
+    let _ = link;
+    start_refresh(&app)
+}
+
+/// Clears the cache and fetches every parameter again in the background.
+pub(crate) fn start_refresh(app: &AppHandle) -> Result<(), String> {
+    let link = app.state::<LinkState>();
     let target = link
         .target
         .lock()

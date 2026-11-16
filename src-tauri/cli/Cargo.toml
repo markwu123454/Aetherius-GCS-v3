@@ -1,0 +1,31 @@
+[package]
+name = "aetherius-cli"
+version = "0.1.0"
+description = "Command-line client for a running Aetherius GCS"
+edition = "2021"
+
+# The library half is the single definition of every command (names,
+# arguments, permission categories, reply shapes) and of the wire protocol.
+# The app depends on it so the control server and the CLI can't disagree.
+[lib]
+name = "aetherius_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "aetherius-cli"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Console",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Registry",
+    "Win32_System_Time",
+    "Win32_UI_WindowsAndMessaging",
+] }

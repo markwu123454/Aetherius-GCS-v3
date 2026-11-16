@@ -2,7 +2,7 @@ import {RefObject, useEffect, useRef, useState} from "react";
 import {Map, type RasterSourceSpecification, type StyleSpecification} from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {useSettings} from "@/lib/settings/useSettings.ts";
-import type {MapRegionalLayers} from "@/lib/settings/settings.ts";
+import type {MapBaseLayer, MapRegionalLayers} from "@/lib/settings/settings.ts";
 import {ensureTileCacheProtocol, maybeCachedTileUrl, updateMapCacheSettings} from "@/lib/map/tileCache.ts";
 
 const OPENFREEMAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
@@ -89,6 +89,15 @@ export function useBaseMap(): BaseMap {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const mapRef = useRef<Map | null>(null);
     const [styleReady, setStyleReady] = useState(false);
+    // The base layer the map's current style was built from, so the switch
+    // effect only calls setStyle for a real change — a "skip the first run"
+    // flag doesn't survive StrictMode re-running effects on mount.
+    const appliedBaseRef = useRef<MapBaseLayer | null>(null);
+    // True from a setStyle() until its `style.load`. The map's one-time `load`
+    // event can land in that gap (a slow first launch), and must not mark the
+    // outgoing style ready — callers would add their sources to it a second
+    // time.
+    const switchingStyleRef = useRef(false);
     const {
         mapBaseLayer, mapRegionalLayers,
         mapCacheMode, mapCacheMaxSizeMb, mapCacheMaxAgeDays, mapCacheMinZoom, mapCacheMaxZoom, mapCacheProviders,
@@ -119,6 +128,8 @@ export function useBaseMap(): BaseMap {
 
         const initialStyle: StyleSpecification | string =
             mapBaseLayer === "openfreemap" ? OPENFREEMAP_STYLE_URL : buildEsriStyle();
+        appliedBaseRef.current = mapBaseLayer;
+        switchingStyleRef.current = false;
 
         mapRef.current = new Map({
             container: containerRef.current,
@@ -138,7 +149,7 @@ export function useBaseMap(): BaseMap {
         });
 
         mapRef.current.on("load", () => {
-            setStyleReady(true);
+            if (!switchingStyleRef.current) setStyleReady(true);
         });
 
         const resizeObserver = new ResizeObserver(() => {
@@ -158,19 +169,20 @@ export function useBaseMap(): BaseMap {
         };
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Switch base layer when the setting changes. Skips the initial mount so the
-    // creation effect above handles the first style, avoiding a redundant setStyle.
-    const isFirstBaseSwitch = useRef(true);
+    // Switch base layer when the setting changes. The creation effect above
+    // builds the first style, so this only acts when the setting differs from
+    // what the map already shows.
     useEffect(() => {
-        if (isFirstBaseSwitch.current) {
-            isFirstBaseSwitch.current = false;
-            return;
-        }
         const map = mapRef.current;
-        if (!map) return;
+        if (!map || appliedBaseRef.current === mapBaseLayer) return;
+        appliedBaseRef.current = mapBaseLayer;
 
         setStyleReady(false);
-        map.once("style.load", () => setStyleReady(true));
+        switchingStyleRef.current = true;
+        map.once("style.load", () => {
+            switchingStyleRef.current = false;
+            setStyleReady(true);
+        });
         const style: StyleSpecification | string =
             mapBaseLayer === "openfreemap" ? OPENFREEMAP_STYLE_URL : buildEsriStyle();
         map.setStyle(typeof style === "string" ? style : structuredClone(style));

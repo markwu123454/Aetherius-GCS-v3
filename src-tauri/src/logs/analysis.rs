@@ -24,7 +24,7 @@ pub struct AnalysisState {
     cache: Mutex<HashMap<PathBuf, Arc<ParsedLog>>>,
 }
 
-fn parsed_log(app: &AppHandle, path: &str) -> Result<Arc<ParsedLog>, String> {
+pub(crate) fn parsed_log(app: &AppHandle, path: &str) -> Result<Arc<ParsedLog>, String> {
     let path_buf = PathBuf::from(path);
     let state = app.state::<AnalysisState>();
     if let Some(existing) = state.cache.lock().unwrap_or_else(|e| e.into_inner()).get(&path_buf) {

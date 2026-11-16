@@ -9,8 +9,8 @@ use tauri::{AppHandle, Manager};
 
 use super::ftp_protocol::{
     create_vehicle_dir_inner, create_vehicle_file_inner, delete_vehicle_inner, ensure_vehicle_root,
-    list_vehicle_dir_inner, read_vehicle_file_bytes, rename_vehicle_inner, vehicle_link, with_ftp_lock,
-    write_vehicle_file_bytes, write_vehicle_file_inner, VehicleEntry,
+    list_vehicle_dir_inner, read_vehicle_file_bytes, read_vehicle_file_opt, rename_vehicle_inner, vehicle_link,
+    with_ftp_lock, write_vehicle_file_bytes, write_vehicle_file_inner, VehicleEntry,
 };
 use super::local_fs::{resolve_local_path, validate_relative_path};
 
@@ -67,7 +67,7 @@ pub fn list_vehicle_dir(app: AppHandle, path: String) -> Result<Vec<VehicleEntry
     for entry in fs::read_dir(&dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let is_dir = entry.metadata().map_err(|e| e.to_string())?.is_dir();
-        entries.push(VehicleEntry {name: entry.file_name().to_string_lossy().to_string(), is_dir});
+        entries.push(VehicleEntry {name: entry.file_name().to_string_lossy().to_string(), is_dir, size: None});
     }
     Ok(entries)
 }
@@ -168,4 +168,51 @@ pub fn clear_vehicle_cache(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn absolute_vehicle_path(app: AppHandle, path: String) -> Result<String, String> {
     Ok(resolve_vehicle_cache_path(&app, &path)?.to_string_lossy().to_string())
+}
+
+// Live operations for the CLI's control server (`cli/`), which works on the
+// vehicle directly rather than on the Scripting page's cached copy — but
+// keeps that cache in step so the page doesn't show stale files.
+
+/// Lists a folder under `APM/scripts` on the vehicle, with file sizes.
+pub(crate) async fn cli_list(app: &AppHandle, dir: &str) -> Result<Vec<VehicleEntry>, String> {
+    with_ftp_lock(app, list_vehicle_dir_inner(app, dir.to_string())).await
+}
+
+/// Reads a file under `APM/scripts`, or `None` if there isn't one.
+pub(crate) async fn cli_read(app: &AppHandle, path: &str) -> Result<Option<Vec<u8>>, String> {
+    validate_relative_path(path)?;
+    with_ftp_lock(app, async {
+        let (connection, target) = vehicle_link(app)?;
+        read_vehicle_file_opt(app, &connection, target, path).await
+    })
+    .await
+}
+
+/// Writes a file under `APM/scripts`, creating the folder if needed.
+pub(crate) async fn cli_write(app: &AppHandle, path: &str, bytes: Vec<u8>) -> Result<(), String> {
+    validate_relative_path(path)?;
+    let cached = bytes.clone();
+    with_ftp_lock(app, async {
+        let (connection, target) = vehicle_link(app)?;
+        ensure_vehicle_root(app, &connection, target).await?;
+        write_vehicle_file_bytes(app, &connection, target, path, bytes).await
+    })
+    .await?;
+    if let Ok(cache_path) = resolve_vehicle_cache_path(app, path) {
+        if let Some(parent) = cache_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = fs::write(cache_path, cached);
+    }
+    Ok(())
+}
+
+/// Deletes a file under `APM/scripts`.
+pub(crate) async fn cli_delete(app: &AppHandle, path: &str) -> Result<(), String> {
+    with_ftp_lock(app, delete_vehicle_inner(app, path.to_string(), false)).await?;
+    if let Ok(cache_path) = resolve_vehicle_cache_path(app, path) {
+        let _ = fs::remove_file(cache_path);
+    }
+    Ok(())
 }

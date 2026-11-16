@@ -182,6 +182,7 @@ export default function CompassCalibrationPanel({live}: CompassCalibrationPanelP
                 which have nothing comparable to show. */}
             <div className="min-w-0 flex-1">
                 <CompassCoverageViewport
+                    vehicleKind={vehicle.vehicleKind}
                     rotationDeg={vehicle.attitude ? rotationDeg : null}
                     coveredMask={coveredMask}
                     field={calibration.field}

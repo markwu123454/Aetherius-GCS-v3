@@ -33,6 +33,7 @@ pub enum VehicleCommand {
     ConfirmAccelPosition { position: f32 },
     CancelAccelCalibration,
     StartGyroCalibration,
+    StartLevelCalibration,
     StartCompassCalibration,
     CancelCompassCalibration,
     StopCompassFieldStream,
@@ -149,6 +150,14 @@ fn to_mav_command(command: &VehicleCommand) -> (MavCmd, [f32; 7]) {
             MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION,
             [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         ),
+        VehicleCommand::StartLevelCalibration => (
+            // param5 = 2: ArduPilot's `AP_InertialSensor::calibrate_trim` —
+            // runs a full gyro calibration first, then averages the accel
+            // for 400 ms and saves the tilt as AHRS_TRIM_X/Y (rejected above
+            // 10°). Same param block QGroundControl and Mission Planner send.
+            MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION,
+            [0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0],
+        ),
         VehicleCommand::StartCompassCalibration => (
             // mask=0 (all fitted compasses), retry=1, autosave=1 (skip the
             // separate MAV_CMD_DO_ACCEPT_MAG_CAL step), delay=0, autoreboot=0 —
@@ -249,14 +258,17 @@ pub async fn send_vehicle_command(app: AppHandle, command: VehicleCommand) -> Re
 }
 
 /// How long to wait for a command's terminal `COMMAND_ACK`. Most commands
-/// resolve in well under a second; gyro calibration is the exception — it
-/// holds the link for the several seconds ArduPilot spends sampling bias at
-/// rest before the real accepted/failed result arrives (see
-/// `commands::on_ack`'s handling of the intermediate `MAV_RESULT_IN_PROGRESS`
-/// ack that comes first).
+/// resolve in well under a second; gyro and level calibration are the
+/// exception — ArduPilot holds the command until its gyro bias sampling
+/// converges, which takes longer the less still the vehicle is.
 fn timeout_for(command: &VehicleCommand) -> std::time::Duration {
     match command {
-        VehicleCommand::StartGyroCalibration => std::time::Duration::from_secs(8),
+        // Both block ArduPilot's main loop until the gyros settle — its own
+        // handler declares up to 30 s (`EXPECT_DELAY_MS(30000)`) — and only
+        // then send their single ACCEPTED/FAILED ack.
+        VehicleCommand::StartGyroCalibration | VehicleCommand::StartLevelCalibration => {
+            std::time::Duration::from_secs(35)
+        }
         _ => std::time::Duration::from_secs(3),
     }
 }

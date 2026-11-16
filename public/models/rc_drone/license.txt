@@ -1,0 +1,13 @@
+Model Information:
+* title:	RC Drone
+* source:	https://www.cadcrowd.com/3d-models/rc-drone
+* author:	rukshans
+
+Model License:
+* license type:	CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited.
+
+Credit:
+"RC Drone" by rukshans (https://www.cadcrowd.com/3d-models/rc-drone), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
+
+Changes: drone-assem.stl is unmodified. The app centres and scales it, and paints a forward arrow on its top and belly, when it is drawn.

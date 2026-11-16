@@ -2,6 +2,7 @@
 
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
+mod cli;
 mod commands;
 mod dispatch;
 mod fence;
@@ -73,6 +74,7 @@ pub fn run() {
         .manage(logs::LogsState::default())
         .manage(logs::analysis::AnalysisState::default())
         .manage(firmware::flash::FlashState::default())
+        .manage(cli::CliState::default())
         .invoke_handler(tauri::generate_handler![
             close_splash,
             link::connect_link,
@@ -142,6 +144,14 @@ pub fn run() {
             map_cache::put_cached_tile,
             map_cache::clear_map_cache,
             map_cache::map_cache_size_bytes,
+            cli::set_cli_settings,
+            cli::cli_status,
+            cli::cli_requests,
+            cli::cli_resolve,
+            cli::cli_stop,
+            cli::cli_set_paused,
+            cli::cli_clear,
+            cli::cli_history_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

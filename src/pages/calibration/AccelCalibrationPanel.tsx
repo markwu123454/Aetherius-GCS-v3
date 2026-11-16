@@ -104,6 +104,7 @@ export default function AccelCalibrationPanel({live}: AccelCalibrationPanelProps
                 {calibration.calibrating && (
                     <OrientationViewport
                         label="Target"
+                        vehicleKind={vehicle.vehicleKind}
                         rotationDeg={targetRotation}
                         viewYaw={viewYaw}
                         onViewYawChange={setViewYaw}
@@ -111,6 +112,7 @@ export default function AccelCalibrationPanel({live}: AccelCalibrationPanelProps
                 )}
                 <OrientationViewport
                     label="Your Vehicle"
+                    vehicleKind={vehicle.vehicleKind}
                     rotationDeg={liveRotation}
                     viewYaw={viewYaw}
                     onViewYawChange={setViewYaw}

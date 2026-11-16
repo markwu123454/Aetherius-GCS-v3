@@ -47,8 +47,16 @@ pub fn route(app: &AppHandle, snapshot: &mut VehicleSnapshot, message: &MavMessa
     inspector::observe(app, message);
     flush_stale_statustext(app);
     match message {
+        MavMessage::AUTOPILOT_VERSION(_) => {
+            telemetry::apply(snapshot, message);
+            // The snapshot keeps the previous board's identity until this
+            // arrives, so it can't say whether a reading is fresh — this
+            // event can. ESC calibration uses it to confirm the board that
+            // comes back after a power cycle is the one it started on.
+            let _ = app.emit("autopilot-version", serde_json::json!({ "boardUid": snapshot.board_uid }));
+            true
+        }
         MavMessage::HEARTBEAT(_)
-        | MavMessage::AUTOPILOT_VERSION(_)
         | MavMessage::SYS_STATUS(_)
         | MavMessage::GPS_RAW_INT(_)
         | MavMessage::GLOBAL_POSITION_INT(_)
@@ -207,6 +215,7 @@ fn emit_statustext(app: &AppHandle, severity: u8, text: &str) {
     if text.is_empty() {
         return;
     }
+    crate::cli::console::record(app, severity, text);
     let _ = app.emit(
         "statustext",
         // MAV_SEVERITY is repr(u32) but only ever 0-7. Falling back to 6

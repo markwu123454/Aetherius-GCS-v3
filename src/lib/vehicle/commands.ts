@@ -22,6 +22,7 @@ export type VehicleCommand =
     | {type: "confirmAccelPosition"; position: number}
     | {type: "cancelAccelCalibration"}
     | {type: "startGyroCalibration"}
+    | {type: "startLevelCalibration"}
     | {type: "startCompassCalibration"}
     | {type: "cancelCompassCalibration"}
     | {type: "stopCompassFieldStream"}

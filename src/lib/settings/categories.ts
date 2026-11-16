@@ -10,4 +10,5 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     {id: "flight", label: "Flight"},
     {id: "display", label: "Display"},
     {id: "panels", label: "Panels"},
+    {id: "cli", label: "CLI"},
 ];

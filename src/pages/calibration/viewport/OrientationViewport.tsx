@@ -1,10 +1,13 @@
 import {Suspense} from "react";
 import {Canvas} from "@react-three/fiber";
-import PlaneModel, {PlaneRotationDeg} from "./PlaneModel.tsx";
+import type {VehicleKind} from "@/lib/vehicle/vehicle.ts";
+import type {PlaneRotationDeg} from "./PlaneModel.tsx";
+import VehicleModel from "./VehicleModel.tsx";
 import {CameraRig, useOrbitDrag} from "./OrbitCamera.tsx";
 
 interface OrientationViewportProps {
     label: string;
+    vehicleKind: VehicleKind | null;
     rotationDeg: PlaneRotationDeg;
     /** Shared camera azimuth, radians — lifted to the parent panel so
      * dragging either viewport spins both in lockstep. */
@@ -13,7 +16,7 @@ interface OrientationViewportProps {
 }
 
 /**
- * One 3D viewport: a plane model rendered at `rotationDeg`, with a
+ * One 3D viewport: the vehicle model rendered at `rotationDeg`, with a
  * drag-to-orbit camera. Two of these sit side by side in
  * `AccelCalibrationPanel` — the target pose and the vehicle's live
  * telemetry-driven pose — sharing `viewYaw` so rotating one to match how the
@@ -21,7 +24,7 @@ interface OrientationViewportProps {
  * turning the comparison into a direct shape match instead of a mental
  * rotation exercise.
  */
-export default function OrientationViewport({label, rotationDeg, viewYaw, onViewYawChange}: OrientationViewportProps) {
+export default function OrientationViewport({label, vehicleKind, rotationDeg, viewYaw, onViewYawChange}: OrientationViewportProps) {
     const drag = useOrbitDrag(viewYaw, onViewYawChange);
 
     return (
@@ -37,7 +40,7 @@ export default function OrientationViewport({label, rotationDeg, viewYaw, onView
                     <directionalLight position={[-3, -2, -4]} intensity={0.3} />
                     <CameraRig viewYaw={viewYaw} distance={2.5} />
                     <Suspense fallback={null}>
-                        <PlaneModel rotationDeg={rotationDeg} />
+                        <VehicleModel kind={vehicleKind} rotationDeg={rotationDeg} />
                     </Suspense>
                 </Canvas>
             </div>

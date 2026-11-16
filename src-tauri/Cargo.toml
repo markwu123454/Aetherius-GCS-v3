@@ -7,6 +7,11 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+# `cli/` is the `aetherius-cli` binary plus the command catalog and wire
+# protocol the app's control server shares with it.
+[workspace]
+members = ["cli"]
+
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
@@ -38,6 +43,7 @@ reqwest = "0.12"
 # OS name/edition/build for bug reports — reads the real Windows 11 name,
 # which the registry's own ProductName still reports as "Windows 10".
 os_info = { version = "3", default-features = false }
+aetherius-cli = { path = "cli" }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

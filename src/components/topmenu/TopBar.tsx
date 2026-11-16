@@ -1,8 +1,7 @@
 import {openFeedback} from "@/lib/feedback/feedbackDialog.ts";
 import {useEffect, useMemo, useRef, useState} from "react";
 import {ArrowLeft} from "@carbon/icons-react";
-import AppMenu, {Menu} from "./AppMenu.tsx";
-import StatusChip, {Tone} from "./StatusChip.tsx";
+import AppMenu, {Menu} from "./AppMenu.tsx";import StatusChip, {Tone} from "./StatusChip.tsx";
 import ConnectControl from "./ConnectControl.tsx";
 import ArmControl from "./ArmControl.tsx";
 import ModeControl from "./ModeControl.tsx";

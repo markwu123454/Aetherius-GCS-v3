@@ -9,9 +9,10 @@ import TrimSetupPanel from "./TrimSetupPanel.tsx";
 import MotorTestPanel from "./MotorTestPanel.tsx";
 import MotorsSetupPanel from "./MotorsSetupPanel.tsx";
 import FailsafeSetupPanel from "./FailsafeSetupPanel.tsx";
+import LoggingSetupPanel from "./LoggingSetupPanel.tsx";
 
 interface SetupItem {
-    id: "frame" | "servo" | "motors" | "trim" | "motorTest" | "failsafe";
+    id: "frame" | "servo" | "motors" | "trim" | "motorTest" | "failsafe" | "logging";
     label: string;
 }
 
@@ -23,6 +24,7 @@ const OFFLINE_ITEMS: SetupItem[] = [
     {id: "trim", label: "Trim"},
     {id: "motorTest", label: "Motor Test"},
     {id: "failsafe", label: "Failsafe"},
+    {id: "logging", label: "Logging"},
 ];
 
 function SidebarRow({item, active, disabled = false, onSelect}: {item: SetupItem; active: boolean; disabled?: boolean; onSelect: () => void}) {
@@ -75,6 +77,7 @@ export default function SetupPage() {
             list.push({id: "motorTest", label: "Motor Test"});
         }
         list.push({id: "failsafe", label: "Failsafe"});
+        list.push({id: "logging", label: "Logging"});
         return list;
     }, [vehicle.vehicleKind]);
 
@@ -133,6 +136,8 @@ export default function SetupPage() {
                     <MotorTestPanel live={live.values} firmware={firmware} armed={vehicle.armed}/>
                 ) : selectedId === "failsafe" ? (
                     <FailsafeSetupPanel live={live.values} onSet={live.setParam} firmware={firmware}/>
+                ) : selectedId === "logging" ? (
+                    <LoggingSetupPanel live={live.values} onSet={live.setParam} firmware={firmware}/>
                 ) : null}
             </div>
         </div>

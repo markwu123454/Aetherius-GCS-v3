@@ -225,23 +225,31 @@ export default function MapView({position, vehicleKind, airspace}: MapViewProps)
 
         const empty = {type: "Feature" as const, properties: {} as Record<string, never>, geometry: {type: "MultiLineString" as const, coordinates: [] as [number, number][][]}};
 
-        map.addSource("track-disarmed", {type: "geojson", data: empty});
-        map.addLayer({
-            id: "track-disarmed",
-            type: "line",
-            source: "track-disarmed",
-            layout: {"line-join": "round", "line-cap": "round"},
-            paint: {"line-color": "#8d8d8d", "line-width": 1.5, "line-opacity": 0.7},
-        });
+        // Guarded like every other source here: `styleReady` can go false and
+        // back to true while the same style (and these sources) is still in
+        // place, and a second addSource throws — which unmounted the whole app
+        // on a slow first launch.
+        if (!map.getSource("track-disarmed")) {
+            map.addSource("track-disarmed", {type: "geojson", data: empty});
+            map.addLayer({
+                id: "track-disarmed",
+                type: "line",
+                source: "track-disarmed",
+                layout: {"line-join": "round", "line-cap": "round"},
+                paint: {"line-color": "#8d8d8d", "line-width": 1.5, "line-opacity": 0.7},
+            });
+        }
 
-        map.addSource("track-armed", {type: "geojson", data: empty});
-        map.addLayer({
-            id: "track-armed",
-            type: "line",
-            source: "track-armed",
-            layout: {"line-join": "round", "line-cap": "round"},
-            paint: {"line-color": "#4589ff", "line-width": 2, "line-opacity": 0.85},
-        });
+        if (!map.getSource("track-armed")) {
+            map.addSource("track-armed", {type: "geojson", data: empty});
+            map.addLayer({
+                id: "track-armed",
+                type: "line",
+                source: "track-armed",
+                layout: {"line-join": "round", "line-cap": "round"},
+                paint: {"line-color": "#4589ff", "line-width": 2, "line-opacity": 0.85},
+            });
+        }
     }, [styleReady, mapRef]);
 
     useEffect(() => {

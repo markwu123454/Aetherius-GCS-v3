@@ -1,6 +1,16 @@
-# Aetherius GCS
+<p align="center">
+  <img src=".github/assets/banner.png" alt="Aetherius GCS — a modern ground control station for ArduPilot" width="100%">
+</p>
 
 A **Windows** ground control station for **ArduPlane** and **ArduCopter**, built with [Tauri](https://tauri.app) (Rust) and React.
+
+![Flight view: map, live telemetry, attitude indicator and RC input](docs/screenshots/home.png)
+
+| | |
+|---|---|
+| ![Mission editor](docs/screenshots/mission.png) **Mission** | ![Parameters](docs/screenshots/parameters.png) **Parameters** |
+| ![Frame selection](docs/screenshots/frame.png) **Frame setup** | ![Firmware](docs/screenshots/firmware.png) **Firmware** |
+| ![Lua scripting](docs/screenshots/scripting.png) **Lua scripting** | ![Motor output curve and settings](docs/screenshots/motors.png) **Motor setup** |
 
 ---
 
@@ -36,18 +46,31 @@ Panels can be docked (left / right / bottom), floated, tabbed, resized, or close
 | **Manual** | SVG primary flight display (attitude, heading) + RC channel bars |
 | **RC Override** | RC channel override; floats only (never backgrounded while active) |
 | **Mission** | Mission route overlay on the map |
+| **Servo Outputs** | Live servo/motor output PWM per channel |
+| **CLI** | Requests from `aetherius-cli`, to approve, reject or stop |
+| **Checklist** | Your own checklists, ticked off as you go |
 
 ### Full-Screen Pages
 
 | Page | Description |
 |---|---|
-| **Mission** | Upload and edit ArduPilot missions; numbered waypoints on the map |
-| **Parameters** | Read and write vehicle parameters |
-| **Scripting** | Dual-pane file manager (local ↔ vehicle FTP) with Monaco editor for Lua scripts |
+| **Mission** | Upload, download and edit ArduPilot missions; numbered waypoints on the map |
+| **Geofence** | Edit the fence and its breach action; upload and download |
+| **Rally Points** | Edit, upload and download rally points |
+| **Parameters** | Read and write vehicle parameters, searchable, with ArduPilot's own descriptions |
+| **Setup** | Frame, servo outputs, motors, trim, motor test, failsafes, logging |
+| **Calibration** | Accelerometer, gyroscope, level horizon, compass, radio, ESC (Copter) |
+| **Scripting** | File tree of local scripts and the vehicle's (MAVLink FTP) with a Monaco editor for Lua |
 | **Firmware** | Fetch the ArduPilot manifest, match to the connected board, flash via bootloader |
 | **Logs** | Dataflash log download over MAVLink FTP |
+| **Log Analysis** | Plot any logged field on a shared timeline |
+| **SD Card** | Logs and scripts straight from an SD card or folder, no vehicle needed |
+| **MAVLink Inspector** | Raw MAVLink traffic per message type, with rates and recent messages |
 | **Settings** | Display mode, telemetry rate, airspace, sparklines, confirmation dialogs |
 | **About** | Version info and manual update check |
+
+### Command-Line Access
+`aetherius-cli` lets scripts, AI agents and terminals read and set parameters, push Lua scripts, read the console and work with logs — always through the running app, with each request shown in the CLI panel. Off by default; see [CLI.md](CLI.md).
 
 ### Auto-Update
 Checks GitHub Releases on launch via `tauri-plugin-updater` and prompts once per session.
@@ -67,6 +90,7 @@ Checks GitHub Releases on launch via `tauri-plugin-updater` and prompts once per
 | Styling | [Tailwind CSS v4](https://tailwindcss.com), IBM Carbon design tokens |
 | Icons | [`@carbon/icons-react`](https://carbondesignsystem.com/elements/icons/library/) |
 | Map | [MapLibre GL 6](https://maplibre.org) |
+| 3D views | [three.js](https://threejs.org) via [React Three Fiber](https://r3f.docs.pmnd.rs) (calibration) |
 | Code editor | [Monaco Editor](https://microsoft.github.io/monaco-editor/) |
 | Persistent settings | [`tauri-plugin-store`](https://github.com/tauri-apps/tauri-plugin-store) |
 
@@ -93,6 +117,8 @@ This starts the Vite dev server on `localhost:1420` and the Tauri Rust backend t
 ```bash
 npm run dev
 ```
+
+Open `http://localhost:1420/?mock` to run against canned data instead of a backend: a connected, flying ArduCopter with parameters, a mission, Lua scripts and a firmware list (see `src/dev/mockBackend.ts`). Only in dev builds; the screenshots above were taken this way.
 
 ---
 
@@ -126,26 +152,24 @@ npm run build:airspace
 ```
 src/                  React frontend
   components/         Top bar, connect control, arm/mode controls
-  panels/             Dockable panels (telemetry, console, prearm, manual, mission)
-  pages/              Full-screen pages (mission, params, scripting, firmware, logs…)
+  panels/             Dockable panels (telemetry, console, prearm, manual, mission, CLI…)
+  pages/              Full-screen pages (mission, setup, calibration, params, scripting, firmware, logs…)
   lib/                State, hooks, business logic (vehicle, workspace, map, settings…)
+  dev/                Mock backend for browser-only runs (`?mock`)
 src-tauri/src/        Rust backend
   link.rs             Connection lifecycle, USB scan, MAVLink read loop, watchdog
   dispatch.rs         MAVLink message routing
   telemetry/          VehicleSnapshot and per-message telemetry handlers
-  mission.rs          Mission upload (MAVLink mission protocol)
+  mission.rs          Mission upload/download (MAVLink mission protocol); fence.rs, rally.rs likewise
   params.rs           Parameter read/write
   scripting/          MAVLink FTP for Lua scripts
   firmware/           Manifest fetch + bootloader flashing
-  logs.rs             Dataflash log download
-scripts/              Build utilities (airspace, version sync)
-public/               Static assets and pre-built airspace GeoJSON
-```
-
----
-
-```md
-![Aetherius GCS](docs/screenshot.png)
+  logs/               Dataflash log download, parsing and analysis
+  cli/                Local server behind aetherius-cli
+src-tauri/cli/        The aetherius-cli binary
+scripts/              Build utilities (airspace, CLI, motor layouts, version sync)
+public/               Static assets, parameter reference, pre-built airspace GeoJSON
+docs/screenshots/     README screenshots
 ```
 
 ---
@@ -153,3 +177,5 @@ public/               Static assets and pre-built airspace GeoJSON
 ## Related Docs
 
 - [DESIGN.md](DESIGN.md) — architecture notes and design decisions
+- [CLI.md](CLI.md) — `aetherius-cli` commands and how it connects to the app
+- [ROADMAP.md](ROADMAP.md) — planned work

@@ -90,6 +90,22 @@ listen<ConnectionStatus>("link-status", (event) => {
     // No Tauri backend — the store just never updates.
 });
 
+// The vehicle rebooted behind a link that stayed open (a power cycle over a
+// telemetry radio): the link only went Losing → Connected, which the handler
+// above deliberately ignores, but the vehicle may have changed parameters at
+// boot (ESC calibration clears ESC_CALIBRATION, for one). The backend raises
+// this only when the vehicle's boot clock steps back, never for a plain
+// dropout, so a dump in progress isn't restarted by a late heartbeat.
+listen("vehicle-rebooted", () => {
+    if (haveParams) refresh();
+}).catch(() => {});
+
+/** Clears and re-downloads every parameter now — for a caller that knows the
+ * values on hand are stale in a way the link status can't show. */
+export function refreshLiveParams(): void {
+    if (haveParams) refresh();
+}
+
 // Read progress in the top bar while a dump is under way — from the first
 // request until every value is in, or the link drops.
 paramsStore.subscribe(() => {

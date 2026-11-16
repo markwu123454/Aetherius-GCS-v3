@@ -79,6 +79,33 @@ export const DEFAULT_MAP_CACHE_PROVIDERS: MapCacheProviders = {
  */
 export type RcOverrideMatch = "none" | "throttle" | "all";
 
+/** What a CLI permission category does with a request: run it, ask in the
+ * CLI panel first, or refuse it. */
+export type CliPolicy = "allow" | "ask" | "block";
+
+/** One entry per row of Settings › CLI › Permissions. `whileArmed` applies
+ * on top of the others while the vehicle is armed — the stricter wins. */
+export interface CliPermissions {
+    reads: CliPolicy;
+    logs: CliPolicy;
+    params: CliPolicy;
+    scripts: CliPolicy;
+    reboot: CliPolicy;
+    whileArmed: CliPolicy;
+}
+
+export const DEFAULT_CLI_PERMISSIONS: CliPermissions = {
+    reads: "allow",
+    logs: "allow",
+    params: "ask",
+    scripts: "ask",
+    reboot: "ask",
+    whileArmed: "block",
+};
+
+/** Days of CLI request history kept on disk; `0` keeps it forever. */
+export const CLI_HISTORY_OPTIONS = [7, 30, 90, 0] as const;
+
 /**
  * App preferences — how the operator wants the GCS to behave. Distinct from
  * vehicle parameters: these never touch the wire, and the vehicle has no
@@ -163,6 +190,11 @@ export interface Settings {
     /** Where the manual-control sticks start when it takes over. See
      * `RcOverrideMatch`. */
     rcOverrideMatch: RcOverrideMatch;
+    /** Let `aetherius-cli` connect. Off by default: while on, any program
+     * running as this Windows user can send it requests. */
+    cliEnabled: boolean;
+    cliPermissions: CliPermissions;
+    cliHistoryDays: number;
 }
 
 /** Below this, there's nothing left to collapse — the first occurrence of a
@@ -207,4 +239,7 @@ export const DEFAULT_SETTINGS: Settings = {
     mapCacheMaxZoom: 18,
     mapCacheProviders: DEFAULT_MAP_CACHE_PROVIDERS,
     rcOverrideMatch: "throttle",
+    cliEnabled: false,
+    cliPermissions: DEFAULT_CLI_PERMISSIONS,
+    cliHistoryDays: 30,
 };

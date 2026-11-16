@@ -207,7 +207,7 @@ fn log_file_name(id: u16, copy: u32) -> String {
 /// `save_analysis_state` writes a JSON sidecar into this same directory
 /// (older builds named it `<id>.json`), and a file whose stem parses as the
 /// same numeric id would otherwise be handed back as if it were the log.
-fn parse_log_file_name(name: &str) -> Option<u16> {
+pub(crate) fn parse_log_file_name(name: &str) -> Option<u16> {
     let stem = name.strip_suffix(".bin")?;
     let id = match stem.split_once('-') {
         Some((id, copy)) => {
@@ -306,10 +306,33 @@ fn is_cancelled(app: &AppHandle, id: u16) -> bool {
 /// just success.
 #[tauri::command]
 pub async fn download_log(app: AppHandle, id: u16, size: u32) -> Result<String, String> {
-    let (connection, target) = current_link(&app)?;
+    let (path, _) = download(&app, id, size, &|_, _| {}).await?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+/// The connected vehicle's own log folder (see `vehicle_profile.rs`).
+pub(crate) fn logs_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(vehicle_profile::vehicle_dir(app)?.join("logs"))
+}
+
+/// What the last `list_logs` found, without asking the vehicle again.
+pub(crate) fn cached_entries(app: &AppHandle) -> Vec<LogEntry> {
+    sorted_entries(app)
+}
+
+/// `download_log`'s work, also used by the CLI: returns the saved path and
+/// whether that exact log was already on disk. `on_progress` gets
+/// `(received, total)` at the same pace as the progress events.
+pub(crate) async fn download(
+    app: &AppHandle,
+    id: u16,
+    size: u32,
+    on_progress: &(dyn Fn(u32, u32) + Sync),
+) -> Result<(PathBuf, bool), String> {
+    let (connection, target) = current_link(app)?;
     *app.state::<LogsState>().cancel.lock().unwrap_or_else(|e| e.into_inner()) = None;
 
-    let result = fetch_all_chunks(&app, &connection, target, id, size).await;
+    let result = fetch_all_chunks(app, &connection, target, id, size, on_progress).await;
 
     let _ = connection.send_default(&MavMessage::LOG_REQUEST_END(LOG_REQUEST_END_DATA {
         target_system: target.0,
@@ -318,13 +341,13 @@ pub async fn download_log(app: AppHandle, id: u16, size: u32) -> Result<String, 
 
     let bytes = result?;
 
-    let dir = vehicle_profile::vehicle_dir(&app)?.join("logs");
+    let dir = logs_dir(app)?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let (path, already_saved) = save_path_for(&dir, id, &bytes).map_err(|e| e.to_string())?;
     if !already_saved {
         std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
     }
-    Ok(path.to_string_lossy().to_string())
+    Ok((path, already_saved))
 }
 
 async fn fetch_all_chunks(
@@ -333,6 +356,7 @@ async fn fetch_all_chunks(
     target: (u8, u8),
     id: u16,
     size: u32,
+    on_progress: &(dyn Fn(u32, u32) + Sync),
 ) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::with_capacity(size as usize);
     let mut ofs: u32 = 0;
@@ -355,6 +379,7 @@ async fn fetch_all_chunks(
         // UI reliably reaches 100% rather than stalling just short of it.
         if ofs >= size || last_emit.elapsed() >= PROGRESS_EMIT_INTERVAL {
             let _ = app.emit("log-download-progress", DownloadProgress { id, received: ofs, total: size });
+            on_progress(ofs, size);
             last_emit = Instant::now();
         }
     }

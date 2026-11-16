@@ -29,6 +29,7 @@ async function readSettings(): Promise<Settings> {
         airspace: {...DEFAULT_SETTINGS.airspace, ...saved?.airspace},
         mapRegionalLayers: {...DEFAULT_SETTINGS.mapRegionalLayers, ...saved?.mapRegionalLayers},
         mapCacheProviders: {...DEFAULT_SETTINGS.mapCacheProviders, ...saved?.mapCacheProviders},
+        cliPermissions: {...DEFAULT_SETTINGS.cliPermissions, ...saved?.cliPermissions},
     };
 }
 

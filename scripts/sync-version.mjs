@@ -1,5 +1,5 @@
 /**
- * Syncs package.json, tauri.conf.json, and Cargo.toml's version to a given
+ * Syncs package.json, tauri.conf.json, and both Cargo.toml versions (app and CLI) to a given
  * tag/version string. The release workflow calls this before building, so a
  * tagged build always ships under the version it was tagged as — including
  * what the updater embeds — without a separate manual version bump first.
@@ -68,5 +68,7 @@ function syncCargoTomlVersion(path) {
 syncJsonVersion(join(ROOT, "package.json"));
 syncJsonVersion(join(ROOT, "src-tauri/tauri.conf.json"));
 syncCargoTomlVersion(join(ROOT, "src-tauri/Cargo.toml"));
+// The CLI ships in the same installer, so `aetherius-cli --version` matches.
+syncCargoTomlVersion(join(ROOT, "src-tauri/cli/Cargo.toml"));
 
-console.log(`Synced version to ${version} in package.json, tauri.conf.json, and Cargo.toml.`);
+console.log(`Synced version to ${version} in package.json, tauri.conf.json, and both Cargo.toml files.`);

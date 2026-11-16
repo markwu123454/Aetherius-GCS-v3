@@ -45,6 +45,10 @@ const FTP_ERROR_FILE_NOT_FOUND: u8 = 10;
 pub struct VehicleEntry {
     pub name: String,
     pub is_dir: bool,
+    /// File size from a live listing. `None` for folders and for entries
+    /// read back from the local cache, which doesn't keep sizes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
 }
 
 struct FtpRequest {
@@ -232,8 +236,8 @@ pub(super) async fn list_vehicle_dir_inner(app: &AppHandle, path: String) -> Res
 
         // Entries are NUL-separated, each prefixed with a type character:
         // 'D' for a subdirectory, 'F' for a file (name and size, tab
-        // separated — the size is discarded here, the tree doesn't show it).
-        // Anything else is skipped rather than treated as an error.
+        // separated). Anything else is skipped rather than treated as an
+        // error.
         let mut received = 0;
         for raw in reply.data.split(|&b| b == 0) {
             if raw.is_empty() {
@@ -243,10 +247,14 @@ pub(super) async fn list_vehicle_dir_inner(app: &AppHandle, path: String) -> Res
             let Ok(text) = std::str::from_utf8(raw) else { continue };
             let Some((prefix, rest)) = text.split_at_checked(1) else { continue };
             match prefix {
-                "D" if rest != "." && rest != ".." => entries.push(VehicleEntry {name: rest.to_string(), is_dir: true}),
+                "D" if rest != "." && rest != ".." => {
+                    entries.push(VehicleEntry {name: rest.to_string(), is_dir: true, size: None})
+                }
                 "F" => {
-                    let name = rest.split('\t').next().unwrap_or(rest);
-                    entries.push(VehicleEntry {name: name.to_string(), is_dir: false});
+                    let mut parts = rest.split('\t');
+                    let name = parts.next().unwrap_or(rest);
+                    let size = parts.next().and_then(|s| s.trim().parse::<u64>().ok());
+                    entries.push(VehicleEntry {name: name.to_string(), is_dir: false, size});
                 }
                 _ => {}
             }
@@ -267,6 +275,19 @@ pub(super) async fn read_vehicle_file_bytes(
     target: (u8, u8),
     remote_path: &str,
 ) -> Result<Vec<u8>, String> {
+    read_vehicle_file_opt(app, connection, target, remote_path)
+        .await?
+        .ok_or_else(|| "vehicle rejected the request (FTP error 10)".to_string())
+}
+
+/// Reads a file, or `None` if the vehicle says there's no such file — for
+/// callers that treat a missing file as an answer rather than a failure.
+pub(super) async fn read_vehicle_file_opt(
+    app: &AppHandle,
+    connection: &Arc<dyn MavConnection<MavMessage> + Send + Sync>,
+    target: (u8, u8),
+    remote_path: &str,
+) -> Result<Option<Vec<u8>>, String> {
     let open = FtpRequest {
         seq_number: next_seq(app),
         session: 0,
@@ -274,7 +295,11 @@ pub(super) async fn read_vehicle_file_bytes(
         offset: 0,
         data: vehicle_path(remote_path).into_bytes(),
     };
-    let reply = expect_ack(send_ftp_request(app, connection, target, &open).await?)?;
+    let reply = send_ftp_request(app, connection, target, &open).await?;
+    if nak_code(&reply) == Some(FTP_ERROR_FILE_NOT_FOUND) {
+        return Ok(None);
+    }
+    let reply = expect_ack(reply)?;
     let session = reply.session;
 
     let mut bytes = Vec::new();
@@ -305,7 +330,7 @@ pub(super) async fn read_vehicle_file_bytes(
     let terminate = FtpRequest {seq_number: next_seq(app), session, opcode: FTP_OP_TERMINATE_SESSION, offset: 0, data: Vec::new()};
     let _ = send_ftp_request(app, connection, target, &terminate).await;
 
-    Ok(bytes)
+    Ok(Some(bytes))
 }
 
 pub(super) async fn write_vehicle_file_inner(app: &AppHandle, path: String, content: String) -> Result<(), String> {

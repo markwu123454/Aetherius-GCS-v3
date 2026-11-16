@@ -9,9 +9,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "aetherius-cli"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "aetherius-gcs-v3"
 version = "0.1.0"
 dependencies = [
+ "aetherius-cli",
  "base64 0.22.1",
  "flate2",
  "mavlink",

@@ -16,3 +16,4 @@ pub use vehicle_cache::{
     download_vehicle_file, list_vehicle_dir, read_vehicle_file, rename_vehicle, sync_vehicle_scripts,
     upload_to_vehicle, write_vehicle_file,
 };
+pub(crate) use vehicle_cache::{cli_delete, cli_list, cli_read, cli_write};
