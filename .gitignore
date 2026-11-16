@@ -13,6 +13,29 @@ node_modules
 dist
 dist-ssr
 *.local
+*.tsbuildinfo
+coverage
+
+# Environment files — may hold tokens; keep an example file if one is needed.
+.env
+.env.*
+!.env.example
+
+# Windows shell metadata
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Archives dropped at the repo root (e.g. branding hand-offs). The assets
+# actually used are extracted into .github/assets and public/.
+/*.zip
+/*.7z
+/*.rar
+
+# Merge / patch leftovers
+*.orig
+*.rej
 
 # Editor directories and files
 .vscode/*
