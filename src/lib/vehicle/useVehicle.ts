@@ -20,11 +20,6 @@ import {modeLabel} from "./modes.ts";
  * The payload emitted by `link.rs`. Every field is nullable because the backend
  * only fills one in once the corresponding message has actually arrived —
  * "not reported yet" and "reported as zero" are different things.
- *
- * `airspeed`, `climbRate`, `homeLat` and `homeLon` aren't sent by the backend
- * yet (no VFR_HUD/HOME_POSITION handling for them exists there yet) — typed
- * here ahead of that landing, same as `groundspeed` was before its own
- * backend support arrived.
  */
 interface Snapshot {
     armed: boolean | null;
@@ -93,7 +88,7 @@ export const NO_VEHICLE: VehicleState = {
     climbRate: null,
     throttle: null,
     vehicleKind: null,
-    prearmPass: false,
+    prearmPass: null,
     prearmReasons: [],
     disabledChecks: [],
     battery: {voltage: 0, current: 0, consumed: 0, percent: 0},
@@ -186,7 +181,7 @@ function fromSnapshot(snapshot: Snapshot): VehicleState {
         climbRate: snapshot.climbRate ?? null,
         throttle: snapshot.throttle ?? null,
         vehicleKind: snapshot.vehicleKind,
-        prearmPass: snapshot.prearmPass ?? false,
+        prearmPass: snapshot.prearmPass ?? null,
         // Merged in by `useVehicle` from `prearmReasonsStore`, which is fed by
         // the `statustext` event rather than this snapshot.
         prearmReasons: [],
@@ -354,14 +349,14 @@ export function useVehicle(): VehicleState {
     return prearmReasons === state.prearmReasons ? state : {...state, prearmReasons};
 }
 
-/** `null` while disarmed. Pair with a ticking clock (e.g. `useNow`) to render
- * an elapsed duration — this only holds the edge timestamp, not a live count. */
+/** `null` while disarmed. Pair with `useSecondsSince` to render an elapsed
+ * duration — this only holds the edge timestamp, not a live count. */
 export function useArmedSince(): number | null {
     return useSyncExternalStore(armedSinceStore.subscribe, armedSinceStore.getSnapshot);
 }
 
 /** `null` until the first prearm recheck cycle has been heard from. Pair with
- * a ticking clock (e.g. `useNow`) to render "Xs ago". */
+ * `useSecondsSince` to render "Xs ago". */
 export function usePrearmLastUpdate(): number | null {
     return useSyncExternalStore(lastPrearmUpdateStore.subscribe, lastPrearmUpdateStore.getSnapshot);
 }

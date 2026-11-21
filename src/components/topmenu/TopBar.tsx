@@ -251,7 +251,7 @@ export default function TopBar({vehicle, settings, openIds, page, mission, onRes
                     tone={vehicle.prearmPass ? "ok" : "warn"}
                     stale={stale}
                     staleFor={staleFor}
-                    unknown={unknown}
+                    unknown={unknown || vehicle.prearmPass === null}
                     severe={severe}
                     onClick={() => navigation.openPanel("prearm")}
                 />

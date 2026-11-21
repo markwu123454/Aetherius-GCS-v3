@@ -5,11 +5,21 @@ import {refreshLiveParams} from "@/lib/params/useLiveParams.ts";
 import type {ConnectionStatus} from "@/lib/vehicle/connection.ts";
 
 /**
- * ArduCopter ESC calibration (`ESC_CALIBRATION = 3`, see ArduCopter's
- * `esc_calibration.cpp`) runs at the next boot from battery power, not over
- * MAVLink: ArduPilot clears the parameter, waits for the safety switch,
- * drives every motor at full throttle for 5 s, then holds zero until the
- * board is power-cycled.
+ * ArduCopter ESC calibration (see ArduCopter's `esc_calibration.cpp`) runs at
+ * the next boot from battery power, not over MAVLink. ArduPilot clears the
+ * parameter and waits for the safety switch, then:
+ *
+ * - `auto` (`ESC_CALIBRATION = 3`): drives every motor at full throttle for
+ *   5 s, then holds zero until the board is power-cycled. Fine for ESCs that
+ *   take their low point whenever throttle drops; some (a DYS 100A, for one)
+ *   only wait a second or two and have moved on into their settings menu by
+ *   then.
+ * - `stick` (`ESC_CALIBRATION = 1`): passes the pilot's throttle stick
+ *   straight to every ESC until power-cycled, so the operator times the
+ *   drop. ArduPilot only does this when the stick reads high at boot;
+ *   otherwise it resets the parameter and boots normally. `2` would skip that
+ *   check and hand a low stick to the motors with no arming, so it isn't
+ *   offered.
  *
  * Those loops wait with `delay(3)`, below the 5 ms threshold at which
  * ArduPilot runs its MAVLink delay callback — so from battery power-up until
@@ -21,9 +31,24 @@ import type {ConnectionStatus} from "@/lib/vehicle/connection.ts";
  * most of the procedure, which unmounts the Calibration page's normal view,
  * and the operator may wander off to another page mid-way.
  */
+export type EscMode = "auto" | "stick";
+
+/** `ESC_CALIBRATION` value that starts each mode on the next boot. */
+export const ESC_CALIBRATION_VALUE: Record<EscMode, number> = {auto: 3, stick: 1};
+
+/** Mode for an `ESC_CALIBRATION` already set on the vehicle (another session,
+ * another GCS), `null` when no calibration is pending. */
+export function escModeFromParam(value: number | undefined): EscMode | null {
+    if (value === 3) return "auto";
+    if (value === 1 || value === 2) return "stick";
+    return null;
+}
+
 export type EscPhase =
     | "idle"
     | "powerOff"
+    /** Stick mode only: throttle to full before the battery goes in. */
+    | "stickHigh"
     | "battery"
     | "safety"
     | "tones"
@@ -44,6 +69,7 @@ export type BoardCheck = "pending" | "same" | "different" | "unknown";
 
 export interface EscCalibrationState {
     phase: EscPhase;
+    mode: EscMode;
     /** Whether the board starts with its safety switch engaged
      * (`BRD_SAFETY_DEFLT` ≠ 0), read when calibration was turned on. */
     safetyStep: boolean;
@@ -58,6 +84,7 @@ export interface EscCalibrationState {
 
 const IDLE: EscCalibrationState = {
     phase: "idle",
+    mode: "auto",
     safetyStep: false,
     messages: [],
     boardBefore: null,
@@ -117,18 +144,20 @@ function setPhase(phase: EscPhase): void {
     store.update((state) => ({...state, phase}));
 }
 
-/** Calibration has been turned on (`ESC_CALIBRATION` confirmed at 3). */
-export function beginEscCalibration(safetyStep: boolean): void {
+/** Calibration has been turned on (`ESC_CALIBRATION` confirmed at the
+ * mode's value). */
+export function beginEscCalibration(mode: EscMode, safetyStep: boolean): void {
     clearTimers();
     earlyBoardUid = undefined;
     paramsClearedSinceBegin = false;
-    store.set({...IDLE, phase: "powerOff", safetyStep, boardBefore: currentBoardUid});
+    store.set({...IDLE, phase: "powerOff", mode, safetyStep, boardBefore: currentBoardUid});
 }
 
 /** The operator ticked the current manual step. */
 export function confirmEscStep(): void {
     const {phase, safetyStep} = store.getSnapshot();
-    if (phase === "battery") setPhase(safetyStep ? "safety" : "tones");
+    if (phase === "stickHigh") setPhase("battery");
+    else if (phase === "battery") setPhase(safetyStep ? "safety" : "tones");
     else if (phase === "safety") setPhase("tones");
     else if (phase === "tones") {
         clearTimers();
@@ -147,6 +176,13 @@ export function resetEscCalibration(): void {
     store.set(IDLE);
 }
 
+/** Steps between powering off and the calibration finishing, where the
+ * vehicle should stay silent — a steady link back means it booted normally.
+ * Includes `stickHigh`: the battery may already be in before it's ticked. */
+function awaitingCalibrationBoot(phase: EscPhase): boolean {
+    return phase === "stickHigh" || phase === "battery" || phase === "safety" || phase === "tones";
+}
+
 function onLinkStatus(status: ConnectionStatus): void {
     const {phase} = store.getSnapshot();
     const connected = status === "connected";
@@ -157,19 +193,18 @@ function onLinkStatus(status: ConnectionStatus): void {
     }
 
     if (phase === "powerOff" && !connected) {
-        setPhase("battery");
+        setPhase(store.getSnapshot().mode === "stick" ? "stickHigh" : "battery");
         return;
     }
 
-    if (phase === "battery" || phase === "safety" || phase === "tones") {
+    if (awaitingCalibrationBoot(phase)) {
         if (!connected) {
             if (normalBootTimer !== null) clearTimeout(normalBootTimer);
             normalBootTimer = null;
         } else if (normalBootTimer === null) {
             normalBootTimer = setTimeout(() => {
                 normalBootTimer = null;
-                const current = store.getSnapshot().phase;
-                if (current === "battery" || current === "safety" || current === "tones") {
+                if (awaitingCalibrationBoot(store.getSnapshot().phase)) {
                     setPhase("normalBoot");
                 }
             }, NORMAL_BOOT_AFTER_MS);

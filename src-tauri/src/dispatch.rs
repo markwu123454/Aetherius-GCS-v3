@@ -70,6 +70,7 @@ pub fn route(app: &AppHandle, snapshot: &mut VehicleSnapshot, message: &MavMessa
         | MavMessage::NAV_CONTROLLER_OUTPUT(_)
         | MavMessage::POWER_STATUS(_)
         | MavMessage::MISSION_CURRENT(_)
+        | MavMessage::HOME_POSITION(_)
         => {
             telemetry::apply(snapshot, message);
             true

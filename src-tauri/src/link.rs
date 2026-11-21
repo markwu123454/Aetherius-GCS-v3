@@ -65,25 +65,44 @@ fn to_mavlink_address(endpoint: &str) -> String {
 /// favor of `MAV_CMD_SET_MESSAGE_INTERVAL` — one COMMAND_LONG per message
 /// type, naming the interval in microseconds. Sent as soon as the vehicle's
 /// target IDs are known from its first HEARTBEAT, and again whenever
-/// heartbeats resume after a silence (see `read_loop`). Only the
-/// messages that actually need to feel smooth are sped up — battery, GPS
-/// status and the rest stay at their own default rate, since asking for
-/// those at 20 Hz would just be discarded bandwidth.
+/// heartbeats resume after a silence (see `read_loop`). Only the messages that
+/// need to feel smooth get the telemetry rate; the status messages get a low
+/// fixed rate.
 ///
-/// SERVO_OUTPUT_RAW is asked for explicitly too, at a fixed 10 Hz: whether a
-/// port streams it unprompted depends on that port's `SRx_RC_CHAN` rate, which
-/// SITL's TCP port has set but a serial telemetry port usually doesn't — the
-/// Servo Outputs panel would otherwise sit empty on real hardware. 10 Hz is
-/// plenty for a bar display and cheap on a 57600 radio link.
+/// Nothing here can be left to the port's own default rate. Those come from
+/// the port's stream-rate params (`MAVn_*`, `SRn_*` before 4.7), which can be
+/// 0 across the board — a stock Pixhawk6C on Copter 4.7 has every one of them
+/// at 0. Then SYS_STATUS never arrives, and with it prearm, battery and comm
+/// drop; GPS_RAW_INT, EKF_STATUS_REPORT and the rest go silent the same way.
+/// SITL's TCP port has its rates set, which is why this only shows on real
+/// hardware.
+///
+/// SERVO_OUTPUT_RAW gets a fixed 10 Hz: plenty for a bar display and cheap on
+/// a 57600 radio link.
 fn request_data_streams(app: &AppHandle, target_system: u8, target_component: u8, interval_us: f32) {
     const SERVO_OUTPUT_RAW_INTERVAL_US: f32 = 100_000.0;
+    // Prearm state and GPS fix are read off these, so they need to be prompt.
+    const PRIMARY_STATUS_INTERVAL_US: f32 = 500_000.0;
+    const STATUS_INTERVAL_US: f32 = 1_000_000.0;
 
     for (message_id, interval) in [
-        (30.0, interval_us),
-        (33.0, interval_us),
-        (74.0, interval_us),
-        (65.0, interval_us),
-        (36.0, SERVO_OUTPUT_RAW_INTERVAL_US),
+        (30.0, interval_us),                    // ATTITUDE
+        (33.0, interval_us),                    // GLOBAL_POSITION_INT
+        (74.0, interval_us),                    // VFR_HUD
+        (65.0, interval_us),                    // RC_CHANNELS
+        (36.0, SERVO_OUTPUT_RAW_INTERVAL_US),   // SERVO_OUTPUT_RAW
+        (1.0, PRIMARY_STATUS_INTERVAL_US),      // SYS_STATUS
+        (24.0, PRIMARY_STATUS_INTERVAL_US),     // GPS_RAW_INT
+        (193.0, STATUS_INTERVAL_US),            // EKF_STATUS_REPORT
+        (241.0, STATUS_INTERVAL_US),            // VIBRATION
+        (147.0, STATUS_INTERVAL_US),            // BATTERY_STATUS
+        (125.0, STATUS_INTERVAL_US),            // POWER_STATUS
+        (42.0, STATUS_INTERVAL_US),             // MISSION_CURRENT
+        (62.0, STATUS_INTERVAL_US),             // NAV_CONTROLLER_OUTPUT
+        (168.0, STATUS_INTERVAL_US),            // WIND
+        // ArduPilot pushes this once when home is set, which is usually before
+        // the GCS connected. It's only sent while a home exists.
+        (242.0, STATUS_INTERVAL_US),            // HOME_POSITION
     ] {
         let _ = commands::send_async(
             app,

@@ -28,6 +28,7 @@ import {useConnection} from "@/lib/vehicle/useConnection.ts";
 import {isLinkFailing, isLinkIdle} from "@/lib/vehicle/connection.ts";
 import {useArmedSince, useVehicle} from "@/lib/vehicle/useVehicle.ts";
 import {useNow} from "@/lib/vehicle/useMockVehicle.ts";
+import {useSecondsSince} from "@/lib/useSecondsSince.ts";
 import {useTelemetryHistory, useTelemetrySparklines} from "@/lib/vehicle/useTelemetryHistory.ts";
 import {distanceMeters, FixType, fixLabel} from "@/lib/vehicle/vehicle.ts";
 import {useSettings} from "@/lib/settings/useSettings.ts";
@@ -162,7 +163,7 @@ function ModeArmedRow({mode, armed, armedFor, prearmPass, unknown, stale, staleF
     mode: string;
     armed: boolean;
     armedFor: number | null;
-    prearmPass: boolean;
+    prearmPass: boolean | null;
     unknown: boolean;
     stale: boolean;
     staleFor: number | null;
@@ -182,7 +183,7 @@ function ModeArmedRow({mode, armed, armedFor, prearmPass, unknown, stale, staleF
             {armed && armedFor !== null && (
                 <span className="font-mono text-micro text-text-helper tabular-nums">{formatDuration(armedFor)}</span>
             )}
-            {!unknown && !prearmPass && !armed && (
+            {!unknown && prearmPass === false && !armed && (
                 <span className="border border-state-warn px-1.5 py-0.5 text-micro text-state-warn uppercase">
                     Prearm fail
                 </span>
@@ -311,7 +312,7 @@ export default function TelemetryPanel({area}: {area: PanelArea}) {
     const stale = isLinkFailing(connection.status);
     const unknown = isLinkIdle(connection.status) || vehicle.updatedAt === 0;
     const staleFor = stale && packetAge !== null ? Math.round(packetAge / 1000) : null;
-    const armedFor = armedSince === null ? null : Math.floor((now - armedSince) / 1000);
+    const armedFor = useSecondsSince(armedSince);
 
     const speed = speedUnitDef(speedUnit);
     const vspeed = verticalSpeedUnitDef(verticalSpeedUnit);

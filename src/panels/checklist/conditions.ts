@@ -34,7 +34,7 @@ export function evaluateCondition(
         case "battery_below":
             return vehicle.battery.percent < condition.value;
         case "prearm_pass":
-            return vehicle.prearmPass;
+            return vehicle.prearmPass === true;
         case "vehicle_kind":
             return vehicle.vehicleKind === condition.value;
         default:

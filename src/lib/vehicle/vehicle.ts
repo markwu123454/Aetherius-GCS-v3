@@ -73,9 +73,10 @@ export interface VehicleState {
     vehicleKind: VehicleKind | null;
     /**
      * From the SYS_STATUS health bitmask: continuous, trustworthy, and the only
-     * prearm signal the status strip is allowed to render.
+     * prearm signal the status strip is allowed to render. `null` until the
+     * first SYS_STATUS arrives — unknown, which must not read as a failure.
      */
-    prearmPass: boolean;
+    prearmPass: boolean | null;
     /**
      * `PreArm:` reasons ArduPilot reported on its most recent recheck cycle —
      * replaced wholesale on every cycle rather than accumulated, so a reason
@@ -188,7 +189,7 @@ export function alertLevel(state: VehicleState): AlertLevel {
     if (!state.ekf.ok || state.battery.percent <= 25 || state.link.lossPercent > 5) {
         return "warn";
     }
-    if (!state.prearmPass && !state.armed) {
+    if (state.prearmPass === false && !state.armed) {
         return "warn";
     }
     return "none";

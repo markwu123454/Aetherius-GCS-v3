@@ -1,7 +1,7 @@
 import {useConnection} from "@/lib/vehicle/useConnection.ts";
 import {isLinkIdle} from "@/lib/vehicle/connection.ts";
 import {usePrearmLastUpdate, useVehicle} from "@/lib/vehicle/useVehicle.ts";
-import {useNow} from "@/lib/vehicle/useMockVehicle.ts";
+import {useSecondsSince} from "@/lib/useSecondsSince.ts";
 import {PrearmReason} from "@/lib/vehicle/vehicle.ts";
 import {TONE_TEXT} from "@/components/topmenu/StatusChip.tsx";
 
@@ -30,10 +30,9 @@ function formatAge(seconds: number): string {
 export default function PrearmPanel() {
     const vehicle = useVehicle();
     const connection = useConnection();
-    const lastUpdate = usePrearmLastUpdate();
-    const now = useNow();
+    const updateAge = useSecondsSince(usePrearmLastUpdate());
 
-    const unknown = isLinkIdle(connection.status) || vehicle.updatedAt === 0;
+    const unknown = isLinkIdle(connection.status) || vehicle.updatedAt === 0 || vehicle.prearmPass === null;
     const reasons = vehicle.prearmReasons;
 
     return (
@@ -54,7 +53,7 @@ export default function PrearmPanel() {
                 {/* All reasons in a cycle arrive at once, so one shared
                     "how fresh" readout here replaces a per-reason age. */}
                 <span className="ml-auto text-micro text-text-helper tabular-nums">
-                    {lastUpdate === null ? "No updates yet" : `Last update ${formatAge(Math.round((now - lastUpdate) / 1000))}`}
+                    {updateAge === null ? "No updates yet" : `Last update ${formatAge(updateAge)}`}
                 </span>
             </div>
 
