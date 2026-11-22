@@ -59,12 +59,14 @@ pub struct LogSummary {
 pub fn open_log(app: AppHandle, path: String) -> Result<LogSummary, String> {
     let parsed = parsed_log(&app, &path)?;
     let mut message_types: Vec<MessageTypeSummary> = parsed
-        .offsets
+        .log
+        .tables()
         .iter()
-        .map(|(name, offsets)| MessageTypeSummary {
-            name: name.clone(),
-            fields: parsed.formats.get(name).map(|f| f.fields.iter().map(|field| field.name.clone()).collect()).unwrap_or_default(),
-            count: offsets.len(),
+        .filter(|table| table.name != "FMT")
+        .map(|table| MessageTypeSummary {
+            name: table.name.clone(),
+            fields: table.columns.iter().map(|column| column.name.clone()).collect(),
+            count: table.len(),
         })
         .collect();
     message_types.sort_by(|a, b| a.name.cmp(&b.name));
@@ -96,10 +98,7 @@ pub fn get_log_series(
     max_points: Option<usize>,
 ) -> Result<SeriesResponse, String> {
     let parsed = parsed_log(&app, &path)?;
-    let fmt = parsed.formats.get(&message_type).ok_or_else(|| format!("unknown message type {message_type}"))?;
-    let offsets = parsed.offsets.get(&message_type).cloned().unwrap_or_default();
-    let data = std::fs::read(&path).map_err(|e| e.to_string())?;
-    let payload_len = fmt.length.saturating_sub(3);
+    parsed.table(&message_type).ok_or_else(|| format!("unknown message type {message_type}"))?;
 
     let lo = start_us.unwrap_or(0);
     let hi = end_us.unwrap_or(u64::MAX);
@@ -107,10 +106,7 @@ pub fn get_log_series(
     let mut time_us = Vec::new();
     let mut series: HashMap<String, Vec<f64>> = fields.iter().map(|f| (f.clone(), Vec::new())).collect();
 
-    for &offset in &offsets {
-        let start = offset as usize;
-        let Some(payload) = data.get(start..start + payload_len) else { continue };
-        let values = parser::decode_record(payload, fmt);
+    for values in parsed.records(&message_type) {
         let Some(t) = values.get("TimeUS").and_then(FieldValue::as_f64) else { continue };
         let t = t as u64;
         if t < lo || t > hi {
@@ -157,16 +153,10 @@ pub struct TextEvent {
 #[tauri::command]
 pub fn get_log_text_events(app: AppHandle, path: String, message_type: String, field: String) -> Result<Vec<TextEvent>, String> {
     let parsed = parsed_log(&app, &path)?;
-    let fmt = parsed.formats.get(&message_type).ok_or_else(|| format!("unknown message type {message_type}"))?;
-    let offsets = parsed.offsets.get(&message_type).cloned().unwrap_or_default();
-    let data = std::fs::read(&path).map_err(|e| e.to_string())?;
-    let payload_len = fmt.length.saturating_sub(3);
+    parsed.table(&message_type).ok_or_else(|| format!("unknown message type {message_type}"))?;
 
     let mut out = Vec::new();
-    for &offset in &offsets {
-        let start = offset as usize;
-        let Some(payload) = data.get(start..start + payload_len) else { continue };
-        let values = parser::decode_record(payload, fmt);
+    for values in parsed.records(&message_type) {
         let Some(t) = values.get("TimeUS").and_then(FieldValue::as_f64) else { continue };
         let text = match values.get(&field) {
             Some(FieldValue::Text(s)) => s.clone(),

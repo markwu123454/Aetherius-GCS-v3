@@ -3,14 +3,12 @@
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
-use crate::logs::parser::{self, FieldValue, ParsedLog};
+use crate::logs::parser::{FieldValue, ParsedLog};
 
 pub struct Log {
     pub parsed: Arc<ParsedLog>,
     pub bytes: Vec<u8>,
     pub plane: bool,
-    /// Unit label per message, per field (`None` where the log doesn't say).
-    units: HashMap<String, Vec<Option<String>>>,
 }
 
 pub fn duration(log: &Log) -> f64 {
@@ -19,19 +17,7 @@ pub fn duration(log: &Log) -> f64 {
 
 /// Decodes every record of `message`, in file order.
 pub fn records<'a>(log: &'a Log, message: &str) -> Vec<HashMap<String, FieldValue>> {
-    let Some(fmt) = log.parsed.formats.get(message) else { return Vec::new() };
-    let payload_len = fmt.length.saturating_sub(3);
-    log.parsed
-        .offsets
-        .get(message)
-        .map(|offsets| {
-            offsets
-                .iter()
-                .filter_map(|&offset| log.bytes.get(offset as usize..offset as usize + payload_len))
-                .map(|payload| parser::decode_record(payload, fmt))
-                .collect()
-        })
-        .unwrap_or_default()
+    log.parsed.records(message)
 }
 
 fn number(record: &HashMap<String, FieldValue>, field: &str) -> Option<f64> {
@@ -54,53 +40,22 @@ pub fn open(app: &tauri::AppHandle, path: PathBuf) -> Result<Log, String> {
     let shown = path.to_string_lossy().to_string();
     let parsed = crate::logs::analysis::parsed_log(app, &shown)?;
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-    let mut log = Log { parsed, bytes, plane: false, units: HashMap::new() };
+    let mut log = Log { parsed, bytes, plane: false };
     log.plane = records(&log, "MSG").iter().take(20).any(|r| text(r, "Message").is_some_and(|m| m.contains("ArduPlane")));
-    log.units = units(&log);
     Ok(log)
 }
 
-/// FMTU says which UNIT each field uses; UNIT gives the labels.
-fn units(log: &Log) -> HashMap<String, Vec<Option<String>>> {
-    let labels: HashMap<char, String> = records(log, "UNIT")
-        .iter()
-        .filter_map(|r| {
-            let id = number(r, "Id")? as u8 as char;
-            Some((id, text(r, "Label")?))
-        })
-        .collect();
-    let by_id: HashMap<u8, String> = log.parsed.formats.values().map(|f| (f.id, f.name.clone())).collect();
-    let mut out = HashMap::new();
-    for r in records(log, "FMTU") {
-        let (Some(id), Some(unit_ids)) = (number(&r, "FmtType"), text(&r, "UnitIds")) else { continue };
-        let Some(name) = by_id.get(&(id as u8)) else { continue };
-        let per_field = unit_ids
-            .chars()
-            .map(|c| match c {
-                '#' => Some("instance".to_string()),
-                '-' => None,
-                other => labels.get(&other).cloned().filter(|l| !l.is_empty()),
-            })
-            .collect();
-        out.insert(name.clone(), per_field);
-    }
-    out
-}
-
+/// The field's unit from FMTU/UNIT/MULT, with the multiplier's prefix.
 pub fn unit_of(log: &Log, message: &str, field: &str) -> Option<String> {
-    let fmt = log.parsed.formats.get(message)?;
-    let index = fmt.fields.iter().position(|f| f.name == field)?;
-    log.units.get(message)?.get(index).cloned().flatten()
+    log.parsed.table(message)?.column(field)?.unit.clone()
 }
 
 fn instance_field(log: &Log, message: &str) -> Option<String> {
-    let fmt = log.parsed.formats.get(message)?;
-    if let Some(units) = log.units.get(message) {
-        if let Some(i) = units.iter().position(|u| u.as_deref() == Some("instance")) {
-            return fmt.fields.get(i).map(|f| f.name.clone());
-        }
+    let table = log.parsed.table(message)?;
+    if table.instance_field.is_some() {
+        return table.instance_field.clone();
     }
-    fmt.fields.iter().find(|f| matches!(f.name.as_str(), "I" | "Instance" | "Inst")).map(|f| f.name.clone())
+    table.columns.iter().find(|c| matches!(c.name.as_str(), "I" | "Instance" | "Inst")).map(|c| c.name.clone())
 }
 
 /// `MSG.Field` or `MSG[N].Field`.
@@ -145,10 +100,9 @@ pub struct Series<V = f64> {
 /// Whether a field holds text (a name or message) rather than a number.
 pub fn is_text(log: &Log, spec: &FieldSpec) -> bool {
     log.parsed
-        .formats
-        .get(&spec.message)
-        .and_then(|fmt| fmt.fields.iter().find(|f| f.name == spec.field))
-        .is_some_and(|f| matches!(f.code, 'n' | 'N' | 'Z'))
+        .table(&spec.message)
+        .and_then(|table| table.column(&spec.field))
+        .is_some_and(|c| matches!(c.data, flightlog_core::ColumnData::Utf8(_)))
 }
 
 pub fn series(log: &Log, spec: &FieldSpec) -> Result<Series, String> {
@@ -167,9 +121,9 @@ pub fn text_series(log: &Log, spec: &FieldSpec) -> Result<Series<String>, String
 
 /// Every sample of a field that `value` can read.
 fn samples<V>(log: &Log, spec: &FieldSpec, value: impl Fn(&FieldValue) -> Option<V>) -> Result<Series<V>, String> {
-    let fmt = log.parsed.formats.get(&spec.message).ok_or_else(|| format!("the log has no {} messages", spec.message))?;
-    if !fmt.fields.iter().any(|f| f.name == spec.field) {
-        let names: Vec<&str> = fmt.fields.iter().map(|f| f.name.as_str()).collect();
+    let table = log.parsed.table(&spec.message).ok_or_else(|| format!("the log has no {} messages", spec.message))?;
+    if table.column(&spec.field).is_none() {
+        let names: Vec<&str> = table.column_names();
         return Err(format!("{} has no field {} (it has {})", spec.message, spec.field, names.join(", ")));
     }
     let instance = instance_field(log, &spec.message);

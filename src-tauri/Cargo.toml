@@ -43,6 +43,7 @@ reqwest = "0.12"
 # OS name/edition/build for bug reports — reads the real Windows 11 name,
 # which the registry's own ProductName still reports as "Windows 10".
 os_info = { version = "3", default-features = false }
+flightlog-core = { version = "0.2.0", default-features = false }
 aetherius-cli = { path = "cli" }
 
 
