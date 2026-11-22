@@ -352,14 +352,15 @@ pub async fn analyze(ctx: &Ctx) -> CliResult {
     ctx.authorize(json!({"kind": "command", "log": path.to_string_lossy()})).await?;
     ctx.progress(json!({"text": format!("reading {}", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())}));
     let log = a::open(&ctx.app, path.clone()).map_err(|e| CliError::new("bad_file", format!("couldn't read {}: {e}", path.display())))?;
-    if log.parsed.formats.len() <= 1 {
+    if log.parsed.log.tables().len() <= 1 {
         return Err(CliError::new("bad_file", format!("{} isn't a dataflash log", path.display())));
     }
     let file = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
 
     match ctx.def.name {
         "logs info" => {
-            let records: usize = log.parsed.offsets.values().map(Vec::len).sum();
+            let tables: Vec<_> = log.parsed.log.tables().iter().filter(|t| t.name != "FMT").collect();
+            let records: usize = tables.iter().map(|t| t.len()).sum();
             let start = a::start_unix(&log).map(|s| ctx.iso((s * 1000.0) as u64));
             Ok(json!({
                 "file": file,
@@ -368,14 +369,14 @@ pub async fn analyze(ctx: &Ctx) -> CliResult {
                 "firmware": a::firmware(&log),
                 "start": start,
                 "duration": round(a::duration(&log), 1),
-                "types": log.parsed.offsets.len(),
+                "types": tables.len(),
                 "records": records,
             }))
         }
         "logs schema" => {
             let duration = a::duration(&log).max(1e-9);
             let wanted = ctx.str("message");
-            let mut names: Vec<&String> = log.parsed.offsets.keys().filter(|n| wanted.is_none_or(|w| n.eq_ignore_ascii_case(w))).collect();
+            let mut names: Vec<&String> = log.parsed.log.tables().iter().map(|t| &t.name).filter(|n| *n != "FMT").filter(|n| wanted.is_none_or(|w| n.eq_ignore_ascii_case(w))).collect();
             if names.is_empty() {
                 return Err(CliError::new("not_found", format!("the log has no {} messages", wanted.unwrap_or("?"))));
             }
@@ -383,9 +384,10 @@ pub async fn analyze(ctx: &Ctx) -> CliResult {
             let messages: Vec<Value> = names
                 .into_iter()
                 .map(|name| {
-                    let count = log.parsed.offsets[name].len();
-                    let fields: Vec<Value> = log.parsed.formats[name]
-                        .fields
+                    let table = log.parsed.table(name).expect("listed above");
+                    let count = table.len();
+                    let fields: Vec<Value> = table
+                        .columns
                         .iter()
                         .filter(|f| f.name != "TimeUS")
                         .map(|f| json!({"name": f.name, "unit": a::unit_of(&log, name, &f.name)}))

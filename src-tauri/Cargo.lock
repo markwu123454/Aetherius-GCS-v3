@@ -25,6 +25,7 @@ dependencies = [
  "aetherius-cli",
  "base64 0.22.1",
  "flate2",
+ "flightlog-core",
  "mavlink",
  "num-traits",
  "os_info",
@@ -1100,6 +1101,15 @@ checksum = "843fba2746e448b37e26a819579957415c8cef339bf08564fe8b7ddbd959573c"
 dependencies = [
  "crc32fast",
  "miniz_oxide",
+]
+
+[[package]]
+name = "flightlog-core"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b49c42833db7060cb61ccec8f29ba3fe925dc2b6e7b1c4b886d20541471ec75b"
+dependencies = [
+ "mavlink-tlog",
 ]
 
 [[package]]
@@ -2244,6 +2254,12 @@ dependencies = [
  "serde_arrays",
  "serialport",
 ]
+
+[[package]]
+name = "mavlink-tlog"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56dc10e28f28477a20b62fd7c248a36e34d3ea0a0aa9264d854372e18c0718a9"
 
 [[package]]
 name = "memchr"
